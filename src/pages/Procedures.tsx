@@ -1,18 +1,13 @@
-import { Plus, Search, Upload } from "lucide-react";
+import { useState } from "react";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-
-const mockProcedures = [
-  { id: 1, code: "MRI-001", name: "MRI Scan (Brain)", tariff: 3600, category: "Radiology" },
-  { id: 2, code: "CT-001", name: "CT Scan (Full Body)", tariff: 2800, category: "Radiology" },
-  { id: 3, code: "XR-001", name: "X-Ray (Chest)", tariff: 500, category: "Radiology" },
-  { id: 4, code: "LAB-001", name: "Complete Blood Count", tariff: 150, category: "Laboratory" },
-  { id: 5, code: "LAB-002", name: "Liver Function Test", tariff: 350, category: "Laboratory" },
-  { id: 6, code: "SUR-001", name: "Appendectomy", tariff: 12500, category: "Surgery" },
-  { id: 7, code: "CON-001", name: "General Consultation", tariff: 200, category: "Consultation" },
-  { id: 8, code: "DEN-001", name: "Dental Filling", tariff: 800, category: "Dental" },
-];
+import { Skeleton } from "@/components/ui/skeleton";
+import EntityDialog from "@/components/shared/EntityDialog";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import { toast } from "@/hooks/use-toast";
 
 const categoryColors: Record<string, string> = {
   Radiology: "bg-info/10 text-info",
@@ -23,6 +18,45 @@ const categoryColors: Record<string, string> = {
 };
 
 export default function Procedures() {
+  const { data: procedures, isLoading } = useSupabaseQuery("procedures");
+  const insertMutation = useSupabaseInsert("procedures");
+  const updateMutation = useSupabaseUpdate("procedures");
+  const deleteMutation = useSupabaseDelete("procedures");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState({ procedure_name: "", procedure_code: "", default_tariff: "", category: "", description: "" });
+
+  const openNew = () => { setEditing(null); setForm({ procedure_name: "", procedure_code: "", default_tariff: "", category: "", description: "" }); setDialogOpen(true); };
+  const openEdit = (p: any) => { setEditing(p); setForm({ procedure_name: p.procedure_name, procedure_code: p.procedure_code || "", default_tariff: String(p.default_tariff), category: p.category || "", description: p.description || "" }); setDialogOpen(true); };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = { ...form, default_tariff: parseFloat(form.default_tariff) || 0, procedure_code: form.procedure_code || null };
+    try {
+      if (editing) {
+        await updateMutation.mutateAsync({ id: editing.id, ...payload });
+        toast({ title: "Procedure updated" });
+      } else {
+        await insertMutation.mutateAsync(payload);
+        toast({ title: "Procedure added" });
+      }
+      setDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this procedure?")) return;
+    try { await deleteMutation.mutateAsync(id); toast({ title: "Procedure deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const filtered = (procedures || []).filter((p: any) =>
+    p.procedure_name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.procedure_code?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
@@ -30,45 +64,62 @@ export default function Procedures() {
           <h1 className="page-title">Procedure Tariffs</h1>
           <p className="page-description">Manage medical procedures and their standard tariffs</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2"><Upload className="w-4 h-4" />Import Excel</Button>
-          <Button className="gap-2"><Plus className="w-4 h-4" />Add Procedure</Button>
-        </div>
+        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Procedure</Button>
       </div>
 
       <div className="stat-card">
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search procedures..." className="pl-10 h-9" />
+            <Input placeholder="Search procedures..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Procedure Name</th>
-              <th>Category</th>
-              <th>Tariff (GH¢)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {mockProcedures.map((p) => (
-              <tr key={p.id} className="hover:bg-muted/50 transition-colors">
-                <td className="font-mono text-xs font-medium">{p.code}</td>
-                <td className="font-medium">{p.name}</td>
-                <td>
-                  <Badge variant="secondary" className={categoryColors[p.category] || ""}>
-                    {p.category}
-                  </Badge>
-                </td>
-                <td className="font-semibold">{p.tariff.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {isLoading ? (
+          <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">No procedures found. Click "Add Procedure" to create one.</p>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Code</th><th>Procedure Name</th><th>Category</th><th>Tariff (GH¢)</th><th>Actions</th></tr></thead>
+            <tbody>
+              {filtered.map((p: any) => (
+                <tr key={p.id} className="hover:bg-muted/50 transition-colors">
+                  <td className="font-mono text-xs font-medium">{p.procedure_code || "—"}</td>
+                  <td className="font-medium">{p.procedure_name}</td>
+                  <td><Badge variant="secondary" className={categoryColors[p.category] || ""}>{p.category || "—"}</Badge></td>
+                  <td className="font-semibold">{Number(p.default_tariff).toLocaleString()}</td>
+                  <td>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEdit(p)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                      <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded hover:bg-destructive/10"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Procedure" : "Add Procedure"}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div><Label>Procedure Name *</Label><Input value={form.procedure_name} onChange={(e) => setForm({ ...form, procedure_name: e.target.value })} required className="mt-1" /></div>
+          <div><Label>Code</Label><Input value={form.procedure_code} onChange={(e) => setForm({ ...form, procedure_code: e.target.value })} placeholder="e.g. MRI-001" className="mt-1" /></div>
+          <div><Label>Default Tariff (GH¢) *</Label><Input type="number" value={form.default_tariff} onChange={(e) => setForm({ ...form, default_tariff: e.target.value })} required className="mt-1" /></div>
+          <div>
+            <Label>Category</Label>
+            <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <option value="">Select category...</option>
+              {["Radiology", "Laboratory", "Surgery", "Consultation", "Dental", "Pharmacy", "Other"].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" /></div>
+          <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>
+            {editing ? "Update Procedure" : "Add Procedure"}
+          </Button>
+        </form>
+      </EntityDialog>
     </div>
   );
 }

@@ -1,28 +1,16 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  FileCheck,
-  Shield,
-  CreditCard,
-  Receipt,
-  BarChart3,
-  Users,
-  Settings,
-  Building2,
-  Stethoscope,
-  ChevronDown,
-  ChevronRight,
-  LogOut,
-  Bot,
+  LayoutDashboard, FileCheck, Shield, CreditCard, Receipt, BarChart3, Users, Settings,
+  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const menuItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
   { label: "Pre-Authorization", icon: FileCheck, path: "/pre-auth" },
   {
-    label: "Insurance",
-    icon: Shield,
+    label: "Insurance", icon: Shield,
     children: [
       { label: "Claims", path: "/claims" },
       { label: "Payments", path: "/payments" },
@@ -40,12 +28,11 @@ const menuItems = [
 
 export default function AppSidebar() {
   const location = useLocation();
+  const { signOut } = useAuth();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["Insurance"]);
 
   const toggleMenu = (label: string) => {
-    setExpandedMenus((prev) =>
-      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]
-    );
+    setExpandedMenus((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -68,28 +55,14 @@ export default function AppSidebar() {
         {menuItems.map((item) =>
           item.children ? (
             <div key={item.label}>
-              <button
-                onClick={() => toggleMenu(item.label)}
-                className="sidebar-item w-full justify-between"
-              >
-                <span className="flex items-center gap-3">
-                  <item.icon className="w-[18px] h-[18px]" />
-                  {item.label}
-                </span>
-                {expandedMenus.includes(item.label) ? (
-                  <ChevronDown className="w-4 h-4" />
-                ) : (
-                  <ChevronRight className="w-4 h-4" />
-                )}
+              <button onClick={() => toggleMenu(item.label)} className="sidebar-item w-full justify-between">
+                <span className="flex items-center gap-3"><item.icon className="w-[18px] h-[18px]" />{item.label}</span>
+                {expandedMenus.includes(item.label) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
               {expandedMenus.includes(item.label) && (
                 <div className="ml-8 mt-0.5 space-y-0.5">
                   {item.children.map((child) => (
-                    <Link
-                      key={child.path}
-                      to={child.path}
-                      className={`sidebar-item ${isActive(child.path) ? "sidebar-item-active" : ""}`}
-                    >
+                    <Link key={child.path} to={child.path} className={`sidebar-item ${isActive(child.path) ? "sidebar-item-active" : ""}`}>
                       {child.label}
                     </Link>
                   ))}
@@ -97,22 +70,16 @@ export default function AppSidebar() {
               )}
             </div>
           ) : (
-            <Link
-              key={item.path}
-              to={item.path!}
-              className={`sidebar-item ${isActive(item.path!) ? "sidebar-item-active" : ""}`}
-            >
-              <item.icon className="w-[18px] h-[18px]" />
-              {item.label}
+            <Link key={item.path} to={item.path!} className={`sidebar-item ${isActive(item.path!) ? "sidebar-item-active" : ""}`}>
+              <item.icon className="w-[18px] h-[18px]" />{item.label}
             </Link>
           )
         )}
       </nav>
 
       <div className="p-3 border-t border-sidebar-border">
-        <button className="sidebar-item w-full text-destructive/80 hover:text-destructive">
-          <LogOut className="w-[18px] h-[18px]" />
-          Sign Out
+        <button onClick={signOut} className="sidebar-item w-full text-destructive/80 hover:text-destructive">
+          <LogOut className="w-[18px] h-[18px]" />Sign Out
         </button>
       </div>
     </aside>
