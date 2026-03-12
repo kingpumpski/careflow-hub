@@ -14,16 +14,555 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      claims: {
+        Row: {
+          claim_amount: number
+          claim_month: number | null
+          claim_year: number | null
+          created_at: string
+          id: string
+          insurance_company_id: string
+          patient_name: string | null
+          preauth_id: string | null
+          procedure_name: string | null
+          status: string
+          submission_date: string
+        }
+        Insert: {
+          claim_amount?: number
+          claim_month?: number | null
+          claim_year?: number | null
+          created_at?: string
+          id?: string
+          insurance_company_id: string
+          patient_name?: string | null
+          preauth_id?: string | null
+          procedure_name?: string | null
+          status?: string
+          submission_date?: string
+        }
+        Update: {
+          claim_amount?: number
+          claim_month?: number | null
+          claim_year?: number | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string
+          patient_name?: string | null
+          preauth_id?: string | null
+          procedure_name?: string | null
+          status?: string
+          submission_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claims_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claims_preauth_id_fkey"
+            columns: ["preauth_id"]
+            isOneToOne: false
+            referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_companies: {
+        Row: {
+          company_name: string
+          contact_person: string | null
+          created_at: string
+          email: string | null
+          id: string
+          insurance_company_id: string | null
+          phone: string | null
+        }
+        Insert: {
+          company_name: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          insurance_company_id?: string | null
+          phone?: string | null
+        }
+        Update: {
+          company_name?: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          insurance_company_id?: string | null
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_companies_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      doctors: {
+        Row: {
+          contact: string | null
+          created_at: string
+          doctor_name: string
+          hospital: string | null
+          id: string
+          specialty: string | null
+        }
+        Insert: {
+          contact?: string | null
+          created_at?: string
+          doctor_name: string
+          hospital?: string | null
+          id?: string
+          specialty?: string | null
+        }
+        Update: {
+          contact?: string | null
+          created_at?: string
+          doctor_name?: string
+          hospital?: string | null
+          id?: string
+          specialty?: string | null
+        }
+        Relationships: []
+      }
+      insurance_companies: {
+        Row: {
+          address: string | null
+          color: string | null
+          company_name: string
+          contact_person: string | null
+          created_at: string
+          email: string | null
+          id: string
+          phone: string | null
+        }
+        Insert: {
+          address?: string | null
+          color?: string | null
+          company_name: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          phone?: string | null
+        }
+        Update: {
+          address?: string | null
+          color?: string | null
+          company_name?: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string | null
+          read: boolean | null
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          read?: boolean | null
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          read?: boolean | null
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      patients: {
+        Row: {
+          client_company_id: string | null
+          created_at: string
+          id: string
+          insurance_company_id: string | null
+          membership_number: string | null
+          patient_name: string
+          phone: string | null
+        }
+        Insert: {
+          client_company_id?: string | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string | null
+          membership_number?: string | null
+          patient_name: string
+          phone?: string | null
+        }
+        Update: {
+          client_company_id?: string | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string | null
+          membership_number?: string | null
+          patient_name?: string
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patients_client_company_id_fkey"
+            columns: ["client_company_id"]
+            isOneToOne: false
+            referencedRelation: "client_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patients_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_paid: number
+          claim_id: string | null
+          created_at: string
+          id: string
+          insurance_company_id: string | null
+          payment_date: string
+          payment_method: string | null
+          reference_number: string | null
+        }
+        Insert: {
+          amount_paid?: number
+          claim_id?: string | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string | null
+          payment_date?: string
+          payment_method?: string | null
+          reference_number?: string | null
+        }
+        Update: {
+          amount_paid?: number
+          claim_id?: string | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string | null
+          payment_date?: string
+          payment_method?: string | null
+          reference_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_authorizations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          diagnosis: string | null
+          doctor_id: string | null
+          id: string
+          insurance_company_id: string | null
+          patient_id: string | null
+          procedure_date: string | null
+          procedure_id: string | null
+          provider_address: string | null
+          provider_name: string | null
+          provider_phone: string | null
+          status: string
+          total_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          diagnosis?: string | null
+          doctor_id?: string | null
+          id?: string
+          insurance_company_id?: string | null
+          patient_id?: string | null
+          procedure_date?: string | null
+          procedure_id?: string | null
+          provider_address?: string | null
+          provider_name?: string | null
+          provider_phone?: string | null
+          status?: string
+          total_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          diagnosis?: string | null
+          doctor_id?: string | null
+          id?: string
+          insurance_company_id?: string | null
+          patient_id?: string | null
+          procedure_date?: string | null
+          procedure_id?: string | null
+          provider_address?: string | null
+          provider_name?: string | null
+          provider_phone?: string | null
+          status?: string
+          total_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_authorizations_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_authorizations_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_authorizations_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_authorizations_procedure_id_fkey"
+            columns: ["procedure_id"]
+            isOneToOne: false
+            referencedRelation: "procedures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      preauth_items: {
+        Row: {
+          amount: number
+          description: string
+          id: string
+          preauth_id: string
+          quantity: number
+          unit_price: number
+        }
+        Insert: {
+          amount?: number
+          description: string
+          id?: string
+          preauth_id: string
+          quantity?: number
+          unit_price?: number
+        }
+        Update: {
+          amount?: number
+          description?: string
+          id?: string
+          preauth_id?: string
+          quantity?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "preauth_items_preauth_id_fkey"
+            columns: ["preauth_id"]
+            isOneToOne: false
+            referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procedures: {
+        Row: {
+          category: string | null
+          created_at: string
+          default_tariff: number
+          description: string | null
+          id: string
+          procedure_code: string | null
+          procedure_name: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          default_tariff?: number
+          description?: string | null
+          id?: string
+          procedure_code?: string | null
+          procedure_name: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          default_tariff?: number
+          description?: string | null
+          id?: string
+          procedure_code?: string | null
+          procedure_name?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string
+          value: string | null
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string
+          value?: string | null
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      withholding_tax: {
+        Row: {
+          claim_total: number | null
+          created_at: string
+          id: string
+          insurance_company_id: string
+          month: number
+          tax_amount: number | null
+          tax_rate: number | null
+          year: number
+        }
+        Insert: {
+          claim_total?: number | null
+          created_at?: string
+          id?: string
+          insurance_company_id: string
+          month: number
+          tax_amount?: number | null
+          tax_rate?: number | null
+          year: number
+        }
+        Update: {
+          claim_total?: number | null
+          created_at?: string
+          id?: string
+          insurance_company_id?: string
+          month?: number
+          tax_amount?: number | null
+          tax_rate?: number | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withholding_tax_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role:
+        | "superuser"
+        | "admin"
+        | "claims_officer"
+        | "accounts_officer"
+        | "data_entry_officer"
+        | "auditor"
+        | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +689,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: [
+        "superuser",
+        "admin",
+        "claims_officer",
+        "accounts_officer",
+        "data_entry_officer",
+        "auditor",
+        "viewer",
+      ],
+    },
   },
 } as const
