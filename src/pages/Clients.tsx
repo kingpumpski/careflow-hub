@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Plus, Search, Building2, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Building2, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
-import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 
 export default function Clients() {
@@ -14,7 +15,9 @@ export default function Clients() {
   const insertMutation = useSupabaseInsert("client_companies");
   const updateMutation = useSupabaseUpdate("client_companies");
   const deleteMutation = useSupabaseDelete("client_companies");
+  const bulkInsert = useSupabaseBulkInsert("client_companies");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ company_name: "", insurance_company_id: "", contact_person: "", email: "", phone: "" });
@@ -54,7 +57,10 @@ export default function Clients() {
           <h1 className="page-title">Client Companies</h1>
           <p className="page-description">Manage registered client companies and their insurance mappings</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Client</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Client</Button>
+        </div>
       </div>
 
       <div className="stat-card">
@@ -111,6 +117,19 @@ export default function Clients() {
           </Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Client Companies"
+        columns={[
+          { key: "company_name", label: "Company Name", required: true },
+          { key: "contact_person", label: "Contact Person" },
+          { key: "email", label: "Email" },
+          { key: "phone", label: "Phone" },
+        ]}
+        onImport={async (rows) => { await bulkInsert.mutateAsync(rows); }}
+      />
     </div>
   );
 }

@@ -109,6 +109,30 @@ export type Database = {
           },
         ]
       }
+      diagnosis_codes: {
+        Row: {
+          category: string | null
+          code: string
+          created_at: string
+          description: string
+          id: string
+        }
+        Insert: {
+          category?: string | null
+          code: string
+          created_at?: string
+          description: string
+          id?: string
+        }
+        Update: {
+          category?: string | null
+          code?: string
+          created_at?: string
+          description?: string
+          id?: string
+        }
+        Relationships: []
+      }
       doctors: {
         Row: {
           contact: string | null
@@ -400,6 +424,48 @@ export type Database = {
             columns: ["preauth_id"]
             isOneToOne: false
             referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procedure_templates: {
+        Row: {
+          created_at: string
+          diagnosis_code_id: string | null
+          id: string
+          items: Json
+          procedure_id: string | null
+          template_name: string
+        }
+        Insert: {
+          created_at?: string
+          diagnosis_code_id?: string | null
+          id?: string
+          items?: Json
+          procedure_id?: string | null
+          template_name: string
+        }
+        Update: {
+          created_at?: string
+          diagnosis_code_id?: string | null
+          id?: string
+          items?: Json
+          procedure_id?: string | null
+          template_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedure_templates_diagnosis_code_id_fkey"
+            columns: ["diagnosis_code_id"]
+            isOneToOne: false
+            referencedRelation: "diagnosis_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procedure_templates_procedure_id_fkey"
+            columns: ["procedure_id"]
+            isOneToOne: false
+            referencedRelation: "procedures"
             referencedColumns: ["id"]
           },
         ]

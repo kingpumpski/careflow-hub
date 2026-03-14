@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Plus, Search, Stethoscope, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Stethoscope, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
-import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 
 export default function Doctors() {
@@ -14,7 +15,9 @@ export default function Doctors() {
   const insertMutation = useSupabaseInsert("doctors");
   const updateMutation = useSupabaseUpdate("doctors");
   const deleteMutation = useSupabaseDelete("doctors");
+  const bulkInsert = useSupabaseBulkInsert("doctors");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ doctor_name: "", specialty: "", hospital: "", contact: "" });
@@ -40,12 +43,7 @@ export default function Doctors() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this doctor?")) return;
-    try {
-      await deleteMutation.mutateAsync(id);
-      toast({ title: "Doctor deleted" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    }
+    try { await deleteMutation.mutateAsync(id); toast({ title: "Doctor deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
   const filtered = (doctors || []).filter((d: any) =>
@@ -60,7 +58,10 @@ export default function Doctors() {
           <h1 className="page-title">Doctors</h1>
           <p className="page-description">Manage registered doctors and their specialties</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Doctor</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Doctor</Button>
+        </div>
       </div>
 
       <div className="stat-card">
@@ -109,6 +110,19 @@ export default function Doctors() {
           </Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Doctors"
+        columns={[
+          { key: "doctor_name", label: "Doctor Name", required: true },
+          { key: "specialty", label: "Specialty" },
+          { key: "hospital", label: "Hospital" },
+          { key: "contact", label: "Contact" },
+        ]}
+        onImport={async (rows) => { await bulkInsert.mutateAsync(rows); }}
+      />
     </div>
   );
 }
