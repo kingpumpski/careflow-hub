@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface EntityDialogProps {
   open: boolean;
@@ -14,6 +14,7 @@ export default function EntityDialog({ open, onOpenChange, title, children }: En
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription className="sr-only">{title} form</DialogDescription>
         </DialogHeader>
         {children}
       </DialogContent>

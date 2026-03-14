@@ -15,6 +15,7 @@ import Reports from "@/pages/Reports";
 import Clients from "@/pages/Clients";
 import Doctors from "@/pages/Doctors";
 import Procedures from "@/pages/Procedures";
+import InsuranceCompanies from "@/pages/InsuranceCompanies";
 import UsersPage from "@/pages/UsersPage";
 import AIAssistant from "@/pages/AIAssistant";
 import SettingsPage from "@/pages/SettingsPage";
@@ -50,6 +51,7 @@ function ProtectedRoutes() {
         <Route path="/clients" element={<Clients />} />
         <Route path="/doctors" element={<Doctors />} />
         <Route path="/procedures" element={<Procedures />} />
+        <Route path="/insurance" element={<InsuranceCompanies />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/ai-assistant" element={<AIAssistant />} />
         <Route path="/settings" element={<SettingsPage />} />
