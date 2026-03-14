@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
-import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 
 const categoryColors: Record<string, string> = {
@@ -15,6 +16,9 @@ const categoryColors: Record<string, string> = {
   Surgery: "bg-destructive/10 text-destructive",
   Consultation: "bg-primary/10 text-primary",
   Dental: "bg-warning/10 text-warning",
+  Cardiology: "bg-chart-4/10 text-chart-4",
+  Physiotherapy: "bg-success/10 text-success",
+  Pharmacy: "bg-chart-3/10 text-chart-3",
 };
 
 export default function Procedures() {
@@ -22,7 +26,9 @@ export default function Procedures() {
   const insertMutation = useSupabaseInsert("procedures");
   const updateMutation = useSupabaseUpdate("procedures");
   const deleteMutation = useSupabaseDelete("procedures");
+  const bulkInsert = useSupabaseBulkInsert("procedures");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ procedure_name: "", procedure_code: "", default_tariff: "", category: "", description: "" });
@@ -64,7 +70,10 @@ export default function Procedures() {
           <h1 className="page-title">Procedure Tariffs</h1>
           <p className="page-description">Manage medical procedures and their standard tariffs</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Procedure</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Procedure</Button>
+        </div>
       </div>
 
       <div className="stat-card">
@@ -111,7 +120,7 @@ export default function Procedures() {
             <Label>Category</Label>
             <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               <option value="">Select category...</option>
-              {["Radiology", "Laboratory", "Surgery", "Consultation", "Dental", "Pharmacy", "Other"].map(c => <option key={c} value={c}>{c}</option>)}
+              {["Radiology", "Laboratory", "Surgery", "Consultation", "Dental", "Cardiology", "Physiotherapy", "Pharmacy", "Other"].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" /></div>
@@ -120,6 +129,26 @@ export default function Procedures() {
           </Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Procedure Tariffs"
+        columns={[
+          { key: "procedure_name", label: "Procedure Name", required: true },
+          { key: "procedure_code", label: "Code" },
+          { key: "default_tariff", label: "Tariff" },
+          { key: "category", label: "Category" },
+          { key: "description", label: "Description" },
+        ]}
+        onImport={async (rows) => {
+          const parsed = rows.map(r => ({
+            ...r,
+            default_tariff: parseFloat(r.default_tariff) || 0,
+          }));
+          await bulkInsert.mutateAsync(parsed);
+        }}
+      />
     </div>
   );
 }
