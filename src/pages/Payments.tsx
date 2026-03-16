@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CreditCard, Search, Plus, Upload } from "lucide-react";
+import { Search, Plus, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,32 +9,43 @@ import EntityDialog from "@/components/shared/EntityDialog";
 import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 
+const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 export default function Payments() {
   const { data: payments, isLoading } = useSupabaseQuery("payments");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
+  const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
   const insertMutation = useSupabaseInsert("payments");
   const [search, setSearch] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", claim_id: "" });
+  const [detailInsurer, setDetailInsurer] = useState<any>(null);
+  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "" });
 
-  const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
+  // Aggregate by insurance company
+  const aggregated = (insurers || []).map((ins: any) => {
+    const insPayments = (payments || []).filter((p: any) => p.insurance_company_id === ins.id);
+    const totalPaid = insPayments.reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
+    const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status !== "rejected");
+    const totalSubmitted = insClaims.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
+    const insTax = (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id);
+    const totalTax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
+    return {
+      ...ins,
+      totalPaid, totalSubmitted, totalTax,
+      outstanding: totalSubmitted - totalPaid - totalTax,
+      paymentCount: insPayments.length,
+      payments: insPayments,
+    };
+  }).filter((a: any) => a.paymentCount > 0 || search === "");
 
-  const totalReceived = (payments || []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-  const totalClaims = (claims || []).reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
-  const outstanding = totalClaims - totalReceived;
-
-  const now = new Date();
-  const thisMonthPayments = (payments || []).filter((p: any) => {
-    const d = new Date(p.payment_date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
-  const thisMonthTotal = thisMonthPayments.reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-
-  const filtered = (payments || []).filter((p: any) =>
-    getInsurerName(p.insurance_company_id).toLowerCase().includes(search.toLowerCase()) ||
-    p.reference_number?.toLowerCase().includes(search.toLowerCase())
+  const filtered = aggregated.filter((a: any) =>
+    a.company_name?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const grandPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
+  const grandSubmitted = aggregated.reduce((s: number, a: any) => s + a.totalSubmitted, 0);
+  const grandOutstanding = aggregated.reduce((s: number, a: any) => s + a.outstanding, 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,15 +55,63 @@ export default function Payments() {
         amount_paid: parseFloat(form.amount_paid) || 0,
         payment_method: form.payment_method,
         reference_number: form.reference_number || null,
-        claim_id: form.claim_id || null,
       });
       toast({ title: "Payment recorded" });
       setAddDialogOpen(false);
-      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", claim_id: "" });
+      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
+
+  // Detail view
+  if (detailInsurer) {
+    const ins = aggregated.find((a: any) => a.id === detailInsurer);
+    if (!ins) { setDetailInsurer(null); return null; }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setDetailInsurer(null)}>← Back</Button>
+          <div>
+            <h1 className="page-title flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ins.color || "#3b82f6" }} />
+              {ins.company_name} — Payments
+            </h1>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-success">GH¢ {ins.totalPaid.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Total Paid</p>
+          </div>
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-foreground">GH¢ {ins.totalSubmitted.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Total Submitted</p>
+          </div>
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-destructive">GH¢ {ins.outstanding.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <h3 className="font-heading font-semibold mb-4">Payment History</h3>
+          <table className="data-table">
+            <thead><tr><th>Date</th><th>Amount (GH¢)</th><th>Method</th><th>Reference</th></tr></thead>
+            <tbody>
+              {ins.payments.map((p: any) => (
+                <tr key={p.id} className="hover:bg-muted/50 transition-colors">
+                  <td>{p.payment_date}</td>
+                  <td className="font-semibold text-success">GH¢ {Number(p.amount_paid).toLocaleString()}</td>
+                  <td><Badge variant="secondary">{p.payment_method || "—"}</Badge></td>
+                  <td className="text-muted-foreground font-mono text-xs">{p.reference_number || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -67,17 +126,17 @@ export default function Payments() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="stat-card">
+        <div className="stat-card text-center">
           <p className="text-sm text-muted-foreground">Total Received</p>
-          <p className="text-2xl font-bold font-heading text-success mt-1">GH¢ {totalReceived.toLocaleString()}</p>
+          <p className="text-2xl font-bold font-heading text-success mt-1">GH¢ {grandPaid.toLocaleString()}</p>
         </div>
-        <div className="stat-card">
+        <div className="stat-card text-center">
+          <p className="text-sm text-muted-foreground">Total Submitted</p>
+          <p className="text-2xl font-bold font-heading text-foreground mt-1">GH¢ {grandSubmitted.toLocaleString()}</p>
+        </div>
+        <div className="stat-card text-center">
           <p className="text-sm text-muted-foreground">Outstanding</p>
-          <p className="text-2xl font-bold font-heading text-warning mt-1">GH¢ {outstanding.toLocaleString()}</p>
-        </div>
-        <div className="stat-card">
-          <p className="text-sm text-muted-foreground">This Month</p>
-          <p className="text-2xl font-bold font-heading text-primary mt-1">GH¢ {thisMonthTotal.toLocaleString()}</p>
+          <p className="text-2xl font-bold font-heading text-destructive mt-1">GH¢ {grandOutstanding.toLocaleString()}</p>
         </div>
       </div>
 
@@ -85,7 +144,7 @@ export default function Payments() {
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search payments..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Search insurance company..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
 
@@ -94,26 +153,25 @@ export default function Payments() {
         ) : (
           <table className="data-table">
             <thead>
-              <tr>
-                <th>Insurance Company</th>
-                <th>Amount (GH¢)</th>
-                <th>Date</th>
-                <th>Method</th>
-                <th>Reference</th>
-              </tr>
+              <tr><th>Insurance Company</th><th>Payments</th><th>Total Paid (GH¢)</th><th>Submitted (GH¢)</th><th>Outstanding (GH¢)</th></tr>
             </thead>
             <tbody>
-              {filtered.map((p: any) => (
-                <tr key={p.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="font-medium">{getInsurerName(p.insurance_company_id)}</td>
-                  <td className="font-semibold text-success">GH¢ {Number(p.amount_paid).toLocaleString()}</td>
-                  <td className="text-muted-foreground">{p.payment_date}</td>
-                  <td><Badge variant="secondary">{p.payment_method || "—"}</Badge></td>
-                  <td className="text-muted-foreground font-mono text-xs">{p.reference_number || "—"}</td>
+              {filtered.map((a: any) => (
+                <tr key={a.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDetailInsurer(a.id)}>
+                  <td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color || "#3b82f6" }} />
+                      <span className="text-primary hover:underline">{a.company_name}</span>
+                    </div>
+                  </td>
+                  <td>{a.paymentCount}</td>
+                  <td className="text-success font-semibold">{a.totalPaid.toLocaleString()}</td>
+                  <td>{a.totalSubmitted.toLocaleString()}</td>
+                  <td className="text-destructive font-medium">{a.outstanding.toLocaleString()}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-muted-foreground py-8">No payments recorded yet.</td></tr>
+                <tr><td colSpan={5} className="text-center text-muted-foreground py-8">No payments recorded.</td></tr>
               )}
             </tbody>
           </table>
