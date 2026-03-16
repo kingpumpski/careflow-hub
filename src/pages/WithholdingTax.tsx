@@ -1,79 +1,102 @@
 import { useState } from "react";
-import { Calculator, Search, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import EntityDialog from "@/components/shared/EntityDialog";
-import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
-import { toast } from "@/hooks/use-toast";
+import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export default function WithholdingTax() {
   const { data: taxRecords, isLoading } = useSupabaseQuery("withholding_tax");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const insertMutation = useSupabaseInsert("withholding_tax");
+  const { data: settings } = useSupabaseQuery("system_settings");
   const [search, setSearch] = useState("");
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [form, setForm] = useState({ insurance_company_id: "", month: "", year: "2026", claim_total: "", tax_rate: "5" });
+  const [detailInsurer, setDetailInsurer] = useState<any>(null);
 
+  const currentRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "Unknown";
+  const getInsurerColor = (id: string) => (insurers || []).find((i: any) => i.id === id)?.color || "#3b82f6";
 
-  const totalTax = (taxRecords || []).reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
-  const totalClaims = (taxRecords || []).reduce((s: number, t: any) => s + Number(t.claim_total || 0), 0);
-  const currentRate = (taxRecords || []).length > 0 ? Number((taxRecords as any[])[0]?.tax_rate || 5) : 5;
+  // Aggregate by insurer
+  const aggregated = (insurers || []).map((ins: any) => {
+    const records = (taxRecords || []).filter((t: any) => t.insurance_company_id === ins.id);
+    const totalTax = records.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
+    const totalClaims = records.reduce((s: number, t: any) => s + Number(t.claim_total || 0), 0);
+    return { ...ins, records, totalTax, totalClaims };
+  }).filter((a: any) => a.records.length > 0);
 
-  const filtered = (taxRecords || []).filter((t: any) =>
-    getInsurerName(t.insurance_company_id).toLowerCase().includes(search.toLowerCase())
+  const filtered = aggregated.filter((a: any) =>
+    a.company_name?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const claimTotal = parseFloat(form.claim_total) || 0;
-    const taxRate = parseFloat(form.tax_rate) || 5;
-    const taxAmount = claimTotal * (taxRate / 100);
-    try {
-      await insertMutation.mutateAsync({
-        insurance_company_id: form.insurance_company_id,
-        month: parseInt(form.month),
-        year: parseInt(form.year),
-        claim_total: claimTotal,
-        tax_rate: taxRate,
-        tax_amount: taxAmount,
-      });
-      toast({ title: "WHT record added", description: `Tax: GH¢ ${taxAmount.toLocaleString()}` });
-      setAddDialogOpen(false);
-      setForm({ insurance_company_id: "", month: "", year: "2026", claim_total: "", tax_rate: "5" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    }
-  };
+  const grandTotalTax = aggregated.reduce((s: number, a: any) => s + a.totalTax, 0);
+  const grandTotalClaims = aggregated.reduce((s: number, a: any) => s + a.totalClaims, 0);
+
+  if (detailInsurer) {
+    const ins = aggregated.find((a: any) => a.id === detailInsurer);
+    if (!ins) { setDetailInsurer(null); return null; }
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setDetailInsurer(null)} className="text-sm text-primary hover:underline">← Back</button>
+          <h1 className="page-title flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ins.color || "#3b82f6" }} />
+            {ins.company_name} — WHT Details
+          </h1>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-primary">{currentRate}%</p>
+            <p className="text-xs text-muted-foreground mt-1">Tax Rate</p>
+          </div>
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading">GH¢ {ins.totalClaims.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Claims Base</p>
+          </div>
+          <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-warning">GH¢ {ins.totalTax.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">WHT Deducted</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <table className="data-table">
+            <thead><tr><th>Month</th><th>Year</th><th>Claim Total (GH¢)</th><th>Rate</th><th>Tax Amount (GH¢)</th></tr></thead>
+            <tbody>
+              {ins.records.sort((a: any, b: any) => b.year - a.year || b.month - a.month).map((t: any) => (
+                <tr key={t.id} className="hover:bg-muted/50 transition-colors">
+                  <td>{monthNames[t.month]}</td>
+                  <td>{t.year}</td>
+                  <td>{Number(t.claim_total).toLocaleString()}</td>
+                  <td>{Number(t.tax_rate)}%</td>
+                  <td className="font-semibold text-primary">GH¢ {Number(t.tax_amount).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="page-header flex items-start justify-between">
-        <div>
-          <h1 className="page-title">Withholding Tax</h1>
-          <p className="page-description">Automatic withholding tax computation by insurer</p>
-        </div>
-        <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" />Add WHT Record
-        </Button>
+      <div className="page-header">
+        <h1 className="page-title">Withholding Tax</h1>
+        <p className="page-description">Auto-calculated from submitted claims at {currentRate}% rate (set in Settings)</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="stat-card">
+        <div className="stat-card text-center">
           <p className="text-sm text-muted-foreground">Current Tax Rate</p>
           <p className="text-2xl font-bold font-heading text-primary mt-1">{currentRate}%</p>
         </div>
-        <div className="stat-card">
+        <div className="stat-card text-center">
           <p className="text-sm text-muted-foreground">Total WHT Deducted</p>
-          <p className="text-2xl font-bold font-heading mt-1">GH¢ {totalTax.toLocaleString()}</p>
+          <p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalTax.toLocaleString()}</p>
         </div>
-        <div className="stat-card">
+        <div className="stat-card text-center">
           <p className="text-sm text-muted-foreground">Total Claims Base</p>
-          <p className="text-2xl font-bold font-heading mt-1">GH¢ {totalClaims.toLocaleString()}</p>
+          <p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalClaims.toLocaleString()}</p>
         </div>
       </div>
 
@@ -90,66 +113,39 @@ export default function WithholdingTax() {
         ) : (
           <table className="data-table">
             <thead>
-              <tr>
-                <th>Insurance Company</th>
-                <th>Month</th>
-                <th>Year</th>
-                <th>Claim Total (GH¢)</th>
-                <th>Tax Rate</th>
-                <th>Tax Amount (GH¢)</th>
-              </tr>
+              <tr><th>Insurance Company</th><th>Records</th><th>Claims Base (GH¢)</th><th>WHT Deducted (GH¢)</th></tr>
             </thead>
             <tbody>
-              {filtered.map((t: any) => (
-                <tr key={t.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="font-medium">{getInsurerName(t.insurance_company_id)}</td>
-                  <td>{monthNames[t.month] || t.month}</td>
-                  <td>{t.year}</td>
-                  <td>{Number(t.claim_total).toLocaleString()}</td>
-                  <td>{Number(t.tax_rate)}%</td>
-                  <td className="font-semibold text-primary">GH¢ {Number(t.tax_amount).toLocaleString()}</td>
+              {filtered.map((a: any) => (
+                <tr key={a.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDetailInsurer(a.id)}>
+                  <td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color || "#3b82f6" }} />
+                      <span className="text-primary hover:underline">{a.company_name}</span>
+                    </div>
+                  </td>
+                  <td>{a.records.length}</td>
+                  <td>{a.totalClaims.toLocaleString()}</td>
+                  <td className="font-semibold text-warning">GH¢ {a.totalTax.toLocaleString()}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-muted-foreground py-8">No WHT records. Add records to get started.</td></tr>
+                <tr><td colSpan={4} className="text-center text-muted-foreground py-8">No WHT records. Submit claims to auto-generate.</td></tr>
               )}
             </tbody>
+            {filtered.length > 0 && (
+              <tfoot>
+                <tr className="font-bold bg-muted/30">
+                  <td>Grand Total</td>
+                  <td>{aggregated.reduce((s: number, a: any) => s + a.records.length, 0)}</td>
+                  <td>{grandTotalClaims.toLocaleString()}</td>
+                  <td className="text-warning">GH¢ {grandTotalTax.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         )}
       </div>
-
-      <EntityDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} title="Add WHT Record">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Insurance Company *</Label>
-            <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.insurance_company_id} onChange={(e) => setForm({ ...form, insurance_company_id: e.target.value })} required>
-              <option value="">Select insurer...</option>
-              {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Month *</Label>
-              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} required>
-                <option value="">Month...</option>
-                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-            <div><Label>Year *</Label><Input value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} type="number" required className="mt-1" /></div>
-          </div>
-          <div><Label>Claim Total (GH¢) *</Label><Input value={form.claim_total} onChange={(e) => setForm({ ...form, claim_total: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
-          <div><Label>Tax Rate (%) *</Label><Input value={form.tax_rate} onChange={(e) => setForm({ ...form, tax_rate: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
-          {form.claim_total && form.tax_rate && (
-            <div className="p-3 bg-muted rounded-lg text-sm">
-              <span className="text-muted-foreground">Computed Tax: </span>
-              <span className="font-bold text-primary">GH¢ {((parseFloat(form.claim_total) || 0) * (parseFloat(form.tax_rate) || 0) / 100).toLocaleString()}</span>
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={insertMutation.isPending}>
-            {insertMutation.isPending ? "Adding..." : "Add Record"}
-          </Button>
-        </form>
-      </EntityDialog>
     </div>
   );
 }

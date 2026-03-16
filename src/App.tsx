@@ -10,11 +10,13 @@ import Dashboard from "@/pages/Dashboard";
 import PreAuthorization from "@/pages/PreAuthorization";
 import Claims from "@/pages/Claims";
 import Payments from "@/pages/Payments";
+import Outstanding from "@/pages/Outstanding";
 import WithholdingTax from "@/pages/WithholdingTax";
 import Reports from "@/pages/Reports";
 import Clients from "@/pages/Clients";
 import Doctors from "@/pages/Doctors";
 import Procedures from "@/pages/Procedures";
+import ProcedureTemplates from "@/pages/ProcedureTemplates";
 import InsuranceCompanies from "@/pages/InsuranceCompanies";
 import UsersPage from "@/pages/UsersPage";
 import AIAssistant from "@/pages/AIAssistant";
@@ -46,11 +48,13 @@ function ProtectedRoutes() {
         <Route path="/pre-auth" element={<PreAuthorization />} />
         <Route path="/claims" element={<Claims />} />
         <Route path="/payments" element={<Payments />} />
+        <Route path="/outstanding" element={<Outstanding />} />
         <Route path="/withholding-tax" element={<WithholdingTax />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/clients" element={<Clients />} />
         <Route path="/doctors" element={<Doctors />} />
         <Route path="/procedures" element={<Procedures />} />
+        <Route path="/templates" element={<ProcedureTemplates />} />
         <Route path="/insurance" element={<InsuranceCompanies />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/ai-assistant" element={<AIAssistant />} />

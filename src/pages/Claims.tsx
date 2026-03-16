@@ -1,45 +1,51 @@
 import { useState } from "react";
-import { Search, Download, Plus, Eye, Building2 } from "lucide-react";
+import { Search, Download, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
+import { supabase } from "@/integrations/supabase/client";
 import { Label } from "@/components/ui/label";
 import EntityDialog from "@/components/shared/EntityDialog";
 import { toast } from "@/hooks/use-toast";
+import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
 
 const statusStyles: Record<string, string> = {
   submitted: "bg-info/10 text-info border-info/20",
   paid: "bg-success/10 text-success border-success/20",
-  pending: "bg-warning/10 text-warning border-warning/20",
+  partial: "bg-warning/10 text-warning border-warning/20",
   rejected: "bg-destructive/10 text-destructive border-destructive/20",
-  appealed: "bg-chart-4/10 text-chart-4 border-chart-4/20",
 };
+
+const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export default function Claims() {
   const { data: claims, isLoading: claimsLoading } = useSupabaseQuery("claims");
   const { data: insurers, isLoading: insurersLoading } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
-  const insertMutation = useSupabaseInsert("claims");
+  const { data: settings } = useSupabaseQuery("system_settings");
+  const insertClaim = useSupabaseInsert("claims");
+  const insertWHT = useSupabaseInsert("withholding_tax");
   const [search, setSearch] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
-  const [form, setForm] = useState({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: "2026", patient_name: "", procedure_name: "" });
+  const [form, setForm] = useState({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+  const [rejectForm, setRejectForm] = useState({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
 
   const isLoading = claimsLoading || insurersLoading;
 
+  const taxRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
+
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "Unknown";
-  const getInsurerColor = (id: string) => (insurers || []).find((i: any) => i.id === id)?.color || "#3b82f6";
 
   // Aggregate claims by insurance company
   const aggregated = (insurers || []).map((ins: any) => {
     const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
-    const totalSubmitted = insClaims.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
-    const paidClaims = insClaims.filter((c: any) => c.status === "paid");
-    const rejectedClaims = insClaims.filter((c: any) => c.status === "rejected");
-    const pendingClaims = insClaims.filter((c: any) => c.status === "pending" || c.status === "submitted");
+    const totalSubmitted = insClaims.filter((c: any) => c.status !== "rejected").reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
+    const totalRejected = insClaims.filter((c: any) => c.status === "rejected").reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
     const insPayments = (payments || []).filter((p: any) => p.insurance_company_id === ins.id);
     const totalPaid = insPayments.reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
     const insTax = (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id);
@@ -58,16 +64,9 @@ export default function Claims() {
 
     return {
       ...ins,
-      totalSubmitted,
-      totalPaid,
-      totalTax,
-      outstanding,
+      totalSubmitted, totalPaid, totalTax, totalRejected, outstanding,
       claimCount: insClaims.length,
-      paidCount: paidClaims.length,
-      rejectedCount: rejectedClaims.length,
-      pendingCount: pendingClaims.length,
-      paymentStatus,
-      paymentStatusColor,
+      paymentStatus, paymentStatusColor,
       claims: insClaims,
     };
   }).filter((a: any) => a.claimCount > 0 || search === "");
@@ -80,29 +79,76 @@ export default function Claims() {
   const grandTotalPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
   const grandTotalTax = aggregated.reduce((s: number, a: any) => s + a.totalTax, 0);
   const grandOutstanding = grandTotalSubmitted - grandTotalPaid - grandTotalTax;
-  const grandRejected = aggregated.reduce((s: number, a: any) => s + a.rejectedCount, 0);
+  const grandRejected = aggregated.reduce((s: number, a: any) => s + a.totalRejected, 0);
 
   const handleSubmitClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await insertMutation.mutateAsync({
+      const claimAmount = parseFloat(form.claim_amount) || 0;
+      const month = parseInt(form.claim_month);
+      const year = parseInt(form.claim_year);
+
+      await insertClaim.mutateAsync({
         insurance_company_id: form.insurance_company_id,
-        claim_amount: parseFloat(form.claim_amount) || 0,
-        claim_month: parseInt(form.claim_month) || new Date().getMonth() + 1,
-        claim_year: parseInt(form.claim_year) || new Date().getFullYear(),
-        patient_name: form.patient_name || null,
-        procedure_name: form.procedure_name || null,
+        claim_amount: claimAmount,
+        claim_month: month,
+        claim_year: year,
         status: "submitted",
       });
-      toast({ title: "Claim submitted successfully" });
+
+      // Auto-calculate and insert withholding tax
+      const whtAmount = claimAmount * (taxRate / 100);
+      await insertWHT.mutateAsync({
+        insurance_company_id: form.insurance_company_id,
+        month, year,
+        claim_total: claimAmount,
+        tax_rate: taxRate,
+        tax_amount: whtAmount,
+      });
+
+      toast({ title: "Claim submitted", description: `WHT of GH¢ ${whtAmount.toLocaleString()} auto-calculated at ${taxRate}%` });
       setAddDialogOpen(false);
-      setForm({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: "2026", patient_name: "", procedure_name: "" });
+      setForm({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
-  // Detail view for a specific insurer
+  const handleSubmitRejection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const rejectedAmount = parseFloat(rejectForm.rejected_amount) || 0;
+      const month = parseInt(rejectForm.claim_month);
+      const year = parseInt(rejectForm.claim_year);
+
+      // Insert rejected claim (negative effect)
+      await insertClaim.mutateAsync({
+        insurance_company_id: rejectForm.insurance_company_id,
+        claim_amount: rejectedAmount,
+        claim_month: month,
+        claim_year: year,
+        status: "rejected",
+      });
+
+      // Adjust WHT: insert negative WHT record for the rejected amount
+      const whtReduction = rejectedAmount * (taxRate / 100);
+      await insertWHT.mutateAsync({
+        insurance_company_id: rejectForm.insurance_company_id,
+        month, year,
+        claim_total: -rejectedAmount,
+        tax_rate: taxRate,
+        tax_amount: -whtReduction,
+      });
+
+      toast({ title: "Rejection recorded", description: `Submitted & WHT adjusted by GH¢ -${whtReduction.toLocaleString()}` });
+      setRejectDialogOpen(false);
+      setRejectForm({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // Detail view
   if (detailInsurer) {
     const ins = aggregated.find((a: any) => a.id === detailInsurer);
     if (!ins) { setDetailInsurer(null); return null; }
@@ -121,10 +167,6 @@ export default function Claims() {
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="stat-card text-center">
-            <p className="text-2xl font-bold font-heading text-info">{ins.claimCount}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Claims</p>
-          </div>
-          <div className="stat-card text-center">
             <p className="text-2xl font-bold font-heading text-foreground">GH¢ {ins.totalSubmitted.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Total Submitted</p>
           </div>
@@ -137,30 +179,32 @@ export default function Claims() {
             <p className="text-xs text-muted-foreground mt-1">WHT Deducted</p>
           </div>
           <div className="stat-card text-center">
+            <p className="text-2xl font-bold font-heading text-destructive">GH¢ {ins.totalRejected.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Rejected</p>
+          </div>
+          <div className="stat-card text-center">
             <p className="text-2xl font-bold font-heading text-destructive">GH¢ {ins.outstanding.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
           </div>
         </div>
 
         <div className="stat-card">
-          <h3 className="font-heading font-semibold mb-4">Claims Breakdown</h3>
+          <h3 className="font-heading font-semibold mb-4">Monthly Claims Breakdown</h3>
           <table className="data-table">
             <thead>
-              <tr><th>Patient</th><th>Procedure</th><th>Amount</th><th>Month</th><th>Status</th><th>Date</th></tr>
+              <tr><th>Month</th><th>Submitted (GH¢)</th><th>Status</th><th>Date</th></tr>
             </thead>
             <tbody>
               {ins.claims.map((c: any) => (
                 <tr key={c.id} className="hover:bg-muted/50 transition-colors">
-                  <td>{c.patient_name || "—"}</td>
-                  <td>{c.procedure_name || "—"}</td>
+                  <td className="font-medium">{monthNames[c.claim_month] || "—"} {c.claim_year}</td>
                   <td className="font-semibold">GH¢ {Number(c.claim_amount).toLocaleString()}</td>
-                  <td className="text-muted-foreground">{c.claim_month}/{c.claim_year}</td>
                   <td><Badge variant="outline" className={statusStyles[c.status] || ""}>{c.status}</Badge></td>
                   <td className="text-muted-foreground">{c.submission_date}</td>
                 </tr>
               ))}
               {ins.claims.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-muted-foreground py-6">No claims for this insurer</td></tr>
+                <tr><td colSpan={4} className="text-center text-muted-foreground py-6">No claims for this insurer</td></tr>
               )}
             </tbody>
           </table>
@@ -187,11 +231,17 @@ export default function Claims() {
           <p className="page-description">Aggregated claims overview by insurance company</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="destructive" onClick={() => setRejectDialogOpen(true)} className="gap-2">
+            <AlertTriangle className="w-4 h-4" />Submit Rejection
+          </Button>
           <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" />Submit Claim
           </Button>
-          <Button variant="outline" className="gap-2">
-            <Download className="w-4 h-4" />Export
+          <Button variant="outline" className="gap-2" onClick={() => exportClaimsPDF(filteredAggregated, { grandTotalSubmitted, grandTotalPaid, grandTotalTax, grandOutstanding, grandRejected })}>
+            <Download className="w-4 h-4" />PDF
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => exportClaimsExcel(filteredAggregated, { grandTotalSubmitted, grandTotalPaid, grandTotalTax, grandOutstanding, grandRejected })}>
+            <Download className="w-4 h-4" />Excel
           </Button>
         </div>
       </div>
@@ -214,7 +264,7 @@ export default function Claims() {
           <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
         </div>
         <div className="stat-card text-center">
-          <p className="text-2xl font-bold font-heading text-destructive">{grandRejected}</p>
+          <p className="text-2xl font-bold font-heading text-destructive">GH¢ {grandRejected.toLocaleString()}</p>
           <p className="text-xs text-muted-foreground mt-1">Rejected</p>
         </div>
       </div>
@@ -239,7 +289,7 @@ export default function Claims() {
                 <th>Paid (GH¢)</th>
                 <th>WHT (GH¢)</th>
                 <th>Outstanding (GH¢)</th>
-                <th>Rejected</th>
+                <th>Rejected (GH¢)</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -257,7 +307,7 @@ export default function Claims() {
                   <td className="text-success font-medium">{a.totalPaid.toLocaleString()}</td>
                   <td className="text-warning font-medium">{a.totalTax.toLocaleString()}</td>
                   <td className="text-destructive font-medium">{a.outstanding.toLocaleString()}</td>
-                  <td>{a.rejectedCount}</td>
+                  <td className="text-destructive font-medium">{a.totalRejected.toLocaleString()}</td>
                   <td><Badge variant="outline" className={a.paymentStatusColor}>{a.paymentStatus}</Badge></td>
                 </tr>
               ))}
@@ -274,7 +324,7 @@ export default function Claims() {
                   <td className="text-success">{grandTotalPaid.toLocaleString()}</td>
                   <td className="text-warning">{grandTotalTax.toLocaleString()}</td>
                   <td className="text-destructive">{grandOutstanding.toLocaleString()}</td>
-                  <td>{grandRejected}</td>
+                  <td className="text-destructive">{grandRejected.toLocaleString()}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -283,6 +333,7 @@ export default function Claims() {
         )}
       </div>
 
+      {/* Submit Claim Dialog */}
       <EntityDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} title="Submit Monthly Claim">
         <form onSubmit={handleSubmitClaim} className="space-y-4">
           <div>
@@ -296,16 +347,52 @@ export default function Claims() {
             <div><Label>Claim Month *</Label>
               <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.claim_month} onChange={(e) => setForm({ ...form, claim_month: e.target.value })} required>
                 <option value="">Month...</option>
-                {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
               </select>
             </div>
             <div><Label>Year *</Label><Input value={form.claim_year} onChange={(e) => setForm({ ...form, claim_year: e.target.value })} type="number" required className="mt-1" /></div>
           </div>
           <div><Label>Claim Amount (GH¢) *</Label><Input value={form.claim_amount} onChange={(e) => setForm({ ...form, claim_amount: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
-          <div><Label>Patient Name</Label><Input value={form.patient_name} onChange={(e) => setForm({ ...form, patient_name: e.target.value })} className="mt-1" /></div>
-          <div><Label>Procedure</Label><Input value={form.procedure_name} onChange={(e) => setForm({ ...form, procedure_name: e.target.value })} className="mt-1" /></div>
-          <Button type="submit" className="w-full" disabled={insertMutation.isPending}>
-            {insertMutation.isPending ? "Submitting..." : "Submit Claim"}
+          {form.claim_amount && (
+            <div className="p-3 bg-muted rounded-lg text-sm space-y-1">
+              <div><span className="text-muted-foreground">WHT Rate: </span><span className="font-semibold">{taxRate}%</span></div>
+              <div><span className="text-muted-foreground">WHT Amount: </span><span className="font-bold text-primary">GH¢ {((parseFloat(form.claim_amount) || 0) * taxRate / 100).toLocaleString()}</span></div>
+            </div>
+          )}
+          <Button type="submit" className="w-full" disabled={insertClaim.isPending}>
+            {insertClaim.isPending ? "Submitting..." : "Submit Claim"}
+          </Button>
+        </form>
+      </EntityDialog>
+
+      {/* Submit Rejection Dialog */}
+      <EntityDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen} title="Submit Rejected Claim">
+        <form onSubmit={handleSubmitRejection} className="space-y-4">
+          <div>
+            <Label>Insurance Company *</Label>
+            <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={rejectForm.insurance_company_id} onChange={(e) => setRejectForm({ ...rejectForm, insurance_company_id: e.target.value })} required>
+              <option value="">Select insurer...</option>
+              {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Month *</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={rejectForm.claim_month} onChange={(e) => setRejectForm({ ...rejectForm, claim_month: e.target.value })} required>
+                <option value="">Month...</option>
+                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div><Label>Year *</Label><Input value={rejectForm.claim_year} onChange={(e) => setRejectForm({ ...rejectForm, claim_year: e.target.value })} type="number" required className="mt-1" /></div>
+          </div>
+          <div><Label>Rejected Amount (GH¢) *</Label><Input value={rejectForm.rejected_amount} onChange={(e) => setRejectForm({ ...rejectForm, rejected_amount: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
+          {rejectForm.rejected_amount && (
+            <div className="p-3 bg-destructive/5 rounded-lg text-sm space-y-1 border border-destructive/20">
+              <div><span className="text-muted-foreground">WHT Reduction: </span><span className="font-bold text-destructive">-GH¢ {((parseFloat(rejectForm.rejected_amount) || 0) * taxRate / 100).toLocaleString()}</span></div>
+              <p className="text-xs text-muted-foreground">This will reduce the submitted amount and WHT for this period.</p>
+            </div>
+          )}
+          <Button type="submit" variant="destructive" className="w-full" disabled={insertClaim.isPending}>
+            {insertClaim.isPending ? "Recording..." : "Submit Rejection"}
           </Button>
         </form>
       </EntityDialog>

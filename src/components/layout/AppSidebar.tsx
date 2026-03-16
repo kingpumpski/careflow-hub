@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, FileCheck, Shield, CreditCard, Receipt, BarChart3, Users, Settings,
-  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, Landmark,
+  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, Landmark, AlertCircle, FileText, Layers,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -14,6 +14,7 @@ const menuItems = [
     children: [
       { label: "Claims", path: "/claims" },
       { label: "Payments", path: "/payments" },
+      { label: "Outstanding", path: "/outstanding" },
       { label: "Withholding Tax", path: "/withholding-tax" },
       { label: "Companies", path: "/insurance" },
     ],
@@ -21,7 +22,13 @@ const menuItems = [
   { label: "Reports", icon: BarChart3, path: "/reports" },
   { label: "Clients", icon: Building2, path: "/clients" },
   { label: "Doctors", icon: Stethoscope, path: "/doctors" },
-  { label: "Procedures", icon: Receipt, path: "/procedures" },
+  {
+    label: "Procedures", icon: Receipt,
+    children: [
+      { label: "Tariffs", path: "/procedures" },
+      { label: "Templates", path: "/templates" },
+    ],
+  },
   { label: "Users", icon: Users, path: "/users" },
   { label: "AI Assistant", icon: Bot, path: "/ai-assistant" },
   { label: "Settings", icon: Settings, path: "/settings" },
@@ -30,7 +37,7 @@ const menuItems = [
 export default function AppSidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(["Insurance"]);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(["Insurance", "Procedures"]);
 
   const toggleMenu = (label: string) => {
     setExpandedMenus((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
