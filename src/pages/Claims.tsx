@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
-import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
 import { Label } from "@/components/ui/label";
 import EntityDialog from "@/components/shared/EntityDialog";
 import { toast } from "@/hooks/use-toast";
@@ -36,10 +35,7 @@ export default function Claims() {
   const [rejectForm, setRejectForm] = useState({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
 
   const isLoading = claimsLoading || insurersLoading;
-
   const taxRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
-
-  const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "Unknown";
 
   // Aggregate claims by insurance company
   const aggregated = (insurers || []).map((ins: any) => {
@@ -63,11 +59,9 @@ export default function Claims() {
     }
 
     return {
-      ...ins,
-      totalSubmitted, totalPaid, totalTax, totalRejected, outstanding,
-      claimCount: insClaims.length,
-      paymentStatus, paymentStatusColor,
-      claims: insClaims,
+      ...ins, totalSubmitted, totalPaid, totalTax, totalRejected, outstanding,
+      claimCount: insClaims.length, paymentStatus, paymentStatusColor,
+      claims: insClaims, payments: insPayments, taxRecords: insTax,
     };
   }).filter((a: any) => a.claimCount > 0 || search === "");
 
@@ -121,7 +115,6 @@ export default function Claims() {
       const month = parseInt(rejectForm.claim_month);
       const year = parseInt(rejectForm.claim_year);
 
-      // Insert rejected claim (negative effect)
       await insertClaim.mutateAsync({
         insurance_company_id: rejectForm.insurance_company_id,
         claim_amount: rejectedAmount,
@@ -130,7 +123,7 @@ export default function Claims() {
         status: "rejected",
       });
 
-      // Adjust WHT: insert negative WHT record for the rejected amount
+      // Adjust WHT: negative WHT record for the rejected amount
       const whtReduction = rejectedAmount * (taxRate / 100);
       await insertWHT.mutateAsync({
         insurance_company_id: rejectForm.insurance_company_id,
@@ -148,10 +141,34 @@ export default function Claims() {
     }
   };
 
-  // Detail view
+  // Detail view with enhanced monthly breakdown
   if (detailInsurer) {
     const ins = aggregated.find((a: any) => a.id === detailInsurer);
     if (!ins) { setDetailInsurer(null); return null; }
+
+    // Build monthly breakdown with all entries
+    const monthlyMap: Record<string, { month: number; year: number; submitted: number; rejected: number; wht: number; paid: number }> = {};
+    ins.claims.forEach((c: any) => {
+      const key = `${c.claim_year}-${c.claim_month}`;
+      if (!monthlyMap[key]) monthlyMap[key] = { month: c.claim_month, year: c.claim_year, submitted: 0, rejected: 0, wht: 0, paid: 0 };
+      if (c.status === "rejected") {
+        monthlyMap[key].rejected += Number(c.claim_amount || 0);
+      } else {
+        monthlyMap[key].submitted += Number(c.claim_amount || 0);
+      }
+    });
+    ins.taxRecords.forEach((t: any) => {
+      const key = `${t.year}-${t.month}`;
+      if (!monthlyMap[key]) monthlyMap[key] = { month: t.month, year: t.year, submitted: 0, rejected: 0, wht: 0, paid: 0 };
+      monthlyMap[key].wht += Number(t.tax_amount || 0);
+    });
+    ins.payments.forEach((p: any) => {
+      const d = new Date(p.payment_date);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      if (monthlyMap[key]) monthlyMap[key].paid += Number(p.amount_paid || 0);
+    });
+    const monthlyRows = Object.values(monthlyMap).sort((a, b) => b.year - a.year || b.month - a.month);
+
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
@@ -192,19 +209,24 @@ export default function Claims() {
           <h3 className="font-heading font-semibold mb-4">Monthly Claims Breakdown</h3>
           <table className="data-table">
             <thead>
-              <tr><th>Month</th><th>Submitted (GH¢)</th><th>Status</th><th>Date</th></tr>
+              <tr><th>Period</th><th>Submitted (GH¢)</th><th>WHT (GH¢)</th><th>Rejected (GH¢)</th><th>Paid (GH¢)</th><th>Outstanding (GH¢)</th></tr>
             </thead>
             <tbody>
-              {ins.claims.map((c: any) => (
-                <tr key={c.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="font-medium">{monthNames[c.claim_month] || "—"} {c.claim_year}</td>
-                  <td className="font-semibold">GH¢ {Number(c.claim_amount).toLocaleString()}</td>
-                  <td><Badge variant="outline" className={statusStyles[c.status] || ""}>{c.status}</Badge></td>
-                  <td className="text-muted-foreground">{c.submission_date}</td>
-                </tr>
-              ))}
-              {ins.claims.length === 0 && (
-                <tr><td colSpan={4} className="text-center text-muted-foreground py-6">No claims for this insurer</td></tr>
+              {monthlyRows.map((m) => {
+                const netOutstanding = m.submitted - m.paid - m.wht;
+                return (
+                  <tr key={`${m.year}-${m.month}`} className="hover:bg-muted/50 transition-colors">
+                    <td className="font-medium">{monthNames[m.month] || "—"} {m.year}</td>
+                    <td>GH¢ {m.submitted.toLocaleString()}</td>
+                    <td className="text-warning">GH¢ {m.wht.toLocaleString()}</td>
+                    <td className="text-destructive">GH¢ {m.rejected.toLocaleString()}</td>
+                    <td className="text-success">GH¢ {m.paid.toLocaleString()}</td>
+                    <td className="font-semibold text-destructive">GH¢ {netOutstanding.toLocaleString()}</td>
+                  </tr>
+                );
+              })}
+              {monthlyRows.length === 0 && (
+                <tr><td colSpan={6} className="text-center text-muted-foreground py-6">No claims for this insurer</td></tr>
               )}
             </tbody>
           </table>
@@ -228,7 +250,7 @@ export default function Claims() {
       <div className="page-header flex items-start justify-between">
         <div>
           <h1 className="page-title">Claims Management</h1>
-          <p className="page-description">Aggregated claims overview by insurance company</p>
+          <p className="page-description">Aggregated claims overview by insurance company — WHT auto-applied at {taxRate}%</p>
         </div>
         <div className="flex gap-2">
           <Button variant="destructive" onClick={() => setRejectDialogOpen(true)} className="gap-2">
@@ -283,14 +305,8 @@ export default function Claims() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Insurance Company</th>
-                <th>Claims</th>
-                <th>Submitted (GH¢)</th>
-                <th>Paid (GH¢)</th>
-                <th>WHT (GH¢)</th>
-                <th>Outstanding (GH¢)</th>
-                <th>Rejected (GH¢)</th>
-                <th>Status</th>
+                <th>Insurance Company</th><th>Claims</th><th>Submitted (GH¢)</th><th>Paid (GH¢)</th>
+                <th>WHT (GH¢)</th><th>Outstanding (GH¢)</th><th>Rejected (GH¢)</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -357,6 +373,7 @@ export default function Claims() {
             <div className="p-3 bg-muted rounded-lg text-sm space-y-1">
               <div><span className="text-muted-foreground">WHT Rate: </span><span className="font-semibold">{taxRate}%</span></div>
               <div><span className="text-muted-foreground">WHT Amount: </span><span className="font-bold text-primary">GH¢ {((parseFloat(form.claim_amount) || 0) * taxRate / 100).toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Net Payable: </span><span className="font-bold">GH¢ {((parseFloat(form.claim_amount) || 0) * (1 - taxRate / 100)).toLocaleString()}</span></div>
             </div>
           )}
           <Button type="submit" className="w-full" disabled={insertClaim.isPending}>

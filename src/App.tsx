@@ -11,6 +11,7 @@ import PreAuthorization from "@/pages/PreAuthorization";
 import Claims from "@/pages/Claims";
 import Payments from "@/pages/Payments";
 import Outstanding from "@/pages/Outstanding";
+import Rejections from "@/pages/Rejections";
 import WithholdingTax from "@/pages/WithholdingTax";
 import Reports from "@/pages/Reports";
 import Clients from "@/pages/Clients";
@@ -49,6 +50,7 @@ function ProtectedRoutes() {
         <Route path="/claims" element={<Claims />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/outstanding" element={<Outstanding />} />
+        <Route path="/rejections" element={<Rejections />} />
         <Route path="/withholding-tax" element={<WithholdingTax />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/clients" element={<Clients />} />
