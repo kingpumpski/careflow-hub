@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Plus, Download } from "lucide-react";
+import { Search, Plus, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,8 @@ export default function Payments() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
-  const insertMutation = useSupabaseInsert("payments");
+  const insertPayment = useSupabaseInsert("payments");
+  const insertLedger = useSupabaseInsert("ledger_entries");
   const [search, setSearch] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
@@ -27,34 +28,44 @@ export default function Payments() {
     const totalPaid = insPayments.reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
     const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status !== "rejected");
     const totalSubmitted = insClaims.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
+    const totalRejected = (claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected").reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
+    const netClaim = totalSubmitted - totalRejected;
     const insTax = (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id);
     const totalTax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
     return {
-      ...ins, totalPaid, totalSubmitted, totalTax,
-      outstanding: totalSubmitted - totalPaid - totalTax,
+      ...ins, totalPaid, totalSubmitted, totalTax, netClaim,
+      outstanding: netClaim - totalPaid - totalTax,
       paymentCount: insPayments.length,
       payments: insPayments,
     };
   }).filter((a: any) => a.paymentCount > 0 || search === "");
 
-  const filtered = aggregated.filter((a: any) =>
-    a.company_name?.toLowerCase().includes(search.toLowerCase())
-  );
-
+  const filtered = aggregated.filter((a: any) => a.company_name?.toLowerCase().includes(search.toLowerCase()));
   const grandPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
-  const grandSubmitted = aggregated.reduce((s: number, a: any) => s + a.totalSubmitted, 0);
+  const grandNet = aggregated.reduce((s: number, a: any) => s + a.netClaim, 0);
   const grandTax = aggregated.reduce((s: number, a: any) => s + a.totalTax, 0);
-  const grandOutstanding = grandSubmitted - grandPaid - grandTax;
+  const grandOutstanding = grandNet - grandPaid - grandTax;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await insertMutation.mutateAsync({
+      const amount = parseFloat(form.amount_paid) || 0;
+      await insertPayment.mutateAsync({
         insurance_company_id: form.insurance_company_id || null,
-        amount_paid: parseFloat(form.amount_paid) || 0,
+        amount_paid: amount,
         payment_method: form.payment_method,
         reference_number: form.reference_number || null,
         payment_date: form.payment_date,
+      });
+      // Double-entry: Dr Cash/Bank, Cr Accounts Receivable
+      await insertLedger.mutateAsync({
+        account_debit: "Cash/Bank",
+        account_credit: "Accounts Receivable",
+        amount,
+        reference: `Payment ${form.reference_number || "N/A"}`,
+        description: `Payment received`,
+        insurance_company_id: form.insurance_company_id || null,
+        entry_type: "payment",
       });
       toast({ title: "Payment recorded" });
       setAddDialogOpen(false);
@@ -71,12 +82,10 @@ export default function Payments() {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => setDetailInsurer(null)}>← Back</Button>
-          <div>
-            <h1 className="page-title flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ins.color || "#3b82f6" }} />
-              {ins.company_name} — Payments
-            </h1>
-          </div>
+          <h1 className="page-title flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ins.color || "#3b82f6" }} />
+            {ins.company_name} — Payments
+          </h1>
         </div>
         <div className="grid grid-cols-4 gap-3">
           <div className="stat-card text-center">
@@ -84,8 +93,8 @@ export default function Payments() {
             <p className="text-xs text-muted-foreground mt-1">Total Paid</p>
           </div>
           <div className="stat-card text-center">
-            <p className="text-2xl font-bold font-heading text-foreground">GH¢ {ins.totalSubmitted.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Submitted</p>
+            <p className="text-2xl font-bold font-heading">GH¢ {ins.netClaim.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Net Claim</p>
           </div>
           <div className="stat-card text-center">
             <p className="text-2xl font-bold font-heading text-warning">GH¢ {ins.totalTax.toLocaleString()}</p>
@@ -123,9 +132,7 @@ export default function Payments() {
           <h1 className="page-title">Payment Tracking</h1>
           <p className="page-description">Monitor payments received from insurance companies</p>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" />Record Payment
-        </Button>
+        <Button onClick={() => setAddDialogOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Record Payment</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -134,11 +141,11 @@ export default function Payments() {
           <p className="text-2xl font-bold font-heading text-success mt-1">GH¢ {grandPaid.toLocaleString()}</p>
         </div>
         <div className="stat-card text-center">
-          <p className="text-sm text-muted-foreground">Total Submitted</p>
-          <p className="text-2xl font-bold font-heading text-foreground mt-1">GH¢ {grandSubmitted.toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">Net Claims</p>
+          <p className="text-2xl font-bold font-heading mt-1">GH¢ {grandNet.toLocaleString()}</p>
         </div>
         <div className="stat-card text-center">
-          <p className="text-sm text-muted-foreground">WHT Deducted</p>
+          <p className="text-sm text-muted-foreground">WHT</p>
           <p className="text-2xl font-bold font-heading text-warning mt-1">GH¢ {grandTax.toLocaleString()}</p>
         </div>
         <div className="stat-card text-center">
@@ -160,7 +167,7 @@ export default function Payments() {
         ) : (
           <table className="data-table">
             <thead>
-              <tr><th>Insurance Company</th><th>Payments</th><th>Total Paid (GH¢)</th><th>Submitted (GH¢)</th><th>WHT (GH¢)</th><th>Outstanding (GH¢)</th></tr>
+              <tr><th>Insurance Company</th><th>Payments</th><th>Total Paid</th><th>Net Claims</th><th>WHT</th><th>Outstanding</th></tr>
             </thead>
             <tbody>
               {filtered.map((a: any) => (
@@ -173,7 +180,7 @@ export default function Payments() {
                   </td>
                   <td>{a.paymentCount}</td>
                   <td className="text-success font-semibold">{a.totalPaid.toLocaleString()}</td>
-                  <td>{a.totalSubmitted.toLocaleString()}</td>
+                  <td>{a.netClaim.toLocaleString()}</td>
                   <td className="text-warning">{a.totalTax.toLocaleString()}</td>
                   <td className="text-destructive font-medium">{a.outstanding.toLocaleString()}</td>
                 </tr>
@@ -188,7 +195,7 @@ export default function Payments() {
                   <td>Grand Total</td>
                   <td>{aggregated.reduce((s: number, a: any) => s + a.paymentCount, 0)}</td>
                   <td className="text-success">{grandPaid.toLocaleString()}</td>
-                  <td>{grandSubmitted.toLocaleString()}</td>
+                  <td>{grandNet.toLocaleString()}</td>
                   <td className="text-warning">{grandTax.toLocaleString()}</td>
                   <td className="text-destructive">{grandOutstanding.toLocaleString()}</td>
                 </tr>
@@ -219,8 +226,8 @@ export default function Payments() {
             </select>
           </div>
           <div><Label>Reference / Cheque Number</Label><Input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="e.g. CHQ-00123" className="mt-1" /></div>
-          <Button type="submit" className="w-full" disabled={insertMutation.isPending}>
-            {insertMutation.isPending ? "Recording..." : "Record Payment"}
+          <Button type="submit" className="w-full" disabled={insertPayment.isPending}>
+            {insertPayment.isPending ? "Recording..." : "Record Payment"}
           </Button>
         </form>
       </EntityDialog>
