@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, FileCheck, Shield, CreditCard, Receipt, BarChart3, Users, Settings,
-  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, AlertCircle, Layers, Ban,
+  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, AlertCircle, Layers, Ban, BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
