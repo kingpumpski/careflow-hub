@@ -193,6 +193,59 @@ export type Database = {
         }
         Relationships: []
       }
+      ledger_entries: {
+        Row: {
+          account_credit: string
+          account_debit: string
+          amount: number
+          claim_month: number | null
+          claim_year: number | null
+          created_at: string
+          description: string | null
+          entry_date: string
+          entry_type: string
+          id: string
+          insurance_company_id: string | null
+          reference: string | null
+        }
+        Insert: {
+          account_credit: string
+          account_debit: string
+          amount?: number
+          claim_month?: number | null
+          claim_year?: number | null
+          created_at?: string
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          insurance_company_id?: string | null
+          reference?: string | null
+        }
+        Update: {
+          account_credit?: string
+          account_debit?: string
+          amount?: number
+          claim_month?: number | null
+          claim_year?: number | null
+          created_at?: string
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          insurance_company_id?: string | null
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ledger_entries_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
