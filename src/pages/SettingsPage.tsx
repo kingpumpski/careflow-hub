@@ -96,9 +96,9 @@ export default function SettingsPage() {
     try {
       const tables = ["claims", "payments", "withholding_tax", "insurance_companies", "pre_authorizations", "patients", "doctors", "procedures"];
       const backup: Record<string, any> = { timestamp: new Date().toISOString(), version: "1.0" };
-      for (const table of tables) {
-        const { data } = await (supabase.from(table) as any).select("*");
-        backup[table] = data || [];
+      for (const t of tables) {
+        const { data } = await (supabase.from(t as any) as any).select("*");
+        backup[t] = data || [];
       }
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
