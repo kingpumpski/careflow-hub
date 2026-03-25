@@ -73,7 +73,7 @@ export default function Payments() {
       });
       toast({ title: "Payment recorded" });
       setAddDialogOpen(false);
-      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0] });
+      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
