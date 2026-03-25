@@ -56,6 +56,8 @@ export default function Payments() {
         payment_method: form.payment_method,
         reference_number: form.reference_number || null,
         payment_date: form.payment_date,
+        claim_month: parseInt(form.claim_month) || null,
+        claim_year: parseInt(form.claim_year) || null,
       });
       // Double-entry: Dr Cash/Bank, Cr Accounts Receivable
       await insertLedger.mutateAsync({
