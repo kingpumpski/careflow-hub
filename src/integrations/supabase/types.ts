@@ -169,6 +169,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          is_active: boolean
           phone: string | null
         }
         Insert: {
@@ -179,6 +180,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_active?: boolean
           phone?: string | null
         }
         Update: {
@@ -189,6 +191,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_active?: boolean
           phone?: string | null
         }
         Relationships: []
@@ -322,6 +325,8 @@ export type Database = {
         Row: {
           amount_paid: number
           claim_id: string | null
+          claim_month: number | null
+          claim_year: number | null
           created_at: string
           id: string
           insurance_company_id: string | null
@@ -332,6 +337,8 @@ export type Database = {
         Insert: {
           amount_paid?: number
           claim_id?: string | null
+          claim_month?: number | null
+          claim_year?: number | null
           created_at?: string
           id?: string
           insurance_company_id?: string | null
@@ -342,6 +349,8 @@ export type Database = {
         Update: {
           amount_paid?: number
           claim_id?: string | null
+          claim_month?: number | null
+          claim_year?: number | null
           created_at?: string
           id?: string
           insurance_company_id?: string | null
@@ -445,6 +454,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      preauth_catalog_items: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          item_name: string
+          unit_price: number
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          item_name: string
+          unit_price?: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          item_name?: string
+          unit_price?: number
+        }
+        Relationships: []
       }
       preauth_items: {
         Row: {
