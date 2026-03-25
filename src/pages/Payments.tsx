@@ -67,6 +67,8 @@ export default function Payments() {
         reference: `Payment ${form.reference_number || "N/A"}`,
         description: `Payment received`,
         insurance_company_id: form.insurance_company_id || null,
+        claim_month: parseInt(form.claim_month) || null,
+        claim_year: parseInt(form.claim_year) || null,
         entry_type: "payment",
       });
       toast({ title: "Payment recorded" });
