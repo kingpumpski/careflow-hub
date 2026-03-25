@@ -21,7 +21,7 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
-  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0] });
+  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
 
   const aggregated = (insurers || []).map((ins: any) => {
     const insPayments = (payments || []).filter((p: any) => p.insurance_company_id === ins.id);
@@ -56,6 +56,8 @@ export default function Payments() {
         payment_method: form.payment_method,
         reference_number: form.reference_number || null,
         payment_date: form.payment_date,
+        claim_month: parseInt(form.claim_month) || null,
+        claim_year: parseInt(form.claim_year) || null,
       });
       // Double-entry: Dr Cash/Bank, Cr Accounts Receivable
       await insertLedger.mutateAsync({
@@ -65,11 +67,13 @@ export default function Payments() {
         reference: `Payment ${form.reference_number || "N/A"}`,
         description: `Payment received`,
         insurance_company_id: form.insurance_company_id || null,
+        claim_month: parseInt(form.claim_month) || null,
+        claim_year: parseInt(form.claim_year) || null,
         entry_type: "payment",
       });
       toast({ title: "Payment recorded" });
       setAddDialogOpen(false);
-      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0] });
+      setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
@@ -211,8 +215,18 @@ export default function Payments() {
             <Label>Insurance Company *</Label>
             <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.insurance_company_id} onChange={(e) => setForm({ ...form, insurance_company_id: e.target.value })} required>
               <option value="">Select insurer...</option>
-              {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
+              {(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
             </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Claim Month *</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.claim_month} onChange={(e) => setForm({ ...form, claim_month: e.target.value })} required>
+                <option value="">Select...</option>
+                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div><Label>Year *</Label><Input type="number" value={form.claim_year} onChange={(e) => setForm({ ...form, claim_year: e.target.value })} required className="mt-1" /></div>
           </div>
           <div><Label>Amount Paid (GH¢) *</Label><Input value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
           <div><Label>Payment Date *</Label><Input type="date" value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} required className="mt-1" /></div>

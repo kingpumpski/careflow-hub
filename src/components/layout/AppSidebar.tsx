@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, FileCheck, Shield, CreditCard, Receipt, BarChart3, Users, Settings,
-  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, AlertCircle, Layers, Ban, BookOpen,
+  Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, AlertCircle, Layers, Ban, BookOpen, Package,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -16,6 +16,7 @@ const menuItems = [
       { label: "Doctors", path: "/doctors" },
       { label: "Procedures", path: "/procedures" },
       { label: "Templates", path: "/templates" },
+      { label: "Catalog Items", path: "/catalog" },
     ],
   },
   {

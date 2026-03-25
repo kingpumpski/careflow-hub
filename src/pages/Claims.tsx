@@ -427,7 +427,7 @@ export default function Claims() {
             <Label>Insurance Company *</Label>
             <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.insurance_company_id} onChange={(e) => setForm({ ...form, insurance_company_id: e.target.value })} required>
               <option value="">Select insurer...</option>
-              {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
+              {(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -460,7 +460,7 @@ export default function Claims() {
             <Label>Insurance Company *</Label>
             <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={rejectForm.insurance_company_id} onChange={(e) => setRejectForm({ ...rejectForm, insurance_company_id: e.target.value })} required>
               <option value="">Select insurer...</option>
-              {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
+              {(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
