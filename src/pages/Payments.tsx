@@ -21,7 +21,7 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
-  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0] });
+  const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
 
   const aggregated = (insurers || []).map((ins: any) => {
     const insPayments = (payments || []).filter((p: any) => p.insurance_company_id === ins.id);
