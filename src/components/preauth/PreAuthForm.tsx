@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,55 @@ interface PreAuthFormProps {
   editData?: any;
 }
 
+function CatalogSearch({ value, onChange, onSelect, catalogItems }: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (item: any) => void;
+  catalogItems: any[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const filtered = catalogItems.filter((c: any) =>
+    c.item_name?.toLowerCase().includes(value.toLowerCase())
+  ).slice(0, 8);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Type to search catalog items..."
+        className="h-8"
+      />
+      {open && value && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+          {filtered.map((item: any) => (
+            <button
+              key={item.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors flex justify-between"
+              onClick={() => { onSelect(item); setOpen(false); }}
+            >
+              <span>{item.item_name}</span>
+              <span className="text-muted-foreground">GH¢ {Number(item.unit_price).toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const { user } = useAuth();
   const { data: patients } = useSupabaseQuery("patients");
@@ -30,6 +79,7 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const { data: diagnosisCodes } = useSupabaseQuery("diagnosis_codes");
   const { data: templates } = useSupabaseQuery("procedure_templates");
   const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: catalogItems } = useSupabaseQuery("preauth_catalog_items");
   const insertPreauth = useSupabaseInsert("pre_authorizations");
   const updatePreauth = useSupabaseUpdate("pre_authorizations");
   const insertPatient = useSupabaseInsert("patients");
@@ -46,11 +96,9 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
     { id: 1, description: "", quantity: 1, unitCharge: 0 },
   ]);
   const [submitting, setSubmitting] = useState(false);
-
   const [patientId, setPatientId] = useState("");
   const [patientSearch, setPatientSearch] = useState("");
   const [newPatient, setNewPatient] = useState({ patient_name: "", phone: "", membership_number: "" });
-  const [showNewPatient, setShowNewPatient] = useState(false);
   const [newPatientDialogOpen, setNewPatientDialogOpen] = useState(false);
   const [insuranceId, setInsuranceId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -59,7 +107,8 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const [procedureDate, setProcedureDate] = useState("");
   const [templateId, setTemplateId] = useState("");
 
-  // Load edit data
+  const activeInsurers = (insurers || []).filter((i: any) => i.is_active !== false);
+
   useEffect(() => {
     if (editData) {
       setPatientId(editData.patient_id || "");
@@ -68,12 +117,11 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
       setProcedureId(editData.procedure_id || "");
       setProcedureDate(editData.procedure_date || "");
       setDiagnosisCode("");
-      // Load items
       (async () => {
         const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", editData.id);
         if (data && data.length > 0) {
           setItems(data.map((item: any) => ({
-            id: item.id ? Date.now() + Math.random() : Date.now(),
+            id: Date.now() + Math.random(),
             description: item.description,
             quantity: item.quantity,
             unitCharge: Number(item.unit_price),
@@ -136,7 +184,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
       });
       setPatientId(result.id);
       setNewPatientDialogOpen(false);
-      setShowNewPatient(false);
       setNewPatient({ patient_name: "", phone: "", membership_number: "" });
       toast({ title: "Patient registered successfully" });
     } catch (err: any) {
@@ -144,10 +191,16 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
     }
   };
 
-  const addItem = () => setItems([...items, { id: Date.now(), description: "", quantity: 1, unitCharge: 0 }]);
+  // New items added on TOP
+  const addItem = () => setItems([{ id: Date.now(), description: "", quantity: 1, unitCharge: 0 }, ...items]);
   const removeItem = (id: number) => { if (items.length > 1) setItems(items.filter((i) => i.id !== id)); };
   const updateItem = (id: number, field: keyof ProcedureItem, value: string | number) => {
     setItems(items.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+  };
+
+  const handleCatalogSelect = (id: number, catalogItem: any) => {
+    updateItem(id, "description", catalogItem.item_name);
+    updateItem(id, "unitCharge", Number(catalogItem.unit_price));
   };
 
   const total = items.reduce((sum, i) => sum + i.quantity * i.unitCharge, 0);
@@ -155,9 +208,7 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      let finalPatientId = patientId;
-
-      if (!finalPatientId) {
+      if (!patientId) {
         toast({ title: "Error", description: "Please select or create a patient", variant: "destructive" });
         setSubmitting(false);
         return;
@@ -168,7 +219,7 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
         : null;
 
       const payload = {
-        patient_id: finalPatientId,
+        patient_id: patientId,
         doctor_id: doctorId || null,
         procedure_id: procedureId || null,
         diagnosis: diagnosisText,
@@ -186,7 +237,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
       if (isEditing) {
         await updatePreauth.mutateAsync({ id: editData.id, ...payload });
         preauthId = editData.id;
-        // Delete old items then re-insert
         await (supabase.from("preauth_items") as any).delete().eq("preauth_id", preauthId);
       } else {
         const preauth = await insertPreauth.mutateAsync(payload);
@@ -248,9 +298,7 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
               <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={patientId} onChange={(e) => handlePatientSelect(e.target.value)}>
                 <option value="">Select patient...</option>
                 {filteredPatients.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.patient_name} {p.membership_number ? `(${p.membership_number})` : ""}
-                  </option>
+                  <option key={p.id} value={p.id}>{p.patient_name} {p.membership_number ? `(${p.membership_number})` : ""}</option>
                 ))}
               </select>
             </div>
@@ -259,7 +307,7 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
               <Label>Insurance Company</Label>
               <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={insuranceId} onChange={(e) => setInsuranceId(e.target.value)}>
                 <option value="">Select insurer...</option>
-                {(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
+                {activeInsurers.map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
               </select>
             </div>
           </div>
@@ -294,7 +342,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
             </div>
           </div>
 
-          {/* Provider info from settings */}
           {companyInfo.provider_name && (
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-2">Provider (from Settings)</h3>
@@ -329,7 +376,14 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
           <tbody>
             {items.map((item) => (
               <tr key={item.id}>
-                <td><Input value={item.description} onChange={(e) => updateItem(item.id, "description", e.target.value)} placeholder="Procedure description" className="h-8" /></td>
+                <td>
+                  <CatalogSearch
+                    value={item.description}
+                    onChange={(v) => updateItem(item.id, "description", v)}
+                    onSelect={(catItem) => handleCatalogSelect(item.id, catItem)}
+                    catalogItems={catalogItems || []}
+                  />
+                </td>
                 <td><Input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 0)} className="h-8 w-20" /></td>
                 <td><Input type="number" min={0} step={0.01} value={item.unitCharge} onChange={(e) => updateItem(item.id, "unitCharge", parseFloat(e.target.value) || 0)} className="h-8 w-28" /></td>
                 <td className="font-semibold">{(item.quantity * item.unitCharge).toFixed(2)}</td>
@@ -354,7 +408,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
         </div>
       </div>
 
-      {/* New Patient Dialog */}
       <EntityDialog open={newPatientDialogOpen} onOpenChange={setNewPatientDialogOpen} title="Register New Patient">
         <form onSubmit={handleSaveNewPatient} className="space-y-4">
           <div><Label>Patient Name *</Label><Input value={newPatient.patient_name} onChange={(e) => setNewPatient({ ...newPatient, patient_name: e.target.value })} required className="mt-1" /></div>

@@ -18,6 +18,7 @@ import Clients from "@/pages/Clients";
 import Doctors from "@/pages/Doctors";
 import Procedures from "@/pages/Procedures";
 import ProcedureTemplates from "@/pages/ProcedureTemplates";
+import CatalogItems from "@/pages/CatalogItems";
 import InsuranceCompanies from "@/pages/InsuranceCompanies";
 import UsersPage from "@/pages/UsersPage";
 import AIAssistant from "@/pages/AIAssistant";
@@ -58,6 +59,7 @@ function ProtectedRoutes() {
         <Route path="/doctors" element={<Doctors />} />
         <Route path="/procedures" element={<Procedures />} />
         <Route path="/templates" element={<ProcedureTemplates />} />
+        <Route path="/catalog" element={<CatalogItems />} />
         <Route path="/insurance" element={<InsuranceCompanies />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/ai-assistant" element={<AIAssistant />} />
