@@ -218,6 +218,16 @@ export default function Payments() {
               {(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}
             </select>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Claim Month *</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={form.claim_month} onChange={(e) => setForm({ ...form, claim_month: e.target.value })} required>
+                <option value="">Select...</option>
+                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div><Label>Year *</Label><Input type="number" value={form.claim_year} onChange={(e) => setForm({ ...form, claim_year: e.target.value })} required className="mt-1" /></div>
+          </div>
           <div><Label>Amount Paid (GH¢) *</Label><Input value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} type="number" step="0.01" required className="mt-1" /></div>
           <div><Label>Payment Date *</Label><Input type="date" value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} required className="mt-1" /></div>
           <div>
