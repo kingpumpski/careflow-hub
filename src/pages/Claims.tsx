@@ -214,8 +214,8 @@ export default function Claims() {
     let monthlyRows = Object.values(monthlyMap).sort((a, b) => b.year - a.year || b.month - a.month);
     
     // Apply filters
-    if (filterYear) monthlyRows = monthlyRows.filter(m => m.year === parseInt(filterYear));
-    if (filterMonth) monthlyRows = monthlyRows.filter(m => m.month === parseInt(filterMonth));
+    if (filters.year) monthlyRows = monthlyRows.filter(m => m.year === parseInt(filters.year));
+    if (filters.month) monthlyRows = monthlyRows.filter(m => m.month === parseInt(filters.month));
 
     return (
       <div className="space-y-6">
