@@ -34,6 +34,7 @@ const menuItems = [
   { label: "General Ledger", icon: BookOpen, path: "/ledger" },
   { label: "Users", icon: Users, path: "/users" },
   { label: "AI Assistant", icon: Bot, path: "/ai-assistant" },
+  { label: "Audit Trail", icon: ClipboardList, path: "/audit-trail" },
   { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
