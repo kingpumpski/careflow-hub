@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Download, Plus, AlertTriangle, Filter } from "lucide-react";
+import { Search, Download, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
 import { Label } from "@/components/ui/label";
 import EntityDialog from "@/components/shared/EntityDialog";
+import FilterBar from "@/components/shared/FilterBar";
+import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
@@ -30,8 +32,7 @@ export default function Claims() {
   const insertWHT = useSupabaseInsert("withholding_tax");
   const insertLedger = useSupabaseInsert("ledger_entries");
   const [search, setSearch] = useState("");
-  const [filterYear, setFilterYear] = useState("");
-  const [filterMonth, setFilterMonth] = useState("");
+  const [filters, setFilters] = useState<any>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
@@ -69,9 +70,11 @@ export default function Claims() {
     };
   }).filter((a: any) => a.claimCount > 0 || search === "");
 
-  const filteredAggregated = aggregated.filter((a: any) =>
+  let filteredAggregated = aggregated.filter((a: any) =>
     a.company_name?.toLowerCase().includes(search.toLowerCase())
   );
+  if (filters.company) filteredAggregated = filteredAggregated.filter((a: any) => a.id === filters.company);
+  const { sorted: sortedAggregated, sort, handleSort } = useSort(filteredAggregated);
 
   const grandTotalSubmitted = aggregated.reduce((s: number, a: any) => s + a.totalSubmitted, 0);
   const grandTotalPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
@@ -211,8 +214,8 @@ export default function Claims() {
     let monthlyRows = Object.values(monthlyMap).sort((a, b) => b.year - a.year || b.month - a.month);
     
     // Apply filters
-    if (filterYear) monthlyRows = monthlyRows.filter(m => m.year === parseInt(filterYear));
-    if (filterMonth) monthlyRows = monthlyRows.filter(m => m.month === parseInt(filterMonth));
+    if (filters.year) monthlyRows = monthlyRows.filter(m => m.year === parseInt(filters.year));
+    if (filters.month) monthlyRows = monthlyRows.filter(m => m.month === parseInt(filters.month));
 
     return (
       <div className="space-y-6">
@@ -255,17 +258,7 @@ export default function Claims() {
         </div>
 
         <div className="stat-card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-heading font-semibold">Monthly Claims Breakdown</h3>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <Input type="number" placeholder="Year" className="w-20 h-8" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} />
-              <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
-                <option value="">All months</option>
-                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-          </div>
+          <h3 className="font-heading font-semibold mb-4">Monthly Claims Breakdown</h3>
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -331,6 +324,8 @@ export default function Claims() {
         </div>
       </div>
 
+      <FilterBar filters={filters} onChange={setFilters} showCompany />
+
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="stat-card text-center">
           <p className="text-xl font-bold font-heading text-foreground">GH¢ {grandTotalSubmitted.toLocaleString()}</p>
@@ -359,13 +354,6 @@ export default function Claims() {
       </div>
 
       <div className="stat-card">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search insurance company..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
-
         {isLoading ? (
           <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
         ) : (
@@ -373,12 +361,19 @@ export default function Claims() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Insurance Company</th><th>Claims</th><th>Submitted</th><th>Rejected</th><th>Net Claim</th>
-                  <th>Paid</th><th>WHT</th><th>Outstanding</th><th>Status</th>
+                  <SortableHeader label="Insurance Company" sortKey="company_name" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Claims" sortKey="claimCount" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Submitted" sortKey="totalSubmitted" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Rejected" sortKey="totalRejected" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Net Claim" sortKey="netClaim" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Paid" sortKey="totalPaid" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="WHT" sortKey="totalTax" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Outstanding" sortKey="outstanding" currentSort={sort} onSort={handleSort} />
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAggregated.map((a: any) => (
+                {sortedAggregated.map((a: any) => (
                   <tr key={a.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDetailInsurer(a.id)}>
                     <td className="font-medium">
                       <div className="flex items-center gap-2">
@@ -396,11 +391,11 @@ export default function Claims() {
                     <td><Badge variant="outline" className={a.paymentStatusColor}>{a.paymentStatus}</Badge></td>
                   </tr>
                 ))}
-                {filteredAggregated.length === 0 && (
+                {sortedAggregated.length === 0 && (
                   <tr><td colSpan={9} className="text-center text-muted-foreground py-8">No claims data.</td></tr>
                 )}
               </tbody>
-              {filteredAggregated.length > 0 && (
+              {sortedAggregated.length > 0 && (
                 <tfoot>
                   <tr className="font-bold bg-muted/30">
                     <td>Grand Total</td>
