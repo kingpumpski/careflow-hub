@@ -70,9 +70,11 @@ export default function Claims() {
     };
   }).filter((a: any) => a.claimCount > 0 || search === "");
 
-  const filteredAggregated = aggregated.filter((a: any) =>
+  let filteredAggregated = aggregated.filter((a: any) =>
     a.company_name?.toLowerCase().includes(search.toLowerCase())
   );
+  if (filters.company) filteredAggregated = filteredAggregated.filter((a: any) => a.id === filters.company);
+  const { sorted: sortedAggregated, sort, handleSort } = useSort(filteredAggregated);
 
   const grandTotalSubmitted = aggregated.reduce((s: number, a: any) => s + a.totalSubmitted, 0);
   const grandTotalPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
