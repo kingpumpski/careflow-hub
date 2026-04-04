@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 interface SortableHeaderProps {
@@ -26,7 +27,7 @@ export default function SortableHeader({ label, sortKey, currentSort, onSort }: 
   );
 }
 
-export function useSort<T>(data: T[], defaultKey?: string) {
+export function useSort(data: any[], defaultKey?: string) {
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(
     defaultKey ? { key: defaultKey, direction: "desc" } : null
   );
@@ -39,7 +40,7 @@ export function useSort<T>(data: T[], defaultKey?: string) {
     );
   };
 
-  const sorted = sort
+  const sorted: any[] = sort
     ? [...data].sort((a: any, b: any) => {
         const aVal = a[sort.key];
         const bVal = b[sort.key];
@@ -52,5 +53,3 @@ export function useSort<T>(data: T[], defaultKey?: string) {
 
   return { sorted, sort, handleSort };
 }
-
-import { useState } from "react";
