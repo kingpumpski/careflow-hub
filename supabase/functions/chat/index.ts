@@ -107,9 +107,18 @@ ${fraudAlerts.length > 0 ? `### ⚠️ Risk Alerts\n${fraudAlerts.join("\n")}` :
 - Outstanding: /outstanding — Net outstanding balances per company
 - Rejections: /rejections — Track rejected claims
 - Pre-Authorization: /pre-auth — Create/edit authorization requests
-- Reports: /reports — Generate period-based reconciliation reports
-- General Ledger: /ledger — Double-entry accounting journal
+- Reports: /reports — Income Statement, Account Balance, Outstanding Receivables, Tax Liability with print/PDF/Excel
+- General Ledger: /ledger — Double-entry accounting journal with filters
+- Audit Trail: /audit-trail — Complete change history for all tables
+- Insurance Companies: /insurance — Activate/deactivate companies
 - Settings: /settings — Provider info, tax rate, logo upload
+
+### System Features
+- All pages support global filtering by Company, Month, Year
+- All tables are sortable by clicking column headers
+- Audit trail tracks every insert/update/delete with old and new values
+- Reports page has 4 tabs: Account Balance, Income Statement, Outstanding Receivables, Tax Liability
+- Print button opens reports in a new window for direct printing
 `;
 }
 
