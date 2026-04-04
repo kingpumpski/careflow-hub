@@ -391,11 +391,11 @@ export default function Claims() {
                     <td><Badge variant="outline" className={a.paymentStatusColor}>{a.paymentStatus}</Badge></td>
                   </tr>
                 ))}
-                {filteredAggregated.length === 0 && (
+                {sortedAggregated.length === 0 && (
                   <tr><td colSpan={9} className="text-center text-muted-foreground py-8">No claims data.</td></tr>
                 )}
               </tbody>
-              {filteredAggregated.length > 0 && (
+              {sortedAggregated.length > 0 && (
                 <tfoot>
                   <tr className="font-bold bg-muted/30">
                     <td>Grand Total</td>
