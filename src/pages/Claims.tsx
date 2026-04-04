@@ -32,8 +32,7 @@ export default function Claims() {
   const insertWHT = useSupabaseInsert("withholding_tax");
   const insertLedger = useSupabaseInsert("ledger_entries");
   const [search, setSearch] = useState("");
-  const [filterYear, setFilterYear] = useState("");
-  const [filterMonth, setFilterMonth] = useState("");
+  const [filters, setFilters] = useState<any>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
