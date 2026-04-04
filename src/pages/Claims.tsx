@@ -258,17 +258,7 @@ export default function Claims() {
         </div>
 
         <div className="stat-card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-heading font-semibold">Monthly Claims Breakdown</h3>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <Input type="number" placeholder="Year" className="w-20 h-8" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} />
-              <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
-                <option value="">All months</option>
-                {monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-          </div>
+          <h3 className="font-heading font-semibold mb-4">Monthly Claims Breakdown</h3>
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
