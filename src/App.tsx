@@ -66,6 +66,7 @@ function ProtectedRoutes() {
         <Route path="/ai-assistant" element={<AIAssistant />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/audit-trail" element={<AuditTrail />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
