@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Download, Plus, AlertTriangle, Filter } from "lucide-react";
+import { Search, Download, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
 import { Label } from "@/components/ui/label";
 import EntityDialog from "@/components/shared/EntityDialog";
+import FilterBar from "@/components/shared/FilterBar";
+import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
