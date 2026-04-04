@@ -324,6 +324,8 @@ export default function Claims() {
         </div>
       </div>
 
+      <FilterBar filters={filters} onChange={setFilters} showCompany />
+
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="stat-card text-center">
           <p className="text-xl font-bold font-heading text-foreground">GH¢ {grandTotalSubmitted.toLocaleString()}</p>
