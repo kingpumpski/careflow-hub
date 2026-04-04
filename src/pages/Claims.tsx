@@ -352,13 +352,6 @@ export default function Claims() {
       </div>
 
       <div className="stat-card">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search insurance company..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
-
         {isLoading ? (
           <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
         ) : (
@@ -366,12 +359,19 @@ export default function Claims() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Insurance Company</th><th>Claims</th><th>Submitted</th><th>Rejected</th><th>Net Claim</th>
-                  <th>Paid</th><th>WHT</th><th>Outstanding</th><th>Status</th>
+                  <SortableHeader label="Insurance Company" sortKey="company_name" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Claims" sortKey="claimCount" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Submitted" sortKey="totalSubmitted" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Rejected" sortKey="totalRejected" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Net Claim" sortKey="netClaim" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Paid" sortKey="totalPaid" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="WHT" sortKey="totalTax" currentSort={sort} onSort={handleSort} />
+                  <SortableHeader label="Outstanding" sortKey="outstanding" currentSort={sort} onSort={handleSort} />
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAggregated.map((a: any) => (
+                {sortedAggregated.map((a: any) => (
                   <tr key={a.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDetailInsurer(a.id)}>
                     <td className="font-medium">
                       <div className="flex items-center gap-2">
