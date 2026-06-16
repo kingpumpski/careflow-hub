@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { FileCheck, Shield, CreditCard, AlertTriangle, Building2 } from "lucide-react";
+import { FileCheck, Shield, CreditCard, AlertTriangle, Building2, TrendingUp, Percent, ShieldAlert } from "lucide-react";
 import StatCard from "@/components/dashboard/StatCard";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
@@ -18,6 +18,13 @@ export default function Dashboard() {
   const totalPaid = (payments || []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
   const totalTax = (withholdingTax || []).reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
   const outstanding = totalClaimsAmount - totalPaid - totalTax;
+
+  // Executive KPIs
+  const totalRejected = (claims || []).filter((c: any) => c.status === "rejected").reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
+  const grandSubmitted = totalClaimsAmount + totalRejected;
+  const lossRatio = grandSubmitted > 0 ? (totalRejected / grandSubmitted) * 100 : 0;
+  const recoveryRate = totalClaimsAmount > 0 ? (totalPaid / totalClaimsAmount) * 100 : 0;
+  const complianceScore = Math.max(0, Math.min(100, 100 - lossRatio * 2));
 
   // Claims by month for chart
   const monthlyData = monthNames.map((m, i) => {
@@ -53,8 +60,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-description">Overview of your claims and insurance operations</p>
+        <h1 className="page-title">Executive Command Center</h1>
+        <p className="page-description">Real-time view of revenue, risk, and operational health.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -69,6 +76,18 @@ export default function Dashboard() {
         </div>
         <div className="cursor-pointer" onClick={() => navigate("/outstanding")}>
           <StatCard title="Outstanding" value={`GH¢ ${(outstanding / 1000).toFixed(0)}K`} change="Balance due" changeType="negative" icon={AlertTriangle} iconColor="bg-warning/10 text-warning" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="cursor-pointer" onClick={() => navigate("/analytics")}>
+          <StatCard title="Recovery Rate" value={`${recoveryRate.toFixed(1)}%`} change="Paid / Net Submitted" changeType={recoveryRate >= 70 ? "positive" : "negative"} icon={TrendingUp} iconColor="bg-success/10 text-success" />
+        </div>
+        <div className="cursor-pointer" onClick={() => navigate("/analytics")}>
+          <StatCard title="Loss Ratio" value={`${lossRatio.toFixed(1)}%`} change="Rejections / Submitted" changeType={lossRatio < 10 ? "positive" : "negative"} icon={Percent} iconColor="bg-warning/10 text-warning" />
+        </div>
+        <div className="cursor-pointer" onClick={() => navigate("/fraud-alerts")}>
+          <StatCard title="Compliance Score" value={`${complianceScore.toFixed(0)}/100`} change="Risk-adjusted" changeType={complianceScore >= 80 ? "positive" : "negative"} icon={ShieldAlert} iconColor="bg-primary/10 text-primary" />
         </div>
       </div>
 

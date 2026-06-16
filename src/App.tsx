@@ -25,6 +25,9 @@ import AIAssistant from "@/pages/AIAssistant";
 import SettingsPage from "@/pages/SettingsPage";
 import Ledger from "@/pages/Ledger";
 import AuditTrail from "@/pages/AuditTrail";
+import ProviderPerformance from "@/pages/ProviderPerformance";
+import FraudAlerts from "@/pages/FraudAlerts";
+import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,6 +70,9 @@ function ProtectedRoutes() {
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/audit-trail" element={<AuditTrail />} />
+        <Route path="/provider-performance" element={<ProviderPerformance />} />
+        <Route path="/fraud-alerts" element={<FraudAlerts />} />
+        <Route path="/analytics" element={<Analytics />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
