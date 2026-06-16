@@ -289,6 +289,20 @@ export default function Reports() {
               </table>
             </div>
           </TabsContent>
+
+          <TabsContent value="aging">
+            <div className="stat-card">
+              <h3 className="font-heading font-semibold mb-4">Claim Aging Report — Outstanding by Bucket</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-success">GH¢ {agingData.b30.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-info">GH¢ {agingData.b60.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b90.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b120.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-destructive">GH¢ {agingData.b120plus.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">120+ days (high risk)</p></div>
+              </div>
+              <p className="text-sm text-muted-foreground">Buckets are computed from the end of each claim's submission month to today. Aging shows where receivable exposure is concentrated and which insurers need escalation.</p>
+            </div>
+          </TabsContent>
         </div>
       </Tabs>
     </div>
