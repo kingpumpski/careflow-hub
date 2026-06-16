@@ -484,6 +484,39 @@ export default function Claims() {
             <div><Label>Year *</Label><Input type="number" value={rejectForm.claim_year} onChange={(e) => setRejectForm({ ...rejectForm, claim_year: e.target.value })} required className="mt-1" /></div>
           </div>
           <div><Label>Rejected Amount (GH¢) *</Label><Input type="number" step="0.01" value={rejectForm.rejected_amount} onChange={(e) => setRejectForm({ ...rejectForm, rejected_amount: e.target.value })} required className="mt-1" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Denial Category</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={denialMeta.denial_category} onChange={(e) => setDenialMeta({ ...denialMeta, denial_category: e.target.value })}>
+                <option value="">Select...</option>
+                <option value="coding_error">Coding Error</option>
+                <option value="missing_authorization">Missing Authorization</option>
+                <option value="missing_documentation">Missing Documentation</option>
+                <option value="not_covered">Service Not Covered</option>
+                <option value="duplicate_claim">Duplicate Claim</option>
+                <option value="tariff_dispute">Tariff Dispute</option>
+                <option value="eligibility">Eligibility Issue</option>
+                <option value="late_submission">Late Submission</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Label>Root Cause</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={denialMeta.root_cause} onChange={(e) => setDenialMeta({ ...denialMeta, root_cause: e.target.value })}>
+                <option value="">Select...</option>
+                <option value="front_office">Front Office</option>
+                <option value="clinical">Clinical Documentation</option>
+                <option value="coding">Coding Team</option>
+                <option value="claims_officer">Claims Officer</option>
+                <option value="insurer">Insurer</option>
+                <option value="system">System / Process</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Denial Reason / Notes</Label>
+            <Input value={denialMeta.denial_reason} onChange={(e) => setDenialMeta({ ...denialMeta, denial_reason: e.target.value })} placeholder="Short reason from insurer" className="mt-1" />
+          </div>
           <Button type="submit" variant="destructive" className="w-full" disabled={insertClaim.isPending}>
             {insertClaim.isPending ? "Recording..." : "Record Rejection"}
           </Button>
