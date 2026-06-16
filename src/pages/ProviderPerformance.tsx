@@ -6,7 +6,6 @@ import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 export default function ProviderPerformance() {
   const { data: preauths } = useSupabaseQuery("pre_authorizations");
   const { data: doctors } = useSupabaseQuery("doctors");
-  const { sortKey, sortDir, toggleSort, sortData } = useSort("revenue", "desc");
 
   const rows = useMemo(() => {
     return (doctors || []).map((d: any) => {
@@ -28,7 +27,7 @@ export default function ProviderPerformance() {
     }).filter((r: any) => r.total > 0);
   }, [doctors, preauths]);
 
-  const sorted = sortData(rows);
+  const { sorted, sort, handleSort } = useSort(rows, "revenue");
 
   return (
     <div className="space-y-6">
@@ -41,14 +40,14 @@ export default function ProviderPerformance() {
         <table className="data-table">
           <thead>
             <tr>
-              <SortableHeader label="Doctor" sortKey="doctor_name" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Specialty" sortKey="specialty" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Volume" sortKey="total" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Approved" sortKey="approved" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Rejected" sortKey="rejected" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Approval %" sortKey="approvalRate" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Avg Cost (GH¢)" sortKey="avgCost" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader label="Revenue (GH¢)" sortKey="revenue" currentSort={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Doctor" sortKey="doctor_name" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Specialty" sortKey="specialty" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Volume" sortKey="total" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Approved" sortKey="approved" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Rejected" sortKey="rejected" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Approval %" sortKey="approvalRate" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Avg Cost (GH¢)" sortKey="avgCost" currentSort={sort} onSort={handleSort} />
+              <SortableHeader label="Revenue (GH¢)" sortKey="revenue" currentSort={sort} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
