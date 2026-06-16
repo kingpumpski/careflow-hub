@@ -14,10 +14,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
 
 const statusStyles: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground border-border",
+  verified: "bg-info/10 text-info border-info/20",
   submitted: "bg-info/10 text-info border-info/20",
+  under_review: "bg-warning/10 text-warning border-warning/20",
+  queried: "bg-warning/10 text-warning border-warning/20",
+  approved: "bg-success/10 text-success border-success/20",
+  partially_approved: "bg-warning/10 text-warning border-warning/20",
   paid: "bg-success/10 text-success border-success/20",
   partial: "bg-warning/10 text-warning border-warning/20",
   rejected: "bg-destructive/10 text-destructive border-destructive/20",
+  reconciled: "bg-success/10 text-success border-success/20",
+  closed: "bg-muted text-muted-foreground border-border",
 };
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -38,6 +46,7 @@ export default function Claims() {
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
   const [form, setForm] = useState({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
   const [rejectForm, setRejectForm] = useState({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+  const [denialMeta, setDenialMeta] = useState({ denial_category: "", denial_reason: "", root_cause: "", denial_notes: "" });
 
   const isLoading = claimsLoading || insurersLoading;
   const taxRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
@@ -154,6 +163,11 @@ export default function Claims() {
         claim_month: month,
         claim_year: year,
         status: "rejected",
+        denial_category: denialMeta.denial_category || null,
+        denial_reason: denialMeta.denial_reason || null,
+        root_cause: denialMeta.root_cause || null,
+        denial_notes: denialMeta.denial_notes || null,
+        appeal_status: "not_filed",
       });
 
       const whtReduction = rejectedAmount * (taxRate / 100);
@@ -181,6 +195,7 @@ export default function Claims() {
       toast({ title: "Rejection recorded", description: `Submitted & WHT adjusted by GH¢ -${whtReduction.toLocaleString()}` });
       setRejectDialogOpen(false);
       setRejectForm({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+      setDenialMeta({ denial_category: "", denial_reason: "", root_cause: "", denial_notes: "" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
@@ -469,6 +484,39 @@ export default function Claims() {
             <div><Label>Year *</Label><Input type="number" value={rejectForm.claim_year} onChange={(e) => setRejectForm({ ...rejectForm, claim_year: e.target.value })} required className="mt-1" /></div>
           </div>
           <div><Label>Rejected Amount (GH¢) *</Label><Input type="number" step="0.01" value={rejectForm.rejected_amount} onChange={(e) => setRejectForm({ ...rejectForm, rejected_amount: e.target.value })} required className="mt-1" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Denial Category</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={denialMeta.denial_category} onChange={(e) => setDenialMeta({ ...denialMeta, denial_category: e.target.value })}>
+                <option value="">Select...</option>
+                <option value="coding_error">Coding Error</option>
+                <option value="missing_authorization">Missing Authorization</option>
+                <option value="missing_documentation">Missing Documentation</option>
+                <option value="not_covered">Service Not Covered</option>
+                <option value="duplicate_claim">Duplicate Claim</option>
+                <option value="tariff_dispute">Tariff Dispute</option>
+                <option value="eligibility">Eligibility Issue</option>
+                <option value="late_submission">Late Submission</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Label>Root Cause</Label>
+              <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={denialMeta.root_cause} onChange={(e) => setDenialMeta({ ...denialMeta, root_cause: e.target.value })}>
+                <option value="">Select...</option>
+                <option value="front_office">Front Office</option>
+                <option value="clinical">Clinical Documentation</option>
+                <option value="coding">Coding Team</option>
+                <option value="claims_officer">Claims Officer</option>
+                <option value="insurer">Insurer</option>
+                <option value="system">System / Process</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Denial Reason / Notes</Label>
+            <Input value={denialMeta.denial_reason} onChange={(e) => setDenialMeta({ ...denialMeta, denial_reason: e.target.value })} placeholder="Short reason from insurer" className="mt-1" />
+          </div>
           <Button type="submit" variant="destructive" className="w-full" disabled={insertClaim.isPending}>
             {insertClaim.isPending ? "Recording..." : "Record Rejection"}
           </Button>

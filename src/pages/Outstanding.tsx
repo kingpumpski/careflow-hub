@@ -7,6 +7,22 @@ import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+// Days outstanding from end of claim month to today
+function daysOutstanding(year: number, month: number) {
+  if (!year || !month) return 0;
+  const periodEnd = new Date(year, month, 0); // last day of claim month
+  const today = new Date();
+  return Math.max(0, Math.floor((today.getTime() - periodEnd.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function bucketFor(days: number): "b30" | "b60" | "b90" | "b120" | "b120plus" {
+  if (days <= 30) return "b30";
+  if (days <= 60) return "b60";
+  if (days <= 90) return "b90";
+  if (days <= 120) return "b120";
+  return "b120plus";
+}
+
 export default function Outstanding() {
   const { data: claims, isLoading: claimsLoading } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -70,11 +86,28 @@ export default function Outstanding() {
     return { ...ins, totalSubmitted, totalRejected, totalPaid, totalTax, netClaim, outstanding, monthlyBreakdown };
   });
 
+  // Compute aging buckets per insurer based on unpaid balance per month
+  aggregated.forEach((a: any) => {
+    const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
+    (a.monthlyBreakdown || []).forEach((m: any) => {
+      const monthOutstanding = (m.submitted - m.rejected) - m.paid - m.tax;
+      if (monthOutstanding <= 0) return;
+      const days = daysOutstanding(m.year, m.month);
+      buckets[bucketFor(days)] += monthOutstanding;
+    });
+    a.aging = buckets;
+  });
+
   let displayData = aggregated;
   if (filters.company) displayData = displayData.filter((a: any) => a.id === filters.company);
 
   const { sorted, sort, handleSort } = useSort(displayData);
   const grandOutstanding = displayData.reduce((s: number, a: any) => s + a.outstanding, 0);
+  const grandAging = displayData.reduce((acc: any, a: any) => {
+    acc.b30 += a.aging.b30; acc.b60 += a.aging.b60; acc.b90 += a.aging.b90;
+    acc.b120 += a.aging.b120; acc.b120plus += a.aging.b120plus;
+    return acc;
+  }, { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 });
 
   if (detailInsurer) {
     const ins = aggregated.find((a: any) => a.id === detailInsurer);
@@ -123,6 +156,15 @@ export default function Outstanding() {
       <div className="page-header"><h1 className="page-title">Outstanding Claims</h1><p className="page-description">Outstanding = Net Claim − Paid − WHT</p></div>
       <FilterBar filters={filters} onChange={setFilters} showCompany />
       <div className="stat-card text-center"><p className="text-sm text-muted-foreground">Total Outstanding</p><p className="text-3xl font-bold font-heading text-destructive mt-1">GH¢ {grandOutstanding.toLocaleString()}</p></div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="stat-card text-center"><p className="text-lg font-bold font-heading text-success">GH¢ {grandAging.b30.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
+        <div className="stat-card text-center"><p className="text-lg font-bold font-heading text-info">GH¢ {grandAging.b60.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
+        <div className="stat-card text-center"><p className="text-lg font-bold font-heading text-warning">GH¢ {grandAging.b90.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
+        <div className="stat-card text-center"><p className="text-lg font-bold font-heading text-warning">GH¢ {grandAging.b120.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
+        <div className="stat-card text-center"><p className="text-lg font-bold font-heading text-destructive">GH¢ {grandAging.b120plus.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">120+ days</p></div>
+      </div>
+
       <div className="stat-card">
         {claimsLoading ? <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div> : (
           <table className="data-table">
@@ -133,6 +175,7 @@ export default function Outstanding() {
               <SortableHeader label="Paid" sortKey="totalPaid" currentSort={sort} onSort={handleSort} />
               <SortableHeader label="WHT" sortKey="totalTax" currentSort={sort} onSort={handleSort} />
               <SortableHeader label="Outstanding" sortKey="outstanding" currentSort={sort} onSort={handleSort} />
+              <th>0-30</th><th>31-60</th><th>61-90</th><th>91-120</th><th>120+</th>
             </tr></thead>
             <tbody>
               {sorted.map((a: any) => (
@@ -143,9 +186,14 @@ export default function Outstanding() {
                   <td className="text-success">{a.totalPaid.toLocaleString()}</td>
                   <td className="text-warning">{a.totalTax.toLocaleString()}</td>
                   <td className="text-destructive font-bold">{a.outstanding.toLocaleString()}</td>
+                  <td className="text-success">{a.aging.b30.toLocaleString()}</td>
+                  <td className="text-info">{a.aging.b60.toLocaleString()}</td>
+                  <td className="text-warning">{a.aging.b90.toLocaleString()}</td>
+                  <td className="text-warning">{a.aging.b120.toLocaleString()}</td>
+                  <td className="text-destructive font-semibold">{a.aging.b120plus.toLocaleString()}</td>
                 </tr>
               ))}
-              {sorted.length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">No outstanding claims.</td></tr>}
+              {sorted.length === 0 && <tr><td colSpan={11} className="text-center text-muted-foreground py-8">No outstanding claims.</td></tr>}
             </tbody>
             {sorted.length > 0 && (
               <tfoot><tr className="font-bold bg-muted/30">
@@ -155,6 +203,11 @@ export default function Outstanding() {
                 <td className="text-success">{displayData.reduce((s: number, a: any) => s + a.totalPaid, 0).toLocaleString()}</td>
                 <td className="text-warning">{displayData.reduce((s: number, a: any) => s + a.totalTax, 0).toLocaleString()}</td>
                 <td className="text-destructive">{grandOutstanding.toLocaleString()}</td>
+                <td className="text-success">{grandAging.b30.toLocaleString()}</td>
+                <td className="text-info">{grandAging.b60.toLocaleString()}</td>
+                <td className="text-warning">{grandAging.b90.toLocaleString()}</td>
+                <td className="text-warning">{grandAging.b120.toLocaleString()}</td>
+                <td className="text-destructive">{grandAging.b120plus.toLocaleString()}</td>
               </tr></tfoot>
             )}
           </table>

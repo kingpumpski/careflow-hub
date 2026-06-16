@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,11 +35,17 @@ export default function Payments() {
     const netClaim = totalSubmitted - totalRejected;
     const insTax = (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id);
     const totalTax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
+    // Reconciliation flags per insurer
+    const variance = netClaim - totalPaid - totalTax;
+    const refMap: Record<string, number> = {};
+    insPayments.forEach((p: any) => { if (p.reference_number) refMap[p.reference_number] = (refMap[p.reference_number] || 0) + 1; });
+    const duplicateRefs = Object.entries(refMap).filter(([, n]) => n > 1).map(([r]) => r);
     return {
       ...ins, totalPaid, totalSubmitted, totalTax, netClaim,
       outstanding: netClaim - totalPaid - totalTax,
       paymentCount: insPayments.length,
       payments: insPayments,
+      variance, duplicateRefs,
     };
   }).filter((a: any) => a.paymentCount > 0 || search === "");
 
@@ -104,18 +110,28 @@ export default function Payments() {
         </div>
         <div className="stat-card">
           <h3 className="font-heading font-semibold mb-4">Payment History</h3>
+          {ins.duplicateRefs.length > 0 && (
+            <div className="mb-3 p-3 rounded-md bg-warning/10 text-warning text-sm flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <div>Duplicate reference(s) detected: <span className="font-mono">{ins.duplicateRefs.join(", ")}</span></div>
+            </div>
+          )}
           <table className="data-table">
-            <thead><tr><th>Date</th><th>Claim Period</th><th>Amount (GH¢)</th><th>Method</th><th>Reference</th></tr></thead>
+            <thead><tr><th>Date</th><th>Claim Period</th><th>Amount (GH¢)</th><th>Method</th><th>Reference</th><th>Flag</th></tr></thead>
             <tbody>
-              {ins.payments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()).map((p: any) => (
+              {ins.payments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()).map((p: any) => {
+                const isDup = p.reference_number && ins.duplicateRefs.includes(p.reference_number);
+                return (
                 <tr key={p.id} className="hover:bg-muted/50 transition-colors">
                   <td className="font-medium">{p.payment_date}</td>
                   <td className="text-sm">{p.claim_month ? `${monthNames[p.claim_month]} ${p.claim_year}` : "—"}</td>
                   <td className="font-semibold text-success">GH¢ {Number(p.amount_paid).toLocaleString()}</td>
                   <td><Badge variant="secondary">{p.payment_method || "—"}</Badge></td>
                   <td className="text-muted-foreground font-mono text-xs">{p.reference_number || "—"}</td>
+                  <td>{isDup ? <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Duplicate</Badge> : <span className="text-muted-foreground text-xs">—</span>}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -152,6 +168,7 @@ export default function Payments() {
                 <SortableHeader label="Net Claims" sortKey="netClaim" currentSort={sort} onSort={handleSort} />
                 <SortableHeader label="WHT" sortKey="totalTax" currentSort={sort} onSort={handleSort} />
                 <SortableHeader label="Outstanding" sortKey="outstanding" currentSort={sort} onSort={handleSort} />
+                <th>Reconciliation</th>
               </tr>
             </thead>
             <tbody>
@@ -163,12 +180,19 @@ export default function Payments() {
                   <td>{a.netClaim.toLocaleString()}</td>
                   <td className="text-warning">{a.totalTax.toLocaleString()}</td>
                   <td className="text-destructive font-medium">{a.outstanding.toLocaleString()}</td>
+                  <td className="text-xs">
+                    {a.duplicateRefs.length > 0 ? <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Duplicate Refs</Badge> :
+                     a.variance > 0.01 && a.netClaim > 0 ? <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Short Paid</Badge> :
+                     a.variance < -0.01 ? <Badge variant="outline" className="bg-info/10 text-info border-info/20">Overpaid</Badge> :
+                     a.netClaim > 0 ? <Badge variant="outline" className="bg-success/10 text-success border-success/20">Reconciled</Badge> :
+                     <span className="text-muted-foreground">—</span>}
+                  </td>
                 </tr>
               ))}
-              {sorted.length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">No payments recorded.</td></tr>}
+              {sorted.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">No payments recorded.</td></tr>}
             </tbody>
             {sorted.length > 0 && (
-              <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>{aggregated.reduce((s: number, a: any) => s + a.paymentCount, 0)}</td><td className="text-success">{grandPaid.toLocaleString()}</td><td>{grandNet.toLocaleString()}</td><td className="text-warning">{grandTax.toLocaleString()}</td><td className="text-destructive">{grandOutstanding.toLocaleString()}</td></tr></tfoot>
+              <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>{aggregated.reduce((s: number, a: any) => s + a.paymentCount, 0)}</td><td className="text-success">{grandPaid.toLocaleString()}</td><td>{grandNet.toLocaleString()}</td><td className="text-warning">{grandTax.toLocaleString()}</td><td className="text-destructive">{grandOutstanding.toLocaleString()}</td><td></td></tr></tfoot>
             )}
           </table>
         )}
