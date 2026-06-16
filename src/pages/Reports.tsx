@@ -80,6 +80,43 @@ export default function Reports() {
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
   }, [ledger, activePeriod, selectedYear, selectedMonth]);
 
+  // Aging analysis: per-month outstanding bucketed by days since period end
+  const agingData = useMemo(() => {
+    const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
+    const today = new Date();
+    (insurers || []).forEach((ins: any) => {
+      const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
+      // build per-month map
+      const map: Record<string, { y: number; m: number; sub: number; rej: number; paid: number; wht: number }> = {};
+      insClaims.forEach((c: any) => {
+        const k = `${c.claim_year}-${c.claim_month}`;
+        if (!map[k]) map[k] = { y: c.claim_year, m: c.claim_month, sub: 0, rej: 0, paid: 0, wht: 0 };
+        if (c.status === "rejected") map[k].rej += Number(c.claim_amount || 0);
+        else map[k].sub += Number(c.claim_amount || 0);
+      });
+      (payments || []).filter((p: any) => p.insurance_company_id === ins.id).forEach((p: any) => {
+        const k = `${p.claim_year}-${p.claim_month}`;
+        if (map[k]) map[k].paid += Number(p.amount_paid || 0);
+      });
+      (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id).forEach((t: any) => {
+        const k = `${t.year}-${t.month}`;
+        if (map[k]) map[k].wht += Number(t.tax_amount || 0);
+      });
+      Object.values(map).forEach((row) => {
+        const out = (row.sub - row.rej) - row.paid - row.wht;
+        if (out <= 0 || !row.y || !row.m) return;
+        const periodEnd = new Date(row.y, row.m, 0);
+        const days = Math.max(0, Math.floor((today.getTime() - periodEnd.getTime()) / 86400000));
+        if (days <= 30) buckets.b30 += out;
+        else if (days <= 60) buckets.b60 += out;
+        else if (days <= 90) buckets.b90 += out;
+        else if (days <= 120) buckets.b120 += out;
+        else buckets.b120plus += out;
+      });
+    });
+    return buckets;
+  }, [claims, insurers, payments, withholdingTax]);
+
   const { sorted: sortedReport, sort, handleSort } = useSort(reportData);
 
   const grandSubmitted = reportData.reduce((s, r) => s + r.submitted, 0);
@@ -138,6 +175,7 @@ export default function Reports() {
           <TabsTrigger value="income">Income Statement</TabsTrigger>
           <TabsTrigger value="receivables">Outstanding Receivables</TabsTrigger>
           <TabsTrigger value="tax">Tax Liability</TabsTrigger>
+          <TabsTrigger value="aging">Claim Aging</TabsTrigger>
         </TabsList>
 
         <div id="report-content" className="mt-4">
