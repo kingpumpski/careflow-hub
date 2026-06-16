@@ -123,7 +123,7 @@ export default function Analytics() {
 
   // ---- Service Line Profitability (preauth_items × catalog category) ----
   const serviceLine = useMemo(() => {
-    const catMap = new Map((catalog || []).map((c: any) => [c.item_name, c.category || "Uncategorized"]));
+    const catMap = new Map<string, string>((catalog || []).map((c: any) => [c.item_name as string, (c.category || "Uncategorized") as string]));
     const map: Record<string, { revenue: number; count: number }> = {};
     (items || []).forEach((it: any) => {
       const cat = catMap.get(it.description) || "Other";
