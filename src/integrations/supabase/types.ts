@@ -49,43 +49,76 @@ export type Database = {
       }
       claims: {
         Row: {
+          appeal_filed_at: string | null
+          appeal_outcome: string | null
+          appeal_status: string | null
+          approved_at: string | null
           claim_amount: number
           claim_month: number | null
           claim_year: number | null
           created_at: string
+          denial_category: string | null
+          denial_notes: string | null
+          denial_reason: string | null
+          expected_payment_date: string | null
           id: string
           insurance_company_id: string
+          paid_at: string | null
           patient_name: string | null
           preauth_id: string | null
           procedure_name: string | null
+          root_cause: string | null
           status: string
           submission_date: string
+          submitted_at: string | null
         }
         Insert: {
+          appeal_filed_at?: string | null
+          appeal_outcome?: string | null
+          appeal_status?: string | null
+          approved_at?: string | null
           claim_amount?: number
           claim_month?: number | null
           claim_year?: number | null
           created_at?: string
+          denial_category?: string | null
+          denial_notes?: string | null
+          denial_reason?: string | null
+          expected_payment_date?: string | null
           id?: string
           insurance_company_id: string
+          paid_at?: string | null
           patient_name?: string | null
           preauth_id?: string | null
           procedure_name?: string | null
+          root_cause?: string | null
           status?: string
           submission_date?: string
+          submitted_at?: string | null
         }
         Update: {
+          appeal_filed_at?: string | null
+          appeal_outcome?: string | null
+          appeal_status?: string | null
+          approved_at?: string | null
           claim_amount?: number
           claim_month?: number | null
           claim_year?: number | null
           created_at?: string
+          denial_category?: string | null
+          denial_notes?: string | null
+          denial_reason?: string | null
+          expected_payment_date?: string | null
           id?: string
           insurance_company_id?: string
+          paid_at?: string | null
           patient_name?: string | null
           preauth_id?: string | null
           procedure_name?: string | null
+          root_cause?: string | null
           status?: string
           submission_date?: string
+          submitted_at?: string | null
         }
         Relationships: [
           {
