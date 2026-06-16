@@ -14,10 +14,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
 
 const statusStyles: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground border-border",
+  verified: "bg-info/10 text-info border-info/20",
   submitted: "bg-info/10 text-info border-info/20",
+  under_review: "bg-warning/10 text-warning border-warning/20",
+  queried: "bg-warning/10 text-warning border-warning/20",
+  approved: "bg-success/10 text-success border-success/20",
+  partially_approved: "bg-warning/10 text-warning border-warning/20",
   paid: "bg-success/10 text-success border-success/20",
   partial: "bg-warning/10 text-warning border-warning/20",
   rejected: "bg-destructive/10 text-destructive border-destructive/20",
+  reconciled: "bg-success/10 text-success border-success/20",
+  closed: "bg-muted text-muted-foreground border-border",
 };
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -38,6 +46,7 @@ export default function Claims() {
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
   const [form, setForm] = useState({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
   const [rejectForm, setRejectForm] = useState({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+  const [denialMeta, setDenialMeta] = useState({ denial_category: "", denial_reason: "", root_cause: "", denial_notes: "" });
 
   const isLoading = claimsLoading || insurersLoading;
   const taxRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
@@ -154,6 +163,11 @@ export default function Claims() {
         claim_month: month,
         claim_year: year,
         status: "rejected",
+        denial_category: denialMeta.denial_category || null,
+        denial_reason: denialMeta.denial_reason || null,
+        root_cause: denialMeta.root_cause || null,
+        denial_notes: denialMeta.denial_notes || null,
+        appeal_status: "not_filed",
       });
 
       const whtReduction = rejectedAmount * (taxRate / 100);
@@ -181,6 +195,7 @@ export default function Claims() {
       toast({ title: "Rejection recorded", description: `Submitted & WHT adjusted by GH¢ -${whtReduction.toLocaleString()}` });
       setRejectDialogOpen(false);
       setRejectForm({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+      setDenialMeta({ denial_category: "", denial_reason: "", root_cause: "", denial_notes: "" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
