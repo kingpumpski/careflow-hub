@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, FileCheck, Shield, CreditCard, Receipt, BarChart3, Users, Settings,
   Building2, Stethoscope, ChevronDown, ChevronRight, LogOut, Bot, AlertCircle, Layers, Ban, BookOpen, Package, ClipboardList,
-  TrendingUp, ShieldAlert,
+  TrendingUp, ShieldAlert, Layers as LayersIcon, Bell,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -37,10 +37,13 @@ const menuItems = [
     children: [
       { label: "Strategic Analytics", path: "/analytics" },
       { label: "Provider Performance", path: "/provider-performance" },
+      { label: "Insurer Scorecard", path: "/insurer-scorecard" },
+      { label: "Service Lines", path: "/service-lines" },
       { label: "Fraud Alerts", path: "/fraud-alerts" },
     ],
   },
   { label: "General Ledger", icon: BookOpen, path: "/ledger" },
+  { label: "Notifications", icon: Bell, path: "/notifications" },
   { label: "Users", icon: Users, path: "/users" },
   { label: "AI Assistant", icon: Bot, path: "/ai-assistant" },
   { label: "Audit Trail", icon: ClipboardList, path: "/audit-trail" },

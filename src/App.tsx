@@ -28,6 +28,9 @@ import AuditTrail from "@/pages/AuditTrail";
 import ProviderPerformance from "@/pages/ProviderPerformance";
 import FraudAlerts from "@/pages/FraudAlerts";
 import Analytics from "@/pages/Analytics";
+import InsurerScorecard from "@/pages/InsurerScorecard";
+import ServiceLines from "@/pages/ServiceLines";
+import Notifications from "@/pages/Notifications";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,6 +76,9 @@ function ProtectedRoutes() {
         <Route path="/provider-performance" element={<ProviderPerformance />} />
         <Route path="/fraud-alerts" element={<FraudAlerts />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/insurer-scorecard" element={<InsurerScorecard />} />
+        <Route path="/service-lines" element={<ServiceLines />} />
+        <Route path="/notifications" element={<Notifications />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
