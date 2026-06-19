@@ -30,19 +30,22 @@ export default function InsuranceCompanies() {
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [form, setForm] = useState({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6" });
+  const [form, setForm] = useState({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" });
 
-  const openNew = () => { setEditing(null); setForm({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6" }); setDialogOpen(true); };
-  const openEdit = (i: any) => { setEditing(i); setForm({ company_name: i.company_name, email: i.email || "", phone: i.phone || "", address: i.address || "", contact_person: i.contact_person || "", color: i.color || "#3b82f6" }); setDialogOpen(true); };
+  const openNew = () => { setEditing(null); setForm({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" }); setDialogOpen(true); };
+  const openEdit = (i: any) => { setEditing(i); setForm({ company_name: i.company_name, email: i.email || "", phone: i.phone || "", address: i.address || "", contact_person: i.contact_person || "", color: i.color || "#3b82f6", additional_emails: Array.isArray(i.additional_emails) ? i.additional_emails.join(", ") : "" }); setDialogOpen(true); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const additional_emails = form.additional_emails
+        .split(",").map(s => s.trim()).filter(Boolean);
+      const payload = { ...form, additional_emails };
       if (editing) {
-        await updateMutation.mutateAsync({ id: editing.id, ...form });
+        await updateMutation.mutateAsync({ id: editing.id, ...payload });
         toast({ title: "Insurance company updated" });
       } else {
-        await insertMutation.mutateAsync(form);
+        await insertMutation.mutateAsync(payload);
         toast({ title: "Insurance company added" });
       }
       setDialogOpen(false);
@@ -142,6 +145,11 @@ export default function InsuranceCompanies() {
           <div><Label>Company Name *</Label><Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} required className="mt-1" /></div>
           <div><Label>Contact Person</Label><Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="mt-1" /></div>
           <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" /></div>
+          <div>
+            <Label>Additional / CC Emails (comma-separated)</Label>
+            <Input value={form.additional_emails} onChange={(e) => setForm({ ...form, additional_emails: e.target.value })} placeholder="medical@ins.com, ops@ins.com" className="mt-1" />
+            <p className="text-[11px] text-muted-foreground mt-1">All addresses listed here will be CC'd on every pre-authorization email.</p>
+          </div>
           <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1" /></div>
           <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mt-1" /></div>
           <div>
