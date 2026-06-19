@@ -18,6 +18,7 @@ const menuItems = [
       { label: "Procedures", path: "/procedures" },
       { label: "Templates", path: "/templates" },
       { label: "Catalog Items", path: "/catalog" },
+      { label: "Analytics", path: "/preauth-analytics" },
     ],
   },
   {
@@ -40,6 +41,7 @@ const menuItems = [
       { label: "Insurer Scorecard", path: "/insurer-scorecard" },
       { label: "Service Lines", path: "/service-lines" },
       { label: "Fraud Alerts", path: "/fraud-alerts" },
+      { label: "Pre-Auth Analytics", path: "/preauth-analytics" },
     ],
   },
   { label: "General Ledger", icon: BookOpen, path: "/ledger" },
