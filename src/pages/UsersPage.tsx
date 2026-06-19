@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Shield, UserPlus } from "lucide-react";
+import { Search, Shield, UserPlus, Trash2, KeyRound, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +43,8 @@ export default function UsersPage() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", full_name: "", password: "", role: "viewer" });
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [pwDialogOpen, setPwDialogOpen] = useState(false);
+  const [pwForm, setPwForm] = useState({ user_id: "", new_password: "" });
 
   const isLoading = profilesLoading || rolesLoading;
   const isSuperuser = userRole === "superuser";
@@ -107,6 +109,48 @@ export default function UsersPage() {
     }
   };
 
+  const handleResetPassword = async (profile: any) => {
+    if (!profile.email) { toast({ title: "No email on file", variant: "destructive" }); return; }
+    if (!confirm(`Send password reset email to ${profile.email}?`)) return;
+    try {
+      const { error } = await supabase.functions.invoke("admin-user-action", {
+        body: { action: "reset_password", email: profile.email },
+      });
+      if (error) throw error;
+      toast({ title: "Reset email sent", description: `Recovery link sent to ${profile.email}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteUser = async (profile: any) => {
+    if (!confirm(`Permanently delete user "${profile.full_name || profile.email}"? This cannot be undone.`)) return;
+    try {
+      const { error } = await supabase.functions.invoke("admin-user-action", {
+        body: { action: "delete_user", target_user_id: profile.id },
+      });
+      if (error) throw error;
+      toast({ title: "User deleted" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase.functions.invoke("admin-user-action", {
+        body: { action: "set_password", target_user_id: pwForm.user_id, new_password: pwForm.new_password },
+      });
+      if (error) throw error;
+      toast({ title: "Password updated" });
+      setPwDialogOpen(false);
+      setPwForm({ user_id: "", new_password: "" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
   const filtered = (profiles || []).filter((p: any) =>
     p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     p.email?.toLowerCase().includes(search.toLowerCase())
@@ -149,7 +193,12 @@ export default function UsersPage() {
                     <td><Badge variant="outline" className={roleColors[role] || ""}>{roleLabels[role] || role}</Badge></td>
                     <td>
                       {isSuperuser && (
-                        <Button variant="ghost" size="sm" onClick={() => openEditRole(p)}>Edit Role</Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openEditRole(p)}>Edit Role</Button>
+                          <button title="Send reset email" onClick={() => handleResetPassword(p)} className="p-1.5 rounded hover:bg-muted"><KeyRound className="w-4 h-4 text-muted-foreground" /></button>
+                          <button title="Set new password" onClick={() => { setPwForm({ user_id: p.id, new_password: "" }); setPwDialogOpen(true); }} className="p-1.5 rounded hover:bg-muted"><Lock className="w-4 h-4 text-muted-foreground" /></button>
+                          <button title="Delete user" onClick={() => handleDeleteUser(p)} className="p-1.5 rounded hover:bg-destructive/10"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -185,6 +234,14 @@ export default function UsersPage() {
             </select>
           </div>
           <Button type="submit" className="w-full" disabled={inviteLoading}>{inviteLoading ? "Creating..." : "Create User"}</Button>
+        </form>
+      </EntityDialog>
+
+      <EntityDialog open={pwDialogOpen} onOpenChange={setPwDialogOpen} title="Set New Password">
+        <form onSubmit={handleSetPassword} className="space-y-4">
+          <div><Label>New Password</Label><Input type="password" minLength={6} value={pwForm.new_password} onChange={(e) => setPwForm({ ...pwForm, new_password: e.target.value })} required className="mt-1" /></div>
+          <p className="text-xs text-muted-foreground">The user will be able to sign in immediately with this password.</p>
+          <Button type="submit" className="w-full">Update Password</Button>
         </form>
       </EntityDialog>
     </div>
