@@ -23,6 +23,20 @@ export default function SettingsPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  // SMTP / Hospital email settings
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpSecure, setSmtpSecure] = useState("tls");
+  const [claimsDepartment, setClaimsDepartment] = useState("Claims Department");
+  const [claimsSenderEmail, setClaimsSenderEmail] = useState("");
+  const [claimsReplyTo, setClaimsReplyTo] = useState("");
+  const [claimsCcEmails, setClaimsCcEmails] = useState("");
+  const [officerName, setOfficerName] = useState("");
+  const [officerPosition, setOfficerPosition] = useState("");
+  const [officerPhone, setOfficerPhone] = useState("");
+
   useEffect(() => {
     if (settings) {
       setProviderName(getSetting("provider_name"));
@@ -32,6 +46,18 @@ export default function SettingsPage() {
       setTaxRate(getSetting("withholding_tax_rate") || "5");
       setCurrency(getSetting("currency") || "GH¢ (Ghana Cedi)");
       setLogoUrl(getSetting("logo_url"));
+      setSmtpHost(getSetting("smtp_host"));
+      setSmtpPort(getSetting("smtp_port") || "587");
+      setSmtpUser(getSetting("smtp_user"));
+      setSmtpPassword(getSetting("smtp_password"));
+      setSmtpSecure(getSetting("smtp_secure") || "tls");
+      setClaimsDepartment(getSetting("claims_department") || "Claims Department");
+      setClaimsSenderEmail(getSetting("claims_sender_email"));
+      setClaimsReplyTo(getSetting("claims_reply_to"));
+      setClaimsCcEmails(getSetting("claims_cc_emails"));
+      setOfficerName(getSetting("officer_name"));
+      setOfficerPosition(getSetting("officer_position"));
+      setOfficerPhone(getSetting("officer_phone"));
     }
   }, [settings]);
 
@@ -208,7 +234,60 @@ export default function SettingsPage() {
               <Mail className="w-4 h-4 text-primary" />
               SMTP Configuration
             </h3>
-            <p className="text-xs text-muted-foreground">Email notifications are managed through Lovable Cloud. Contact support for custom SMTP setup.</p>
+            <p className="text-xs text-muted-foreground">Used by Pre-Authorization "Complete Request" to send the request to insurers. Leave blank to fall back to your local mail client (mailto).</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><Label>SMTP Host</Label><Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" className="mt-1" /></div>
+              <div><Label>SMTP Port</Label><Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" className="mt-1" /></div>
+              <div><Label>Username</Label><Input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="user@hospital.com" className="mt-1" /></div>
+              <div><Label>Password / App Key</Label><Input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} placeholder="••••••••" className="mt-1" /></div>
+              <div>
+                <Label>Encryption</Label>
+                <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={smtpSecure} onChange={(e) => setSmtpSecure(e.target.value)}>
+                  <option value="tls">STARTTLS (587)</option>
+                  <option value="ssl">SSL (465)</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+            <Button size="sm" onClick={async () => {
+              await Promise.all([
+                saveSetting("smtp_host", smtpHost),
+                saveSetting("smtp_port", smtpPort),
+                saveSetting("smtp_user", smtpUser),
+                saveSetting("smtp_password", smtpPassword),
+                saveSetting("smtp_secure", smtpSecure),
+              ]);
+              toast({ title: "SMTP settings saved" });
+            }}>Save SMTP</Button>
+          </div>
+
+          <div className="stat-card space-y-4">
+            <h3 className="font-heading font-semibold flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-primary" />
+              Hospital Claims Department
+            </h3>
+            <p className="text-xs text-muted-foreground">Sender identity for pre-authorization emails. CC emails are added on every outbound request.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><Label>Department Name</Label><Input value={claimsDepartment} onChange={(e) => setClaimsDepartment(e.target.value)} className="mt-1" /></div>
+              <div><Label>Sender Email (From)</Label><Input type="email" value={claimsSenderEmail} onChange={(e) => setClaimsSenderEmail(e.target.value)} placeholder="claims@hospital.com" className="mt-1" /></div>
+              <div><Label>Reply-To Email</Label><Input type="email" value={claimsReplyTo} onChange={(e) => setClaimsReplyTo(e.target.value)} placeholder="claims@hospital.com" className="mt-1" /></div>
+              <div><Label>Hospital CC Emails (comma-separated)</Label><Input value={claimsCcEmails} onChange={(e) => setClaimsCcEmails(e.target.value)} placeholder="director@h.com, audit@h.com" className="mt-1" /></div>
+              <div><Label>Officer Name</Label><Input value={officerName} onChange={(e) => setOfficerName(e.target.value)} className="mt-1" /></div>
+              <div><Label>Officer Position</Label><Input value={officerPosition} onChange={(e) => setOfficerPosition(e.target.value)} className="mt-1" /></div>
+              <div><Label>Officer Phone</Label><Input value={officerPhone} onChange={(e) => setOfficerPhone(e.target.value)} className="mt-1" /></div>
+            </div>
+            <Button size="sm" onClick={async () => {
+              await Promise.all([
+                saveSetting("claims_department", claimsDepartment),
+                saveSetting("claims_sender_email", claimsSenderEmail),
+                saveSetting("claims_reply_to", claimsReplyTo),
+                saveSetting("claims_cc_emails", claimsCcEmails),
+                saveSetting("officer_name", officerName),
+                saveSetting("officer_position", officerPosition),
+                saveSetting("officer_phone", officerPhone),
+              ]);
+              toast({ title: "Department settings saved" });
+            }}>Save Department</Button>
           </div>
         </TabsContent>
 
