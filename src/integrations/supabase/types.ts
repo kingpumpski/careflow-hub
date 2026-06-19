@@ -228,6 +228,7 @@ export type Database = {
       }
       insurance_companies: {
         Row: {
+          additional_emails: string[] | null
           address: string | null
           color: string | null
           company_name: string
@@ -239,6 +240,7 @@ export type Database = {
           phone: string | null
         }
         Insert: {
+          additional_emails?: string[] | null
           address?: string | null
           color?: string | null
           company_name: string
@@ -250,6 +252,7 @@ export type Database = {
           phone?: string | null
         }
         Update: {
+          additional_emails?: string[] | null
           address?: string | null
           color?: string | null
           company_name?: string
@@ -443,10 +446,18 @@ export type Database = {
       }
       pre_authorizations: {
         Row: {
+          accommodation_days: number | null
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          clinical_notes: string | null
           created_at: string
           created_by: string | null
+          custom_diagnoses: string[] | null
           diagnosis: string | null
+          diagnosis_ids: string[] | null
           doctor_id: string | null
+          email_sent_at: string | null
           id: string
           insurance_company_id: string | null
           patient_id: string | null
@@ -455,14 +466,25 @@ export type Database = {
           provider_address: string | null
           provider_name: string | null
           provider_phone: string | null
+          rejection_reason: string | null
           status: string
+          submitted_at: string | null
+          template_id: string | null
           total_cost: number | null
         }
         Insert: {
+          accommodation_days?: number | null
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          clinical_notes?: string | null
           created_at?: string
           created_by?: string | null
+          custom_diagnoses?: string[] | null
           diagnosis?: string | null
+          diagnosis_ids?: string[] | null
           doctor_id?: string | null
+          email_sent_at?: string | null
           id?: string
           insurance_company_id?: string | null
           patient_id?: string | null
@@ -471,14 +493,25 @@ export type Database = {
           provider_address?: string | null
           provider_name?: string | null
           provider_phone?: string | null
+          rejection_reason?: string | null
           status?: string
+          submitted_at?: string | null
+          template_id?: string | null
           total_cost?: number | null
         }
         Update: {
+          accommodation_days?: number | null
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          clinical_notes?: string | null
           created_at?: string
           created_by?: string | null
+          custom_diagnoses?: string[] | null
           diagnosis?: string | null
+          diagnosis_ids?: string[] | null
           doctor_id?: string | null
+          email_sent_at?: string | null
           id?: string
           insurance_company_id?: string | null
           patient_id?: string | null
@@ -487,7 +520,10 @@ export type Database = {
           provider_address?: string | null
           provider_name?: string | null
           provider_phone?: string | null
+          rejection_reason?: string | null
           status?: string
+          submitted_at?: string | null
+          template_id?: string | null
           total_cost?: number | null
         }
         Relationships: [

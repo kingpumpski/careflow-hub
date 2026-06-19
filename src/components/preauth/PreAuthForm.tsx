@@ -106,6 +106,11 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const [diagnosisCode, setDiagnosisCode] = useState("");
   const [procedureDate, setProcedureDate] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [accommodationDays, setAccommodationDays] = useState<number | "">("");
+  const [clinicalNotes, setClinicalNotes] = useState("");
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [extraDiagnoses, setExtraDiagnoses] = useState<string[]>([]);
+  const [customDiagnosisInput, setCustomDiagnosisInput] = useState("");
 
   const activeInsurers = (insurers || []).filter((i: any) => i.is_active !== false);
 
@@ -117,6 +122,10 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
       setProcedureId(editData.procedure_id || "");
       setProcedureDate(editData.procedure_date || "");
       setDiagnosisCode("");
+      setAccommodationDays(editData.accommodation_days ?? "");
+      setClinicalNotes(editData.clinical_notes || "");
+      setApprovalNotes(editData.approval_notes || "");
+      setExtraDiagnoses(Array.isArray(editData.custom_diagnoses) ? editData.custom_diagnoses : []);
       (async () => {
         const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", editData.id);
         if (data && data.length > 0) {
@@ -231,6 +240,12 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
         provider_phone: companyInfo.provider_phone || null,
         created_by: user?.id || null,
         status: isEditing ? editData.status : "pending",
+        accommodation_days: accommodationDays === "" ? null : Number(accommodationDays),
+        clinical_notes: clinicalNotes || null,
+        approval_notes: approvalNotes || null,
+        custom_diagnoses: extraDiagnoses,
+        diagnosis_ids: diagnosisCode ? [diagnosisCode] : [],
+        template_id: templateId || null,
       };
 
       let preauthId: string;
@@ -339,6 +354,54 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
                 </select>
               </div>
               <div><Label>Procedure Date</Label><Input type="date" value={procedureDate} onChange={(e) => setProcedureDate(e.target.value)} className="mt-1" /></div>
+              <div>
+                <Label>Accommodation Duration (days)</Label>
+                <Input type="number" min={0} value={accommodationDays} onChange={(e) => setAccommodationDays(e.target.value === "" ? "" : parseInt(e.target.value))} placeholder="e.g. 3" className="mt-1" />
+              </div>
+              <div>
+                <Label>Additional Diagnoses (free-text)</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input value={customDiagnosisInput} onChange={(e) => setCustomDiagnosisInput(e.target.value)} placeholder="Type and press Add" />
+                  <Button type="button" size="sm" variant="outline" onClick={() => {
+                    const t = customDiagnosisInput.trim();
+                    if (t) { setExtraDiagnoses([...extraDiagnoses, t]); setCustomDiagnosisInput(""); }
+                  }}>Add</Button>
+                </div>
+                {extraDiagnoses.length > 0 && (
+                  <ul className="mt-2 text-xs space-y-1">
+                    {extraDiagnoses.map((d, i) => (
+                      <li key={i} className="flex items-center justify-between bg-muted px-2 py-1 rounded">
+                        <span>• {d}</span>
+                        <button type="button" onClick={() => setExtraDiagnoses(extraDiagnoses.filter((_, j) => j !== i))} className="text-destructive">×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card space-y-3">
+            <h3 className="font-heading font-semibold">Clinical & Approval Notes</h3>
+            <div>
+              <Label>Clinical Notes</Label>
+              <textarea
+                value={clinicalNotes}
+                onChange={(e) => setClinicalNotes(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Symptoms, history, observations..."
+              />
+            </div>
+            <div>
+              <Label>Approval Notes (visible to reviewer)</Label>
+              <textarea
+                value={approvalNotes}
+                onChange={(e) => setApprovalNotes(e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Any context for the approving officer"
+              />
             </div>
           </div>
 

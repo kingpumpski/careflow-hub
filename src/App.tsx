@@ -31,6 +31,7 @@ import Analytics from "@/pages/Analytics";
 import InsurerScorecard from "@/pages/InsurerScorecard";
 import ServiceLines from "@/pages/ServiceLines";
 import Notifications from "@/pages/Notifications";
+import PreAuthAnalytics from "@/pages/PreAuthAnalytics";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -79,6 +80,7 @@ function ProtectedRoutes() {
         <Route path="/insurer-scorecard" element={<InsurerScorecard />} />
         <Route path="/service-lines" element={<ServiceLines />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/preauth-analytics" element={<PreAuthAnalytics />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
