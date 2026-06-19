@@ -354,6 +354,54 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
                 </select>
               </div>
               <div><Label>Procedure Date</Label><Input type="date" value={procedureDate} onChange={(e) => setProcedureDate(e.target.value)} className="mt-1" /></div>
+              <div>
+                <Label>Accommodation Duration (days)</Label>
+                <Input type="number" min={0} value={accommodationDays} onChange={(e) => setAccommodationDays(e.target.value === "" ? "" : parseInt(e.target.value))} placeholder="e.g. 3" className="mt-1" />
+              </div>
+              <div>
+                <Label>Additional Diagnoses (free-text)</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input value={customDiagnosisInput} onChange={(e) => setCustomDiagnosisInput(e.target.value)} placeholder="Type and press Add" />
+                  <Button type="button" size="sm" variant="outline" onClick={() => {
+                    const t = customDiagnosisInput.trim();
+                    if (t) { setExtraDiagnoses([...extraDiagnoses, t]); setCustomDiagnosisInput(""); }
+                  }}>Add</Button>
+                </div>
+                {extraDiagnoses.length > 0 && (
+                  <ul className="mt-2 text-xs space-y-1">
+                    {extraDiagnoses.map((d, i) => (
+                      <li key={i} className="flex items-center justify-between bg-muted px-2 py-1 rounded">
+                        <span>• {d}</span>
+                        <button type="button" onClick={() => setExtraDiagnoses(extraDiagnoses.filter((_, j) => j !== i))} className="text-destructive">×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card space-y-3">
+            <h3 className="font-heading font-semibold">Clinical & Approval Notes</h3>
+            <div>
+              <Label>Clinical Notes</Label>
+              <textarea
+                value={clinicalNotes}
+                onChange={(e) => setClinicalNotes(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Symptoms, history, observations..."
+              />
+            </div>
+            <div>
+              <Label>Approval Notes (visible to reviewer)</Label>
+              <textarea
+                value={approvalNotes}
+                onChange={(e) => setApprovalNotes(e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Any context for the approving officer"
+              />
             </div>
           </div>
 
