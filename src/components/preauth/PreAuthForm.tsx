@@ -106,6 +106,11 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const [diagnosisCode, setDiagnosisCode] = useState("");
   const [procedureDate, setProcedureDate] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [accommodationDays, setAccommodationDays] = useState<number | "">("");
+  const [clinicalNotes, setClinicalNotes] = useState("");
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [extraDiagnoses, setExtraDiagnoses] = useState<string[]>([]);
+  const [customDiagnosisInput, setCustomDiagnosisInput] = useState("");
 
   const activeInsurers = (insurers || []).filter((i: any) => i.is_active !== false);
 
@@ -117,6 +122,10 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
       setProcedureId(editData.procedure_id || "");
       setProcedureDate(editData.procedure_date || "");
       setDiagnosisCode("");
+      setAccommodationDays(editData.accommodation_days ?? "");
+      setClinicalNotes(editData.clinical_notes || "");
+      setApprovalNotes(editData.approval_notes || "");
+      setExtraDiagnoses(Array.isArray(editData.custom_diagnoses) ? editData.custom_diagnoses : []);
       (async () => {
         const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", editData.id);
         if (data && data.length > 0) {
@@ -231,6 +240,12 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
         provider_phone: companyInfo.provider_phone || null,
         created_by: user?.id || null,
         status: isEditing ? editData.status : "pending",
+        accommodation_days: accommodationDays === "" ? null : Number(accommodationDays),
+        clinical_notes: clinicalNotes || null,
+        approval_notes: approvalNotes || null,
+        custom_diagnoses: extraDiagnoses,
+        diagnosis_ids: diagnosisCode ? [diagnosisCode] : [],
+        template_id: templateId || null,
       };
 
       let preauthId: string;
