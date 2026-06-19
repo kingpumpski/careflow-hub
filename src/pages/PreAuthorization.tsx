@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Eye, Download, Pencil } from "lucide-react";
+import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,8 @@ const statusStyles: Record<string, string> = {
   approved: "bg-success/10 text-success border-success/20",
   pending: "bg-warning/10 text-warning border-warning/20",
   rejected: "bg-destructive/10 text-destructive border-destructive/20",
+  draft: "bg-muted text-muted-foreground border-border",
+  completed: "bg-info/10 text-info border-info/20",
 };
 
 export default function PreAuthorization() {
@@ -44,6 +46,97 @@ export default function PreAuthorization() {
     provider_name: settings?.find?.((s: any) => s.key === "provider_name")?.value || "",
     provider_address: settings?.find?.((s: any) => s.key === "provider_address")?.value || "",
     provider_phone: settings?.find?.((s: any) => s.key === "provider_phone")?.value || "",
+  };
+
+  const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
+
+  const buildEmailDraft = (pa: any) => {
+    const patient = (patients || []).find((p: any) => p.id === pa.patient_id);
+    const insurer = (insurers || []).find((i: any) => i.id === pa.insurance_company_id);
+    const proc = (procedures || []).find((p: any) => p.id === pa.procedure_id);
+    const patientName = patient?.patient_name || "Patient";
+    const membership = patient?.membership_number || "—";
+    const procName = proc?.procedure_name || pa.diagnosis || "treatment";
+    const procDate = pa.procedure_date || "scheduled date";
+    const isFuture = pa.procedure_date && new Date(pa.procedure_date) >= new Date(new Date().toDateString());
+    const verb = isFuture ? "has or is scheduled to undergo" : "has successfully undergone";
+    const diagBullets = [
+      ...((pa.custom_diagnoses || []) as string[]),
+      pa.diagnosis,
+    ].filter(Boolean).map((d: string) => `• ${d}`).join("\n");
+
+    const officer = getS("officer_name") || "Claims Officer";
+    const position = getS("officer_position") || "Claims Officer";
+    const officerPhone = getS("officer_phone") || "";
+    const senderEmail = getS("claims_sender_email") || getS("provider_email") || "";
+    const hospital = getS("provider_name") || "Hospital";
+
+    const subject = `PRE-AUTHORIZATION REQUEST – ${patientName.toUpperCase()}`;
+    const body =
+`Dear ${insurer?.contact_person || "Sir/Madam"},
+
+The above-named client with membership number "${membership}" ${verb} a/an "${procName}" procedure on "${procDate}".
+
+Initial Diagnosis:
+${diagBullets || "• —"}
+
+Kindly find attached a copy of the pre-authorization request document for your review.
+
+Do not hesitate to reach us if you require further information.
+
+Thank you.
+
+${officer}
+${position}
+${officerPhone}
+${senderEmail}
+${hospital}`;
+
+    const to = [insurer?.email].filter(Boolean).join(",");
+    const cc = [
+      ...((insurer?.additional_emails || []) as string[]),
+      ...((getS("claims_cc_emails") || "").split(",").map((s: string) => s.trim()).filter(Boolean)),
+    ].join(",");
+    return { to, cc, subject, body };
+  };
+
+  const handleCompleteRequest = async (pa: any) => {
+    try {
+      const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id);
+      // Generate PDF (downloads)
+      exportPreAuthPDF({
+        ...pa,
+        patient_name: getPatientName(pa.patient_id),
+        insurance_name: getInsurerName(pa.insurance_company_id),
+        doctor_name: getDoctorName(pa.doctor_id),
+      }, itemsData || [], companyInfo);
+
+      // Build mailto draft
+      const { to, cc, subject, body } = buildEmailDraft(pa);
+      const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailto, "_blank");
+
+      await updateMutation.mutateAsync({
+        id: pa.id,
+        status: "completed",
+        submitted_at: new Date().toISOString(),
+        email_sent_at: new Date().toISOString(),
+      });
+      toast({ title: "Request completed", description: "PDF downloaded and email draft opened. Attach the PDF before sending." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleQuickStatus = async (pa: any, status: string) => {
+    const updates: any = { id: pa.id, status };
+    if (status === "approved") updates.approved_at = new Date().toISOString();
+    try {
+      await updateMutation.mutateAsync(updates);
+      toast({ title: `Marked as ${status}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
   };
 
   const handleView = async (pa: any) => {
@@ -129,6 +222,21 @@ export default function PreAuthorization() {
           <Button variant="outline" onClick={() => { setStatusForm({ id: viewPreauth.id, status: viewPreauth.status }); setStatusDialogOpen(true); }}>
             Update Status
           </Button>
+          {viewPreauth.status !== "approved" && (
+            <Button variant="outline" className="gap-2" onClick={() => handleQuickStatus(viewPreauth, "approved")}>
+              <CheckCircle2 className="w-4 h-4 text-success" />Approve
+            </Button>
+          )}
+          {viewPreauth.status !== "rejected" && (
+            <Button variant="outline" className="gap-2" onClick={() => handleQuickStatus(viewPreauth, "rejected")}>
+              <XCircle className="w-4 h-4 text-destructive" />Reject
+            </Button>
+          )}
+          {viewPreauth.status !== "completed" && (
+            <Button className="gap-2" onClick={() => handleCompleteRequest(viewPreauth)}>
+              <Send className="w-4 h-4" />Complete Request &amp; Email
+            </Button>
+          )}
         </div>
 
         <EntityDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen} title="Update Status">
@@ -136,9 +244,11 @@ export default function PreAuthorization() {
             <div>
               <Label>Status</Label>
               <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>
+                <option value="draft">Draft</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
+                <option value="completed">Completed</option>
               </select>
             </div>
             <Button type="submit" className="w-full" disabled={updateMutation.isPending}>Update</Button>
