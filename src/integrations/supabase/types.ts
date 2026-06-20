@@ -177,6 +177,7 @@ export type Database = {
       }
       diagnosis_codes: {
         Row: {
+          archived: boolean
           category: string | null
           code: string
           created_at: string
@@ -184,6 +185,7 @@ export type Database = {
           id: string
         }
         Insert: {
+          archived?: boolean
           category?: string | null
           code: string
           created_at?: string
@@ -191,6 +193,7 @@ export type Database = {
           id?: string
         }
         Update: {
+          archived?: boolean
           category?: string | null
           code?: string
           created_at?: string
@@ -453,6 +456,7 @@ export type Database = {
           clinical_notes: string | null
           created_at: string
           created_by: string | null
+          current_state: string
           custom_diagnoses: string[] | null
           diagnosis: string | null
           diagnosis_ids: string[] | null
@@ -471,6 +475,7 @@ export type Database = {
           submitted_at: string | null
           template_id: string | null
           total_cost: number | null
+          version: number
         }
         Insert: {
           accommodation_days?: number | null
@@ -480,6 +485,7 @@ export type Database = {
           clinical_notes?: string | null
           created_at?: string
           created_by?: string | null
+          current_state?: string
           custom_diagnoses?: string[] | null
           diagnosis?: string | null
           diagnosis_ids?: string[] | null
@@ -498,6 +504,7 @@ export type Database = {
           submitted_at?: string | null
           template_id?: string | null
           total_cost?: number | null
+          version?: number
         }
         Update: {
           accommodation_days?: number | null
@@ -507,6 +514,7 @@ export type Database = {
           clinical_notes?: string | null
           created_at?: string
           created_by?: string | null
+          current_state?: string
           custom_diagnoses?: string[] | null
           diagnosis?: string | null
           diagnosis_ids?: string[] | null
@@ -525,6 +533,7 @@ export type Database = {
           submitted_at?: string | null
           template_id?: string | null
           total_cost?: number | null
+          version?: number
         }
         Relationships: [
           {
@@ -581,6 +590,59 @@ export type Database = {
         }
         Relationships: []
       }
+      preauth_email_log: {
+        Row: {
+          attempted_by: string | null
+          attempted_by_name: string | null
+          cc_emails: string[] | null
+          created_at: string
+          error_message: string | null
+          id: string
+          preauth_id: string
+          provider_response: string | null
+          sent_at: string | null
+          status: string
+          subject: string | null
+          to_email: string
+        }
+        Insert: {
+          attempted_by?: string | null
+          attempted_by_name?: string | null
+          cc_emails?: string[] | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          preauth_id: string
+          provider_response?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          to_email: string
+        }
+        Update: {
+          attempted_by?: string | null
+          attempted_by_name?: string | null
+          cc_emails?: string[] | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          preauth_id?: string
+          provider_response?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "preauth_email_log_preauth_id_fkey"
+            columns: ["preauth_id"]
+            isOneToOne: false
+            referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       preauth_items: {
         Row: {
           amount: number
@@ -616,30 +678,89 @@ export type Database = {
           },
         ]
       }
-      procedure_templates: {
+      preauth_versions: {
         Row: {
+          change_note: string | null
           created_at: string
-          diagnosis_code_id: string | null
+          edited_by: string | null
+          edited_by_name: string | null
           id: string
-          items: Json
-          procedure_id: string | null
-          template_name: string
+          pdf_url: string | null
+          preauth_id: string
+          snapshot: Json
+          state: string
+          version_number: number
         }
         Insert: {
+          change_note?: string | null
           created_at?: string
-          diagnosis_code_id?: string | null
+          edited_by?: string | null
+          edited_by_name?: string | null
           id?: string
-          items?: Json
-          procedure_id?: string | null
-          template_name: string
+          pdf_url?: string | null
+          preauth_id: string
+          snapshot: Json
+          state: string
+          version_number: number
         }
         Update: {
+          change_note?: string | null
+          created_at?: string
+          edited_by?: string | null
+          edited_by_name?: string | null
+          id?: string
+          pdf_url?: string | null
+          preauth_id?: string
+          snapshot?: Json
+          state?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "preauth_versions_preauth_id_fkey"
+            columns: ["preauth_id"]
+            isOneToOne: false
+            referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procedure_templates: {
+        Row: {
+          archived: boolean
+          created_at: string
+          diagnosis_code_id: string | null
+          diagnosis_code_ids: string[] | null
+          id: string
+          items: Json
+          notes: string | null
+          procedure_id: string | null
+          template_name: string
+          total_amount: number | null
+        }
+        Insert: {
+          archived?: boolean
           created_at?: string
           diagnosis_code_id?: string | null
+          diagnosis_code_ids?: string[] | null
           id?: string
           items?: Json
+          notes?: string | null
+          procedure_id?: string | null
+          template_name: string
+          total_amount?: number | null
+        }
+        Update: {
+          archived?: boolean
+          created_at?: string
+          diagnosis_code_id?: string | null
+          diagnosis_code_ids?: string[] | null
+          id?: string
+          items?: Json
+          notes?: string | null
           procedure_id?: string | null
           template_name?: string
+          total_amount?: number | null
         }
         Relationships: [
           {
