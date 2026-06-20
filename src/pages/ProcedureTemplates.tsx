@@ -166,7 +166,7 @@ export default function ProcedureTemplates() {
         )}
       </div>
 
-      <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Template" : "Create Template"} className="max-w-2xl">
+      <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Template" : "Create Template"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Template Name *</Label><Input value={form.template_name} onChange={(e) => setForm({ ...form, template_name: e.target.value })} required className="mt-1" /></div>
           <div>
