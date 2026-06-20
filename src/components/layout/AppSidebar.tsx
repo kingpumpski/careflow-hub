@@ -17,6 +17,7 @@ const menuItems = [
       { label: "Doctors", path: "/doctors" },
       { label: "Procedures", path: "/procedures" },
       { label: "Templates", path: "/templates" },
+      { label: "Diagnosis Master", path: "/diagnosis-codes" },
       { label: "Catalog Items", path: "/catalog" },
       { label: "Analytics", path: "/preauth-analytics" },
     ],
