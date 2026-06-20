@@ -68,6 +68,17 @@ export function exportClaimsExcel(data: any[], totals: GrandTotals) {
 }
 
 export function exportPreAuthPDF(preauth: any, items: any[], companyInfo: any) {
+  buildPreAuthDoc(preauth, items, companyInfo).save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+}
+
+export function preAuthPdfBase64(preauth: any, items: any[], companyInfo: any): { base64: string; filename: string } {
+  const doc = buildPreAuthDoc(preauth, items, companyInfo);
+  const dataUri = doc.output("datauristring");
+  const base64 = dataUri.split(",")[1] || "";
+  return { base64, filename: `preauth-${preauth.id?.slice(0, 8) || "request"}.pdf` };
+}
+
+function buildPreAuthDoc(preauth: any, items: any[], companyInfo: any): jsPDF {
   const doc = new jsPDF();
 
   // Company header
@@ -114,7 +125,7 @@ export function exportPreAuthPDF(preauth: any, items: any[], companyInfo: any) {
     footStyles: { fillColor: [220, 240, 220], textColor: [0, 0, 0], fontStyle: "bold" },
   });
 
-  doc.save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+  return doc;
 }
 
 export function exportReportPDF(title: string, data: any[], columns: string[], companyInfo: any) {
