@@ -213,14 +213,3 @@ export default function ProcedureTemplates() {
     </div>
   );
 }
-              </div>
-            ))}
-          </div>
-          <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>
-            {editing ? "Update Template" : "Create Template"}
-          </Button>
-        </form>
-      </EntityDialog>
-    </div>
-  );
-}
