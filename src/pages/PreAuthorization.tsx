@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History } from "lucide-react";
+import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +66,24 @@ export default function PreAuthorization() {
   const insertVersion = useSupabaseInsert("preauth_versions");
   const insertNotif = useSupabaseInsert("notifications");
   const [search, setSearch] = useState("");
+
+  const handleDelete = async (pa: any) => {
+    if (!confirm(`Delete pre-authorization for ${getPatientName(pa.patient_id)}? This removes its items, versions and email log entries.`)) return;
+    try {
+      await (supabase.from("preauth_items") as any).delete().eq("preauth_id", pa.id);
+      await (supabase.from("preauth_versions") as any).delete().eq("preauth_id", pa.id);
+      await (supabase.from("preauth_email_log") as any).delete().eq("preauth_id", pa.id);
+      const { error } = await (supabase.from("pre_authorizations") as any).delete().eq("id", pa.id);
+      if (error) throw error;
+      toast({ title: "Pre-authorization deleted" });
+      if (viewPreauth?.id === pa.id) setViewPreauth(null);
+      // refresh list
+      (preauths as any) && undefined;
+      await (window as any).location?.reload?.call?.(window.location); // simple invalidation
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    }
+  };
 
   const getPatientName = (id: string) => (patients || []).find((p: any) => p.id === id)?.patient_name || "—";
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";

@@ -383,30 +383,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
             </div>
           </div>
 
-          <div className="stat-card space-y-3">
-            <h3 className="font-heading font-semibold">Clinical & Approval Notes</h3>
-            <div>
-              <Label>Clinical Notes</Label>
-              <textarea
-                value={clinicalNotes}
-                onChange={(e) => setClinicalNotes(e.target.value)}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Symptoms, history, observations..."
-              />
-            </div>
-            <div>
-              <Label>Approval Notes (visible to reviewer)</Label>
-              <textarea
-                value={approvalNotes}
-                onChange={(e) => setApprovalNotes(e.target.value)}
-                rows={2}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Any context for the approving officer"
-              />
-            </div>
-          </div>
-
           {companyInfo.provider_name && (
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-2">Provider (from Settings)</h3>
