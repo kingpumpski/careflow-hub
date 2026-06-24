@@ -151,8 +151,10 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const handleProcedureSelect = (procId: string) => {
     setProcedureId(procId);
     const proc = (procedures || []).find((p: any) => p.id === procId);
-    if (proc && items.length === 1 && !items[0].description) {
-      setItems([{ id: 1, description: proc.procedure_name, quantity: 1, unitCharge: Number(proc.default_tariff) || 0 }]);
+    // Always override the cost breakdown with the newly selected procedure so users
+    // can switch procedures without leftover items from a previous choice.
+    if (proc) {
+      setItems([{ id: Date.now(), description: proc.procedure_name, quantity: 1, unitCharge: Number(proc.default_tariff) || 0 }]);
     }
   };
 

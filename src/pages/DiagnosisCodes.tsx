@@ -1,13 +1,17 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Pencil, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Archive, ArchiveRestore, Trash2, Upload, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { aiDuplicateCheck, localDuplicate } from "@/lib/dedupCheck";
 
 const ICD_CATEGORIES = [
   "Infectious & Parasitic", "Neoplasms", "Blood & Immune", "Endocrine & Metabolic",
@@ -28,6 +32,9 @@ export default function DiagnosisCodes() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ code: "", description: "", category: "" });
+  const [importOpen, setImportOpen] = useState(false);
+  const [aiHint, setAiHint] = useState<string>("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   const openNew = () => { setEditing(null); setForm({ code: "", description: "", category: "" }); setDialogOpen(true); };
   const openEdit = (c: any) => { setEditing(c); setForm({ code: c.code || "", description: c.description || "", category: c.category || "" }); setDialogOpen(true); };
@@ -35,11 +42,59 @@ export default function DiagnosisCodes() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!editing) {
+        // Real-time duplicate scrutiny
+        const exact = localDuplicate(form, codes || [], ["code"]);
+        if (exact) {
+          toast({ title: "Duplicate ICD-10 code", description: `Code ${form.code} already exists.`, variant: "destructive" });
+          return;
+        }
+        const ai = await aiDuplicateCheck("diagnosis", form, (codes || []) as any);
+        if (ai.duplicate && ai.confidence >= 0.75) {
+          if (!confirm(`AI flagged this as a possible duplicate: ${ai.reason}\n\nSave anyway?`)) return;
+        }
+      }
       if (editing) await updateM.mutateAsync({ id: editing.id, ...form });
       else await insertM.mutateAsync({ ...form, archived: false });
       toast({ title: editing ? "Diagnosis updated" : "Diagnosis added" });
       setDialogOpen(false);
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const runAiHint = async () => {
+    if (!form.code && !form.description) { setAiHint(""); return; }
+    setAiBusy(true);
+    const ai = await aiDuplicateCheck("diagnosis", form, (codes || []) as any);
+    setAiHint(ai.duplicate ? `⚠ Possible duplicate (${Math.round(ai.confidence * 100)}%): ${ai.reason}` : "✓ No similar code found.");
+    setAiBusy(false);
+  };
+
+  const handleBulkImport = async (rows: Record<string, any>[]) => {
+    const existing = codes || [];
+    const seen = new Map<string, any>();
+    (existing as any[]).forEach((c) => seen.set(String(c.code || "").trim().toUpperCase(), c));
+
+    let created = 0, updated = 0, skipped = 0, archived = 0;
+    for (const r of rows) {
+      const code = String(r.code || "").trim().toUpperCase();
+      if (!code || !r.description) { skipped++; continue; }
+      const candidate = { code, description: String(r.description).trim(), category: r.category || null, archived: false };
+      const existingRow = seen.get(code);
+      if (existingRow) {
+        const sameDesc = String(existingRow.description || "").trim().toLowerCase() === candidate.description.toLowerCase();
+        if (sameDesc) { skipped++; continue; }
+        // Archive old, insert new (treat as overwrite)
+        await (supabase.from("diagnosis_codes") as any).update({ archived: true }).eq("id", existingRow.id);
+        const { data: ins } = await (supabase.from("diagnosis_codes") as any).insert(candidate).select().single();
+        if (ins) seen.set(code, ins);
+        archived++; updated++;
+      } else {
+        const { data: ins } = await (supabase.from("diagnosis_codes") as any).insert(candidate).select().single();
+        if (ins) seen.set(code, ins);
+        created++;
+      }
+    }
+    toast({ title: "Import complete", description: `Created ${created} · Updated ${updated} · Archived ${archived} · Skipped ${skipped}` });
   };
 
   const toggleArchive = async (c: any) => {
@@ -70,7 +125,11 @@ export default function DiagnosisCodes() {
           <h1 className="page-title">Diagnosis Master (ICD-10)</h1>
           <p className="page-description">Central database for ICD-10 codes used across pre-authorizations and claims</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Diagnosis</Button>
+        <div className="flex items-center gap-2">
+          <DownloadTemplate columns={[{ key: "code", label: "code" }, { key: "description", label: "description" }, { key: "category", label: "category" }]} fileName="diagnosis_codes_template" />
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Bulk Import</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Diagnosis</Button>
+        </div>
       </div>
 
       <div className="stat-card">
@@ -123,9 +182,25 @@ export default function DiagnosisCodes() {
               {ICD_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
           </div>
+          {!editing && (
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className={aiHint.startsWith("⚠") ? "text-warning" : "text-muted-foreground"}>{aiHint || "AI duplicate scrutiny available."}</span>
+              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={runAiHint} disabled={aiBusy}>
+                <Sparkles className="w-3 h-3" />{aiBusy ? "Checking..." : "AI Check"}
+              </Button>
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={insertM.isPending || updateM.isPending}>{editing ? "Update" : "Save"}</Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Bulk Import ICD-10 Codes"
+        columns={[{ key: "code", label: "code", required: true }, { key: "description", label: "description", required: true }, { key: "category", label: "category" }]}
+        onImport={handleBulkImport}
+      />
     </div>
   );
 }
