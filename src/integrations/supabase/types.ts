@@ -598,7 +598,8 @@ export type Database = {
           created_at: string
           error_message: string | null
           id: string
-          preauth_id: string
+          is_test: boolean
+          preauth_id: string | null
           provider_response: string | null
           sent_at: string | null
           status: string
@@ -612,7 +613,8 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
-          preauth_id: string
+          is_test?: boolean
+          preauth_id?: string | null
           provider_response?: string | null
           sent_at?: string | null
           status?: string
@@ -626,7 +628,8 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
-          preauth_id?: string
+          is_test?: boolean
+          preauth_id?: string | null
           provider_response?: string | null
           sent_at?: string | null
           status?: string

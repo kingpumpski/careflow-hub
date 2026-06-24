@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,7 @@ function normState(s?: string): string {
 
 export default function PreAuthorization() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingPreauth, setEditingPreauth] = useState<any>(null);
   const [viewPreauth, setViewPreauth] = useState<any>(null);
@@ -66,6 +68,22 @@ export default function PreAuthorization() {
   const insertVersion = useSupabaseInsert("preauth_versions");
   const insertNotif = useSupabaseInsert("notifications");
   const [search, setSearch] = useState("");
+
+  const handleDelete = async (pa: any) => {
+    if (!confirm(`Delete pre-authorization for ${getPatientName(pa.patient_id)}? This removes its items, versions and email log entries.`)) return;
+    try {
+      await (supabase.from("preauth_items") as any).delete().eq("preauth_id", pa.id);
+      await (supabase.from("preauth_versions") as any).delete().eq("preauth_id", pa.id);
+      await (supabase.from("preauth_email_log") as any).delete().eq("preauth_id", pa.id);
+      const { error } = await (supabase.from("pre_authorizations") as any).delete().eq("id", pa.id);
+      if (error) throw error;
+      toast({ title: "Pre-authorization deleted" });
+      if (viewPreauth?.id === pa.id) setViewPreauth(null);
+      queryClient.invalidateQueries({ queryKey: ["pre_authorizations"] });
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    }
+  };
 
   const getPatientName = (id: string) => (patients || []).find((p: any) => p.id === id)?.patient_name || "—";
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
@@ -269,6 +287,7 @@ ${hospital}`;
           </div>
           <Button variant="outline" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />Export PDF</Button>
           <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>
+          <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => handleDelete(viewPreauth)}><Trash2 className="w-4 h-4" />Delete</Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -462,6 +481,7 @@ ${hospital}`;
                       <div className="flex items-center gap-1">
                         <button onClick={() => handleView(pa)} className="p-1.5 rounded hover:bg-muted"><Eye className="w-4 h-4 text-muted-foreground" /></button>
                         <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                        <button onClick={() => handleDelete(pa)} className="p-1.5 rounded hover:bg-destructive/10" title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></button>
                       </div>
                     </td>
                   </tr>

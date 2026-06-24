@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2 } from "lucide-react";
+import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,8 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState("GH¢ (Ghana Cedi)");
   const [logoUrl, setLogoUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [testing, setTesting] = useState(false);
 
   // SMTP / Hospital email settings
   const [smtpHost, setSmtpHost] = useState("");
@@ -259,6 +261,38 @@ export default function SettingsPage() {
               ]);
               toast({ title: "SMTP settings saved" });
             }}>Save SMTP</Button>
+
+            <div className="border-t border-border pt-4 mt-4 space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2"><Send className="w-4 h-4 text-primary" />Send Test Email</h4>
+              <p className="text-xs text-muted-foreground">Delivers a sample message with a dummy PDF attachment using the saved SMTP settings. Result is recorded in the email delivery log.</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[220px]">
+                  <Label>Send to</Label>
+                  <Input type="email" value={testEmailTo} onChange={(e) => setTestEmailTo(e.target.value)} placeholder="you@example.com" className="mt-1" />
+                </div>
+                <Button size="sm" disabled={!testEmailTo || testing} onClick={async () => {
+                  setTesting(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("send-preauth-email", {
+                      body: {
+                        test: true, to: testEmailTo,
+                        subject: "SMTP Test — " + (getSetting("provider_name") || "MedClaims"),
+                        body: "This is a test email from your MedClaims SMTP configuration.\n\nIf you received this with the attached PDF, your settings are working.",
+                        pdf_filename: "smtp-test.pdf",
+                      },
+                    });
+                    if (error || (data && (data as any).ok === false)) {
+                      const msg = (data as any)?.error || error?.message || "Send failed";
+                      toast({ title: "Test email failed", description: msg, variant: "destructive" });
+                    } else {
+                      toast({ title: "Test email sent", description: `Delivered to ${testEmailTo}. Logged in delivery log.` });
+                    }
+                  } catch (err: any) {
+                    toast({ title: "Error", description: err.message, variant: "destructive" });
+                  } finally { setTesting(false); }
+                }}>{testing ? "Sending..." : "Send Test Email"}</Button>
+              </div>
+            </div>
           </div>
 
           <div className="stat-card space-y-4">

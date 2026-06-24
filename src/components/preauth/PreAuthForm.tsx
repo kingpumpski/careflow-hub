@@ -151,8 +151,10 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
   const handleProcedureSelect = (procId: string) => {
     setProcedureId(procId);
     const proc = (procedures || []).find((p: any) => p.id === procId);
-    if (proc && items.length === 1 && !items[0].description) {
-      setItems([{ id: 1, description: proc.procedure_name, quantity: 1, unitCharge: Number(proc.default_tariff) || 0 }]);
+    // Always override the cost breakdown with the newly selected procedure so users
+    // can switch procedures without leftover items from a previous choice.
+    if (proc) {
+      setItems([{ id: Date.now(), description: proc.procedure_name, quantity: 1, unitCharge: Number(proc.default_tariff) || 0 }]);
     }
   };
 
@@ -378,30 +380,6 @@ export default function PreAuthForm({ onBack, editData }: PreAuthFormProps) {
                   </ul>
                 )}
               </div>
-            </div>
-          </div>
-
-          <div className="stat-card space-y-3">
-            <h3 className="font-heading font-semibold">Clinical & Approval Notes</h3>
-            <div>
-              <Label>Clinical Notes</Label>
-              <textarea
-                value={clinicalNotes}
-                onChange={(e) => setClinicalNotes(e.target.value)}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Symptoms, history, observations..."
-              />
-            </div>
-            <div>
-              <Label>Approval Notes (visible to reviewer)</Label>
-              <textarea
-                value={approvalNotes}
-                onChange={(e) => setApprovalNotes(e.target.value)}
-                rows={2}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Any context for the approving officer"
-              />
             </div>
           </div>
 
