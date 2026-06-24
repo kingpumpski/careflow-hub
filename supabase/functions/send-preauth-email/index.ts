@@ -3,13 +3,14 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 interface Body {
-  preauth_id: string;
+  preauth_id?: string;
   to: string;
   cc?: string[];
   subject: string;
   body: string;
-  pdf_base64: string;
-  pdf_filename: string;
+  pdf_base64?: string;
+  pdf_filename?: string;
+  test?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -39,7 +40,7 @@ Deno.serve(async (req) => {
     const userEmail = (claims.claims.email as string) || '';
 
     const payload = (await req.json()) as Body;
-    if (!payload.preauth_id || !payload.to || !payload.pdf_base64) {
+    if (!payload.to || (!payload.test && (!payload.preauth_id || !payload.pdf_base64))) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -62,7 +63,8 @@ Deno.serve(async (req) => {
     (settings || []).forEach((s: any) => { cfg[s.key] = s.value || ''; });
 
     const logRow: any = {
-      preauth_id: payload.preauth_id,
+      preauth_id: payload.preauth_id || null,
+      is_test: !!payload.test,
       to_email: payload.to,
       cc_emails: payload.cc || [],
       subject: payload.subject,
@@ -92,18 +94,25 @@ Deno.serve(async (req) => {
       const fromAddr = cfg.claims_sender_email || cfg.smtp_user;
       const fromName = cfg.provider_name || 'Claims Department';
 
+      let pdfB64 = payload.pdf_base64;
+      let pdfFile = payload.pdf_filename || 'test-attachment.pdf';
+      if (payload.test && !pdfB64) {
+        const dummy = `%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]/Contents 4 0 R/Resources<<>>>>endobj\n4 0 obj<</Length 44>>stream\nBT /F1 18 Tf 30 80 Td (SMTP Test PDF) Tj ET\nendstream endobj\ntrailer<</Root 1 0 R>>\n%%EOF`;
+        pdfB64 = btoa(dummy);
+      }
+
       await client.send({
         from: `${fromName} <${fromAddr}>`,
         to: payload.to,
         cc: payload.cc && payload.cc.length ? payload.cc : undefined,
         subject: payload.subject,
         content: payload.body,
-        attachments: [{
-          filename: payload.pdf_filename,
-          content: payload.pdf_base64,
+        attachments: pdfB64 ? [{
+          filename: pdfFile,
+          content: pdfB64,
           encoding: 'base64',
           contentType: 'application/pdf',
-        }],
+        }] : undefined,
       });
       await client.close();
 
@@ -112,9 +121,11 @@ Deno.serve(async (req) => {
       logRow.provider_response = `Delivered to ${payload.to} via ${cfg.smtp_host}`;
       await admin.from('preauth_email_log').insert(logRow);
 
-      await admin.from('pre_authorizations').update({
-        email_sent_at: new Date().toISOString(),
-      }).eq('id', payload.preauth_id);
+      if (payload.preauth_id) {
+        await admin.from('pre_authorizations').update({
+          email_sent_at: new Date().toISOString(),
+        }).eq('id', payload.preauth_id);
+      }
 
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
