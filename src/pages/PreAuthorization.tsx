@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,7 @@ function normState(s?: string): string {
 
 export default function PreAuthorization() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingPreauth, setEditingPreauth] = useState<any>(null);
   const [viewPreauth, setViewPreauth] = useState<any>(null);
@@ -77,9 +79,7 @@ export default function PreAuthorization() {
       if (error) throw error;
       toast({ title: "Pre-authorization deleted" });
       if (viewPreauth?.id === pa.id) setViewPreauth(null);
-      // refresh list
-      (preauths as any) && undefined;
-      await (window as any).location?.reload?.call?.(window.location); // simple invalidation
+      queryClient.invalidateQueries({ queryKey: ["pre_authorizations"] });
     } catch (err: any) {
       toast({ title: "Delete failed", description: err.message, variant: "destructive" });
     }
@@ -480,6 +480,7 @@ ${hospital}`;
                       <div className="flex items-center gap-1">
                         <button onClick={() => handleView(pa)} className="p-1.5 rounded hover:bg-muted"><Eye className="w-4 h-4 text-muted-foreground" /></button>
                         <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                        <button onClick={() => handleDelete(pa)} className="p-1.5 rounded hover:bg-destructive/10" title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></button>
                       </div>
                     </td>
                   </tr>
