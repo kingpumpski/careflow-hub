@@ -287,6 +287,7 @@ ${hospital}`;
           </div>
           <Button variant="outline" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />Export PDF</Button>
           <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>
+          <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => handleDelete(viewPreauth)}><Trash2 className="w-4 h-4" />Delete</Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
