@@ -1,12 +1,11 @@
-import { Search, User, Moon, Sun } from "lucide-react";
+import { Search, Moon, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext";
 import NotificationsPopover from "./NotificationsPopover";
+import UserMenu from "./UserMenu";
 import { useEffect, useState } from "react";
 
 export default function AppHeader() {
-  const { profile, userRole } = useAuth();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
 
   useEffect(() => {
@@ -24,11 +23,6 @@ export default function AppHeader() {
     if (saved === "dark") setDark(true);
   }, []);
 
-  const roleLabel: Record<string, string> = {
-    superuser: "Superuser", admin: "Admin", claims_officer: "Claims Officer",
-    accounts_officer: "Accounts Officer", data_entry_officer: "Data Entry", auditor: "Auditor", viewer: "Viewer",
-  };
-
   return (
     <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6">
       <div className="relative w-80">
@@ -40,15 +34,7 @@ export default function AppHeader() {
           {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
         <NotificationsPopover />
-        <div className="flex items-center gap-3 pl-4 border-l border-border">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <User className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <div className="text-sm">
-            <p className="font-medium leading-none">{profile?.full_name || "User"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{roleLabel[userRole || ""] || "Viewer"}</p>
-          </div>
-        </div>
+        <UserMenu />
       </div>
     </header>
   );

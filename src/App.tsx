@@ -33,6 +33,8 @@ import ServiceLines from "@/pages/ServiceLines";
 import Notifications from "@/pages/Notifications";
 import PreAuthAnalytics from "@/pages/PreAuthAnalytics";
 import DiagnosisCodes from "@/pages/DiagnosisCodes";
+import Chat from "@/pages/Chat";
+import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -83,6 +85,8 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/preauth-analytics" element={<PreAuthAnalytics />} />
         <Route path="/diagnosis-codes" element={<DiagnosisCodes />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
