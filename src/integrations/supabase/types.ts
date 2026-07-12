@@ -47,6 +47,42 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          is_broadcast: boolean
+          read_by: string[]
+          recipient_id: string | null
+          sender_id: string
+          subject: string | null
+          thread_key: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          is_broadcast?: boolean
+          read_by?: string[]
+          recipient_id?: string | null
+          sender_id: string
+          subject?: string | null
+          thread_key?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          is_broadcast?: boolean
+          read_by?: string[]
+          recipient_id?: string | null
+          sender_id?: string
+          subject?: string | null
+          thread_key?: string | null
+        }
+        Relationships: []
+      }
       claims: {
         Row: {
           appeal_filed_at: string | null
@@ -568,6 +604,7 @@ export type Database = {
       }
       preauth_catalog_items: {
         Row: {
+          archived: boolean
           category: string | null
           created_at: string
           id: string
@@ -575,6 +612,7 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          archived?: boolean
           category?: string | null
           created_at?: string
           id?: string
@@ -582,6 +620,7 @@ export type Database = {
           unit_price?: number
         }
         Update: {
+          archived?: boolean
           category?: string | null
           created_at?: string
           id?: string
