@@ -12,6 +12,7 @@ import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDele
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { aiDuplicateCheck, localDuplicate } from "@/lib/dedupCheck";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 const ICD_CATEGORIES = [
   "Infectious & Parasitic", "Neoplasms", "Blood & Immune", "Endocrine & Metabolic",
@@ -35,6 +36,7 @@ export default function DiagnosisCodes() {
   const [importOpen, setImportOpen] = useState(false);
   const [aiHint, setAiHint] = useState<string>("");
   const [aiBusy, setAiBusy] = useState(false);
+  const searchable = useMasterSearch("diagnosis_codes", ["code", "description", "category"], search, codes as any[]);
 
   const openNew = () => { setEditing(null); setForm({ code: "", description: "", category: "" }); setDialogOpen(true); };
   const openEdit = (c: any) => { setEditing(c); setForm({ code: c.code || "", description: c.description || "", category: c.category || "" }); setDialogOpen(true); };
@@ -110,13 +112,14 @@ export default function DiagnosisCodes() {
 
   const filtered = useMemo(() => {
     const t = search.toLowerCase().trim();
-    return (codes || []).filter((c: any) => {
+    const source = searchable;
+    return (source || []).filter((c: any) => {
       if (!showArchived && c.archived) return false;
       if (showArchived && !c.archived) return false;
       if (!t) return true;
       return c.code?.toLowerCase().includes(t) || c.description?.toLowerCase().includes(t) || c.category?.toLowerCase?.().includes(t);
     });
-  }, [codes, search, showArchived]);
+  }, [searchable, search, showArchived]);
 
   return (
     <div className="space-y-6">

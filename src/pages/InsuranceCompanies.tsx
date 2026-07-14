@@ -10,6 +10,7 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 const importColumns = [
   { key: "company_name", label: "Company Name", required: true },
@@ -31,6 +32,7 @@ export default function InsuranceCompanies() {
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" });
+  const searchable = useMasterSearch("insurance_companies", ["company_name", "contact_person", "email"], search, insurers as any[]);
 
   const openNew = () => { setEditing(null); setForm({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" }); setDialogOpen(true); };
   const openEdit = (i: any) => { setEditing(i); setForm({ company_name: i.company_name, email: i.email || "", phone: i.phone || "", address: i.address || "", contact_person: i.contact_person || "", color: i.color || "#3b82f6", additional_emails: Array.isArray(i.additional_emails) ? i.additional_emails.join(", ") : "" }); setDialogOpen(true); };
@@ -68,7 +70,7 @@ export default function InsuranceCompanies() {
     try { await deleteMutation.mutateAsync(id); toast({ title: "Insurance company deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
-  const filtered = (insurers || []).filter((i: any) => {
+  const filtered = (searchable || []).filter((i: any) => {
     const matchSearch = i.company_name?.toLowerCase().includes(search.toLowerCase());
     const matchActive = showInactive ? true : i.is_active !== false;
     return matchSearch && matchActive;

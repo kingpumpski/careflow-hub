@@ -8,6 +8,7 @@ import EntityDialog from "@/components/shared/EntityDialog";
 import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 export default function Clients() {
   const { data: clients, isLoading } = useSupabaseQuery("client_companies");
@@ -48,7 +49,8 @@ export default function Clients() {
   };
 
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
-  const filtered = (clients || []).filter((c: any) => c.company_name?.toLowerCase().includes(search.toLowerCase()));
+  const searchable = useMasterSearch("client_companies", ["company_name"], search, clients as any[]);
+  const filtered = (searchable || []).filter((c: any) => c.company_name?.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-6">

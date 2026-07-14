@@ -31,6 +31,8 @@ const menuItems = [
       { label: "Rejections", path: "/rejections" },
       { label: "Withholding Tax", path: "/withholding-tax" },
       { label: "Companies", path: "/insurance" },
+      { label: "Bulk Import", path: "/insurance-import" },
+      { label: "Duplicate Audit", path: "/duplicate-audit" },
     ],
   },
   { label: "Reports", icon: BarChart3, path: "/reports" },

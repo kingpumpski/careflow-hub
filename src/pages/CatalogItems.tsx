@@ -11,6 +11,7 @@ import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 import { localDuplicate } from "@/lib/dedupCheck";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 const importColumns = [
   { key: "item_name", label: "Item Name", required: true },
@@ -30,6 +31,7 @@ export default function CatalogItems() {
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [form, setForm] = useState({ item_name: "", unit_price: "", category: "" });
+  const searchable = useMasterSearch("preauth_catalog_items", ["item_name", "category"], search, items as any[]);
 
   const openNew = () => { setEditing(null); setForm({ item_name: "", unit_price: "", category: "" }); setDialogOpen(true); };
   const openEdit = (i: any) => { setEditing(i); setForm({ item_name: i.item_name, unit_price: String(i.unit_price), category: i.category || "" }); setDialogOpen(true); };
@@ -65,7 +67,7 @@ export default function CatalogItems() {
     try { await deleteMutation.mutateAsync(id); toast({ title: "Item deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
-  const filtered = (items || [])
+  const filtered = (searchable || [])
     .filter((i: any) => showArchived ? i.archived : !i.archived)
     .filter((i: any) =>
       i.item_name?.toLowerCase().includes(search.toLowerCase()) ||
