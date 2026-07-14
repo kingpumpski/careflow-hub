@@ -36,6 +36,7 @@ export default function DiagnosisCodes() {
   const [importOpen, setImportOpen] = useState(false);
   const [aiHint, setAiHint] = useState<string>("");
   const [aiBusy, setAiBusy] = useState(false);
+  const searchable = useMasterSearch("diagnosis_codes", ["code", "description", "category"], search, codes as any[]);
 
   const openNew = () => { setEditing(null); setForm({ code: "", description: "", category: "" }); setDialogOpen(true); };
   const openEdit = (c: any) => { setEditing(c); setForm({ code: c.code || "", description: c.description || "", category: c.category || "" }); setDialogOpen(true); };
