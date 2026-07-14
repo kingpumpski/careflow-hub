@@ -35,6 +35,8 @@ import PreAuthAnalytics from "@/pages/PreAuthAnalytics";
 import DiagnosisCodes from "@/pages/DiagnosisCodes";
 import Chat from "@/pages/Chat";
 import Profile from "@/pages/Profile";
+import InsuranceBulkImport from "@/pages/InsuranceBulkImport";
+import DuplicateAudit from "@/pages/DuplicateAudit";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -87,6 +89,8 @@ function ProtectedRoutes() {
         <Route path="/diagnosis-codes" element={<DiagnosisCodes />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/insurance-import" element={<InsuranceBulkImport />} />
+        <Route path="/duplicate-audit" element={<DuplicateAudit />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
