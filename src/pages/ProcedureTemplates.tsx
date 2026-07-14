@@ -10,6 +10,7 @@ import EntityDialog from "@/components/shared/EntityDialog";
 import MultiDiagnosisPicker from "@/components/shared/MultiDiagnosisPicker";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 interface TemplateItem {
   description: string;
@@ -103,7 +104,8 @@ export default function ProcedureTemplates() {
 
   const getProcName = (id: string) => (procedures || []).find((p: any) => p.id === id)?.procedure_name || "—";
 
-  const filtered = (templates || []).filter((t: any) => {
+  const searchable = useMasterSearch("procedure_templates", ["template_name", "description"], search, templates as any[]);
+  const filtered = (searchable || []).filter((t: any) => {
     if (showArchived ? !t.archived : !!t.archived) return false;
     return t.template_name?.toLowerCase().includes(search.toLowerCase());
   });

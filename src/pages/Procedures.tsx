@@ -9,6 +9,7 @@ import EntityDialog from "@/components/shared/EntityDialog";
 import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 const categoryColors: Record<string, string> = {
   Radiology: "bg-info/10 text-info",
@@ -32,6 +33,7 @@ export default function Procedures() {
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ procedure_name: "", procedure_code: "", default_tariff: "", category: "", description: "" });
+  const searchable = useMasterSearch("procedures", ["procedure_name", "procedure_code", "category", "description"], search, procedures as any[]);
 
   const openNew = () => { setEditing(null); setForm({ procedure_name: "", procedure_code: "", default_tariff: "", category: "", description: "" }); setDialogOpen(true); };
   const openEdit = (p: any) => { setEditing(p); setForm({ procedure_name: p.procedure_name, procedure_code: p.procedure_code || "", default_tariff: String(p.default_tariff), category: p.category || "", description: p.description || "" }); setDialogOpen(true); };
@@ -58,7 +60,7 @@ export default function Procedures() {
     try { await deleteMutation.mutateAsync(id); toast({ title: "Procedure deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
-  const filtered = (procedures || []).filter((p: any) =>
+  const filtered = (searchable || []).filter((p: any) =>
     p.procedure_name?.toLowerCase().includes(search.toLowerCase()) ||
     p.procedure_code?.toLowerCase().includes(search.toLowerCase())
   );

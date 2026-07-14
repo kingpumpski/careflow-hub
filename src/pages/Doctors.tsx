@@ -9,6 +9,7 @@ import EntityDialog from "@/components/shared/EntityDialog";
 import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { useMasterSearch } from "@/hooks/useMasterSearch";
 
 export default function Doctors() {
   const { data: doctors, isLoading } = useSupabaseQuery("doctors");
@@ -46,7 +47,8 @@ export default function Doctors() {
     try { await deleteMutation.mutateAsync(id); toast({ title: "Doctor deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
-  const filtered = (doctors || []).filter((d: any) =>
+  const searchable = useMasterSearch("doctors", ["doctor_name", "specialty"], search, doctors as any[]);
+  const filtered = (searchable || []).filter((d: any) =>
     d.doctor_name?.toLowerCase().includes(search.toLowerCase()) ||
     d.specialty?.toLowerCase().includes(search.toLowerCase())
   );
