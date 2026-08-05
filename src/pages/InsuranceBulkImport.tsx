@@ -4,9 +4,10 @@ import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, ArrowRight, Sparkle
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { aiDuplicateCheck } from "@/lib/dedupCheck";
 
 type ParsedRow = {
   sheet: string;
@@ -19,7 +20,13 @@ type ParsedRow = {
   wht: number;
 };
 
-type MissingMap = Record<string, { action: "map" | "create" | "skip"; insurerId?: string; newName?: string }>;
+type MissingMap = Record<string, {
+  action: "map" | "create" | "skip";
+  insurerId?: string;
+  newName?: string;
+  aiConfidence?: number;
+  aiReason?: string;
+}>;
 
 const MONTHS: Record<string, number> = {
   jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
@@ -102,18 +109,24 @@ function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): Par
 export default function InsuranceBulkImport() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: existingClaims } = useSupabaseQuery("claims");
+  const { data: existingPayments } = useSupabaseQuery("payments");
+  const { data: existingWHT } = useSupabaseQuery("withholding_tax");
   const insertClaim = useSupabaseInsert("claims");
   const insertPayment = useSupabaseInsert("payments");
   const insertWHT = useSupabaseInsert("withholding_tax");
   const insertAudit = useSupabaseInsert("audit_logs");
   const insertInsurer = useSupabaseInsert("insurance_companies");
+  const updateClaim = useSupabaseUpdate("claims");
+  const updatePayment = useSupabaseUpdate("payments");
+  const updateWHT = useSupabaseUpdate("withholding_tax");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [missingMap, setMissingMap] = useState<MissingMap>({});
   const [importing, setImporting] = useState(false);
+  const [aiMatching, setAiMatching] = useState(false);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState<{ inserted: number; duplicates: number; created: number } | null>(null);
+  const [summary, setSummary] = useState<{ inserted: number; updated: number; duplicates: number; created: number } | null>(null);
 
   const insurerIndex = useMemo(() => {
     const m = new Map<string, any>();
@@ -166,6 +179,34 @@ export default function InsuranceBulkImport() {
   const dupKey = (companyId: string, month: number, year: number, status: string, amount: number) =>
     `${companyId}|${month}|${year}|${status}|${amount}`;
 
+  /** AI-assisted routing: ask the dedup model to match each unmatched file name to an existing insurer. */
+  const runAiMatch = async () => {
+    if (!missing.length) return;
+    setAiMatching(true);
+    try {
+      const corpus = (insurers || []).map((i: any) => ({ id: i.id, company_name: i.company_name }));
+      let matched = 0;
+      for (const name of missing) {
+        const res = await aiDuplicateCheck("insurance", { company_name: name }, corpus);
+        if (res.duplicate && res.match_id && corpus.some((c) => c.id === res.match_id)) {
+          matched++;
+          setMissingMap((m) => ({
+            ...m,
+            [name]: { action: "map", insurerId: res.match_id!, aiConfidence: res.confidence, aiReason: res.reason },
+          }));
+        } else {
+          setMissingMap((m) => ({
+            ...m,
+            [name]: { action: "create", newName: name, aiConfidence: res.confidence, aiReason: res.reason || "No close match — suggest creating" },
+          }));
+        }
+      }
+      toast({ title: "AI routing complete", description: `${matched} of ${missing.length} names matched to existing insurers` });
+    } catch (e: any) {
+      toast({ title: "AI routing failed", description: e?.message, variant: "destructive" });
+    } finally { setAiMatching(false); }
+  };
+
   const runImport = async () => {
     // Verify each missing name has a decision
     for (const n of missing) {
@@ -175,63 +216,91 @@ export default function InsuranceBulkImport() {
       if (d.action === "create" && !(d.newName || n).trim()) { setError(`Give a name for the new insurer for "${n}"`); return; }
     }
     setError(""); setImporting(true);
-    let inserted = 0, duplicates = 0, created = 0;
+    let inserted = 0, updated = 0, duplicates = 0, created = 0;
     try {
-      // Build a Set of existing (insurer,month,year,status,amount) to reject exact duplicates
-      const existingSet = new Set<string>();
-      (existingClaims || []).forEach((c: any) => existingSet.add(dupKey(c.insurance_company_id, c.claim_month, c.claim_year, c.status, Number(c.claim_amount || 0))));
-
       const createdBefore = insurerIndex.size;
+
+      // Index existing rows by (insurer|month|year|status) so we can upsert instead of blind-inserting.
+      const claimIdx = new Map<string, { id: string; amount: number }>();
+      (existingClaims || []).forEach((c: any) =>
+        claimIdx.set(`${c.insurance_company_id}|${c.claim_month}|${c.claim_year}|${c.status}`, { id: c.id, amount: Number(c.claim_amount || 0) }));
+      const payIdx = new Map<string, { id: string; amount: number }>();
+      (existingPayments || []).forEach((p: any) =>
+        payIdx.set(`${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`, { id: p.id, amount: Number(p.amount_paid || 0) }));
+      const whtIdx = new Map<string, { id: string; amount: number }>();
+      (existingWHT || []).forEach((w: any) =>
+        whtIdx.set(`${w.insurance_company_id}|${w.month}|${w.year}`, { id: w.id, amount: Number(w.tax_amount || 0) }));
+
+      const logDuplicate = async (r: ParsedRow, kind: string, amount: number) => {
+        duplicates++;
+        await insertAudit.mutateAsync({
+          table_name: "insurance_bulk_import", record_id: `${r.insurerNameRaw}|${r.month}|${r.year}|${kind}|${amount}`,
+          action: "duplicate_rejected",
+          new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: kind, amount },
+        });
+      };
 
       for (const r of rows) {
         const insurerId = await resolveInsurerId(r.insurerNameRaw);
-        if (!insurerId) { duplicates++; continue; }
+        if (!insurerId) continue; // skipped by user decision
 
-        // Submitted claim row
-        if (r.submitted > 0) {
-          const k = dupKey(insurerId, r.month, r.year, "submitted", r.submitted);
-          if (existingSet.has(k)) {
-            duplicates++;
+        // Claims (submitted / rejected) — upsert on (insurer, month, year, status)
+        for (const status of ["submitted", "rejected"] as const) {
+          const amount = status === "submitted" ? r.submitted : r.rejected;
+          if (amount <= 0) continue;
+          const key = `${insurerId}|${r.month}|${r.year}|${status}`;
+          const hit = claimIdx.get(key);
+          if (hit && hit.amount === amount) { await logDuplicate(r, status, amount); continue; }
+          if (hit) {
+            await updateClaim.mutateAsync({ id: hit.id, claim_amount: amount });
             await insertAudit.mutateAsync({
-              table_name: "insurance_bulk_import", record_id: k, action: "duplicate_rejected",
-              new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: "submitted", amount: r.submitted },
+              table_name: "claims", record_id: hit.id, action: "bulk_import_update",
+              old_data: { claim_amount: hit.amount }, new_data: { claim_amount: amount, sheet: r.sheet },
             });
+            claimIdx.set(key, { id: hit.id, amount }); updated++;
           } else {
-            await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: r.submitted, claim_month: r.month, claim_year: r.year, status: "submitted" });
-            existingSet.add(k); inserted++;
+            const row: any = await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: amount, claim_month: r.month, claim_year: r.year, status });
+            claimIdx.set(key, { id: row?.id, amount }); inserted++;
           }
         }
-        // Rejected
-        if (r.rejected > 0) {
-          const k = dupKey(insurerId, r.month, r.year, "rejected", r.rejected);
-          if (existingSet.has(k)) {
-            duplicates++;
-            await insertAudit.mutateAsync({
-              table_name: "insurance_bulk_import", record_id: k, action: "duplicate_rejected",
-              new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: "rejected", amount: r.rejected },
-            });
-          } else {
-            await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: r.rejected, claim_month: r.month, claim_year: r.year, status: "rejected" });
-            existingSet.add(k); inserted++;
-          }
-        }
-        // Payment
+
+        // Payment — upsert on (insurer, month, year)
         if (r.paid > 0) {
-          await insertPayment.mutateAsync({
-            insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
-            payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
-          });
-          inserted++;
+          const key = `${insurerId}|${r.month}|${r.year}`;
+          const hit = payIdx.get(key);
+          if (hit && hit.amount === r.paid) { await logDuplicate(r, "paid", r.paid); }
+          else if (hit) {
+            await updatePayment.mutateAsync({ id: hit.id, amount_paid: r.paid });
+            await insertAudit.mutateAsync({ table_name: "payments", record_id: hit.id, action: "bulk_import_update", old_data: { amount_paid: hit.amount }, new_data: { amount_paid: r.paid, sheet: r.sheet } });
+            payIdx.set(key, { id: hit.id, amount: r.paid }); updated++;
+          } else {
+            const row: any = await insertPayment.mutateAsync({
+              insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
+              payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
+            });
+            payIdx.set(key, { id: row?.id, amount: r.paid }); inserted++;
+          }
         }
-        // WHT
+
+        // WHT — upsert on (insurer, month, year)
         if (r.wht > 0) {
-          await insertWHT.mutateAsync({ insurance_company_id: insurerId, month: r.month, year: r.year, claim_total: r.submitted, tax_rate: r.submitted ? (r.wht / r.submitted) * 100 : 0, tax_amount: r.wht });
-          inserted++;
+          const key = `${insurerId}|${r.month}|${r.year}`;
+          const hit = whtIdx.get(key);
+          const payload = { claim_total: r.submitted, tax_rate: r.submitted ? (r.wht / r.submitted) * 100 : 0, tax_amount: r.wht };
+          if (hit && hit.amount === r.wht) { await logDuplicate(r, "wht", r.wht); }
+          else if (hit) {
+            await updateWHT.mutateAsync({ id: hit.id, ...payload });
+            await insertAudit.mutateAsync({ table_name: "withholding_tax", record_id: hit.id, action: "bulk_import_update", old_data: { tax_amount: hit.amount }, new_data: { ...payload, sheet: r.sheet } });
+            whtIdx.set(key, { id: hit.id, amount: r.wht }); updated++;
+          } else {
+            const row: any = await insertWHT.mutateAsync({ insurance_company_id: insurerId, month: r.month, year: r.year, ...payload });
+            whtIdx.set(key, { id: row?.id, amount: r.wht }); inserted++;
+          }
         }
       }
       created = insurerIndex.size - createdBefore;
-      setSummary({ inserted, duplicates, created });
-      toast({ title: "Import complete", description: `${inserted} inserted · ${duplicates} duplicates rejected · ${created} insurers created` });
+      setSummary({ inserted, updated, duplicates, created });
+      toast({ title: "Import complete", description: `${inserted} inserted · ${updated} updated · ${duplicates} duplicates rejected · ${created} insurers created` });
     } catch (err: any) {
       setError(err.message || "Import failed");
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
@@ -270,10 +339,15 @@ export default function InsuranceBulkImport() {
 
             {missing.length > 0 && (
               <div>
-                <h3 className="font-heading font-semibold mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4 text-warning" />Resolve missing insurers</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-heading font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-warning" />Resolve missing insurers</h3>
+                  <Button variant="outline" size="sm" onClick={runAiMatch} disabled={aiMatching} className="gap-2">
+                    <Sparkles className="w-4 h-4" />{aiMatching ? "AI matching..." : "AI match insurers"}
+                  </Button>
+                </div>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="data-table text-sm">
-                    <thead><tr><th>Name in file</th><th>Action</th><th>Target / New name</th></tr></thead>
+                    <thead><tr><th>Name in file</th><th>Action</th><th>Target / New name</th><th>AI suggestion</th></tr></thead>
                     <tbody>
                       {missing.map((name) => {
                         const d = missingMap[name] || { action: "map" };
@@ -302,6 +376,16 @@ export default function InsuranceBulkImport() {
                                   onChange={(e) => setMissingMap((m) => ({ ...m, [name]: { ...d, newName: e.target.value } }))} />
                               )}
                               {d.action === "skip" && <span className="text-xs text-muted-foreground">Rows will be dropped</span>}
+                            </td>
+                            <td className="text-xs text-muted-foreground max-w-[220px]">
+                              {d.aiReason ? (
+                                <span>
+                                  {typeof d.aiConfidence === "number" && (
+                                    <Badge variant="outline" className="mr-1">{Math.round(d.aiConfidence * 100)}%</Badge>
+                                  )}
+                                  {d.aiReason}
+                                </span>
+                              ) : "—"}
                             </td>
                           </tr>
                         );
@@ -339,7 +423,7 @@ export default function InsuranceBulkImport() {
             </div>
 
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Duplicate rule: exact match on (insurer, month, year, status, amount) is rejected and logged.</p>
+              <p className="text-xs text-muted-foreground">Safe upsert: identical (insurer, month, year, status, amount) rows are rejected as duplicates and logged; changed amounts update the existing record with old/new values in the audit trail.</p>
               <Button onClick={runImport} disabled={importing} className="gap-2">
                 {importing ? "Importing..." : <>Import <ArrowRight className="w-4 h-4" /></>}
               </Button>
@@ -352,7 +436,7 @@ export default function InsuranceBulkImport() {
             <CheckCircle2 className="w-5 h-5 text-success" />
             <div className="text-sm">
               <div className="font-medium">Import complete</div>
-              <div className="text-muted-foreground">Inserted <b>{summary.inserted}</b> · Duplicates rejected <b>{summary.duplicates}</b> · New insurers <b>{summary.created}</b></div>
+              <div className="text-muted-foreground">Inserted <b>{summary.inserted}</b> · Updated <b>{summary.updated}</b> · Duplicates rejected <b>{summary.duplicates}</b> · New insurers <b>{summary.created}</b></div>
             </div>
           </div>
         )}
