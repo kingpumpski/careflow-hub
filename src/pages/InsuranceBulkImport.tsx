@@ -114,13 +114,17 @@ export default function InsuranceBulkImport() {
   const insertWHT = useSupabaseInsert("withholding_tax");
   const insertAudit = useSupabaseInsert("audit_logs");
   const insertInsurer = useSupabaseInsert("insurance_companies");
+  const updateClaim = useSupabaseUpdate("claims");
+  const updatePayment = useSupabaseUpdate("payments");
+  const updateWHT = useSupabaseUpdate("withholding_tax");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [missingMap, setMissingMap] = useState<MissingMap>({});
   const [importing, setImporting] = useState(false);
+  const [aiMatching, setAiMatching] = useState(false);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState<{ inserted: number; duplicates: number; created: number } | null>(null);
+  const [summary, setSummary] = useState<{ inserted: number; updated: number; duplicates: number; created: number } | null>(null);
 
   const insurerIndex = useMemo(() => {
     const m = new Map<string, any>();
