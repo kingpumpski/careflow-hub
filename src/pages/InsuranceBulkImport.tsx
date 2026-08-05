@@ -109,6 +109,8 @@ function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): Par
 export default function InsuranceBulkImport() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: existingClaims } = useSupabaseQuery("claims");
+  const { data: existingPayments } = useSupabaseQuery("payments");
+  const { data: existingWHT } = useSupabaseQuery("withholding_tax");
   const insertClaim = useSupabaseInsert("claims");
   const insertPayment = useSupabaseInsert("payments");
   const insertWHT = useSupabaseInsert("withholding_tax");
