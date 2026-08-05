@@ -36,6 +36,7 @@ const menuItems = [
     ],
   },
   { label: "Reports", icon: BarChart3, path: "/reports" },
+  { label: "Schedule Generator", icon: ClipboardList, path: "/schedule" },
   {
     label: "Analytics", icon: TrendingUp,
     children: [
@@ -54,7 +55,7 @@ const menuItems = [
   { label: "AI Assistant", icon: Bot, path: "/ai-assistant" },
 ];
 
-export default function AppSidebar() {
+export default function AppSidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const location = useLocation();
   const { signOut } = useAuth();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["Insurance", "Pre-Authorization"]);
@@ -90,7 +91,7 @@ export default function AppSidebar() {
               {expandedMenus.includes(item.label) && (
                 <div className="ml-8 mt-0.5 space-y-0.5">
                   {item.children.map((child) => (
-                    <Link key={child.path} to={child.path} className={`sidebar-item ${isActive(child.path) ? "sidebar-item-active" : ""}`}>
+                    <Link key={child.path} to={child.path} onClick={onNavigate} className={`sidebar-item ${isActive(child.path) ? "sidebar-item-active" : ""}`}>
                       {child.label}
                     </Link>
                   ))}
@@ -98,7 +99,7 @@ export default function AppSidebar() {
               )}
             </div>
           ) : (
-            <Link key={item.path} to={item.path!} className={`sidebar-item ${isActive(item.path!) ? "sidebar-item-active" : ""}`}>
+            <Link key={item.path} to={item.path!} onClick={onNavigate} className={`sidebar-item ${isActive(item.path!) ? "sidebar-item-active" : ""}`}>
               <item.icon className="w-[18px] h-[18px]" />{item.label}
             </Link>
           )
