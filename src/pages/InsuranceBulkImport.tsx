@@ -4,9 +4,10 @@ import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, ArrowRight, Sparkle
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { aiDuplicateCheck } from "@/lib/dedupCheck";
 
 type ParsedRow = {
   sheet: string;
@@ -19,7 +20,13 @@ type ParsedRow = {
   wht: number;
 };
 
-type MissingMap = Record<string, { action: "map" | "create" | "skip"; insurerId?: string; newName?: string }>;
+type MissingMap = Record<string, {
+  action: "map" | "create" | "skip";
+  insurerId?: string;
+  newName?: string;
+  aiConfidence?: number;
+  aiReason?: string;
+}>;
 
 const MONTHS: Record<string, number> = {
   jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
