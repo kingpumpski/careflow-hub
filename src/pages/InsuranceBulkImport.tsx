@@ -179,6 +179,34 @@ export default function InsuranceBulkImport() {
   const dupKey = (companyId: string, month: number, year: number, status: string, amount: number) =>
     `${companyId}|${month}|${year}|${status}|${amount}`;
 
+  /** AI-assisted routing: ask the dedup model to match each unmatched file name to an existing insurer. */
+  const runAiMatch = async () => {
+    if (!missing.length) return;
+    setAiMatching(true);
+    try {
+      const corpus = (insurers || []).map((i: any) => ({ id: i.id, company_name: i.company_name }));
+      let matched = 0;
+      for (const name of missing) {
+        const res = await aiDuplicateCheck("insurance", { company_name: name }, corpus);
+        if (res.duplicate && res.match_id && corpus.some((c) => c.id === res.match_id)) {
+          matched++;
+          setMissingMap((m) => ({
+            ...m,
+            [name]: { action: "map", insurerId: res.match_id!, aiConfidence: res.confidence, aiReason: res.reason },
+          }));
+        } else {
+          setMissingMap((m) => ({
+            ...m,
+            [name]: { action: "create", newName: name, aiConfidence: res.confidence, aiReason: res.reason || "No close match — suggest creating" },
+          }));
+        }
+      }
+      toast({ title: "AI routing complete", description: `${matched} of ${missing.length} names matched to existing insurers` });
+    } catch (e: any) {
+      toast({ title: "AI routing failed", description: e?.message, variant: "destructive" });
+    } finally { setAiMatching(false); }
+  };
+
   const runImport = async () => {
     // Verify each missing name has a decision
     for (const n of missing) {
@@ -188,63 +216,91 @@ export default function InsuranceBulkImport() {
       if (d.action === "create" && !(d.newName || n).trim()) { setError(`Give a name for the new insurer for "${n}"`); return; }
     }
     setError(""); setImporting(true);
-    let inserted = 0, duplicates = 0, created = 0;
+    let inserted = 0, updated = 0, duplicates = 0, created = 0;
     try {
-      // Build a Set of existing (insurer,month,year,status,amount) to reject exact duplicates
-      const existingSet = new Set<string>();
-      (existingClaims || []).forEach((c: any) => existingSet.add(dupKey(c.insurance_company_id, c.claim_month, c.claim_year, c.status, Number(c.claim_amount || 0))));
-
       const createdBefore = insurerIndex.size;
+
+      // Index existing rows by (insurer|month|year|status) so we can upsert instead of blind-inserting.
+      const claimIdx = new Map<string, { id: string; amount: number }>();
+      (existingClaims || []).forEach((c: any) =>
+        claimIdx.set(`${c.insurance_company_id}|${c.claim_month}|${c.claim_year}|${c.status}`, { id: c.id, amount: Number(c.claim_amount || 0) }));
+      const payIdx = new Map<string, { id: string; amount: number }>();
+      (existingPayments || []).forEach((p: any) =>
+        payIdx.set(`${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`, { id: p.id, amount: Number(p.amount_paid || 0) }));
+      const whtIdx = new Map<string, { id: string; amount: number }>();
+      (existingWHT || []).forEach((w: any) =>
+        whtIdx.set(`${w.insurance_company_id}|${w.month}|${w.year}`, { id: w.id, amount: Number(w.tax_amount || 0) }));
+
+      const logDuplicate = async (r: ParsedRow, kind: string, amount: number) => {
+        duplicates++;
+        await insertAudit.mutateAsync({
+          table_name: "insurance_bulk_import", record_id: `${r.insurerNameRaw}|${r.month}|${r.year}|${kind}|${amount}`,
+          action: "duplicate_rejected",
+          new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: kind, amount },
+        });
+      };
 
       for (const r of rows) {
         const insurerId = await resolveInsurerId(r.insurerNameRaw);
-        if (!insurerId) { duplicates++; continue; }
+        if (!insurerId) continue; // skipped by user decision
 
-        // Submitted claim row
-        if (r.submitted > 0) {
-          const k = dupKey(insurerId, r.month, r.year, "submitted", r.submitted);
-          if (existingSet.has(k)) {
-            duplicates++;
+        // Claims (submitted / rejected) — upsert on (insurer, month, year, status)
+        for (const status of ["submitted", "rejected"] as const) {
+          const amount = status === "submitted" ? r.submitted : r.rejected;
+          if (amount <= 0) continue;
+          const key = `${insurerId}|${r.month}|${r.year}|${status}`;
+          const hit = claimIdx.get(key);
+          if (hit && hit.amount === amount) { await logDuplicate(r, status, amount); continue; }
+          if (hit) {
+            await updateClaim.mutateAsync({ id: hit.id, claim_amount: amount });
             await insertAudit.mutateAsync({
-              table_name: "insurance_bulk_import", record_id: k, action: "duplicate_rejected",
-              new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: "submitted", amount: r.submitted },
+              table_name: "claims", record_id: hit.id, action: "bulk_import_update",
+              old_data: { claim_amount: hit.amount }, new_data: { claim_amount: amount, sheet: r.sheet },
             });
+            claimIdx.set(key, { id: hit.id, amount }); updated++;
           } else {
-            await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: r.submitted, claim_month: r.month, claim_year: r.year, status: "submitted" });
-            existingSet.add(k); inserted++;
+            const row: any = await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: amount, claim_month: r.month, claim_year: r.year, status });
+            claimIdx.set(key, { id: row?.id, amount }); inserted++;
           }
         }
-        // Rejected
-        if (r.rejected > 0) {
-          const k = dupKey(insurerId, r.month, r.year, "rejected", r.rejected);
-          if (existingSet.has(k)) {
-            duplicates++;
-            await insertAudit.mutateAsync({
-              table_name: "insurance_bulk_import", record_id: k, action: "duplicate_rejected",
-              new_data: { insurer: r.insurerNameRaw, sheet: r.sheet, month: r.month, year: r.year, status: "rejected", amount: r.rejected },
-            });
-          } else {
-            await insertClaim.mutateAsync({ insurance_company_id: insurerId, claim_amount: r.rejected, claim_month: r.month, claim_year: r.year, status: "rejected" });
-            existingSet.add(k); inserted++;
-          }
-        }
-        // Payment
+
+        // Payment — upsert on (insurer, month, year)
         if (r.paid > 0) {
-          await insertPayment.mutateAsync({
-            insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
-            payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
-          });
-          inserted++;
+          const key = `${insurerId}|${r.month}|${r.year}`;
+          const hit = payIdx.get(key);
+          if (hit && hit.amount === r.paid) { await logDuplicate(r, "paid", r.paid); }
+          else if (hit) {
+            await updatePayment.mutateAsync({ id: hit.id, amount_paid: r.paid });
+            await insertAudit.mutateAsync({ table_name: "payments", record_id: hit.id, action: "bulk_import_update", old_data: { amount_paid: hit.amount }, new_data: { amount_paid: r.paid, sheet: r.sheet } });
+            payIdx.set(key, { id: hit.id, amount: r.paid }); updated++;
+          } else {
+            const row: any = await insertPayment.mutateAsync({
+              insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
+              payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
+            });
+            payIdx.set(key, { id: row?.id, amount: r.paid }); inserted++;
+          }
         }
-        // WHT
+
+        // WHT — upsert on (insurer, month, year)
         if (r.wht > 0) {
-          await insertWHT.mutateAsync({ insurance_company_id: insurerId, month: r.month, year: r.year, claim_total: r.submitted, tax_rate: r.submitted ? (r.wht / r.submitted) * 100 : 0, tax_amount: r.wht });
-          inserted++;
+          const key = `${insurerId}|${r.month}|${r.year}`;
+          const hit = whtIdx.get(key);
+          const payload = { claim_total: r.submitted, tax_rate: r.submitted ? (r.wht / r.submitted) * 100 : 0, tax_amount: r.wht };
+          if (hit && hit.amount === r.wht) { await logDuplicate(r, "wht", r.wht); }
+          else if (hit) {
+            await updateWHT.mutateAsync({ id: hit.id, ...payload });
+            await insertAudit.mutateAsync({ table_name: "withholding_tax", record_id: hit.id, action: "bulk_import_update", old_data: { tax_amount: hit.amount }, new_data: { ...payload, sheet: r.sheet } });
+            whtIdx.set(key, { id: hit.id, amount: r.wht }); updated++;
+          } else {
+            const row: any = await insertWHT.mutateAsync({ insurance_company_id: insurerId, month: r.month, year: r.year, ...payload });
+            whtIdx.set(key, { id: row?.id, amount: r.wht }); inserted++;
+          }
         }
       }
       created = insurerIndex.size - createdBefore;
-      setSummary({ inserted, duplicates, created });
-      toast({ title: "Import complete", description: `${inserted} inserted · ${duplicates} duplicates rejected · ${created} insurers created` });
+      setSummary({ inserted, updated, duplicates, created });
+      toast({ title: "Import complete", description: `${inserted} inserted · ${updated} updated · ${duplicates} duplicates rejected · ${created} insurers created` });
     } catch (err: any) {
       setError(err.message || "Import failed");
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
