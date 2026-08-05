@@ -14,6 +14,7 @@ import Outstanding from "@/pages/Outstanding";
 import Rejections from "@/pages/Rejections";
 import WithholdingTax from "@/pages/WithholdingTax";
 import Reports from "@/pages/Reports";
+import ScheduleGenerator from "@/pages/ScheduleGenerator";
 import Clients from "@/pages/Clients";
 import Doctors from "@/pages/Doctors";
 import Procedures from "@/pages/Procedures";
@@ -68,6 +69,7 @@ function ProtectedRoutes() {
         <Route path="/rejections" element={<Rejections />} />
         <Route path="/withholding-tax" element={<WithholdingTax />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/schedule" element={<ScheduleGenerator />} />
         <Route path="/clients" element={<Clients />} />
         <Route path="/doctors" element={<Doctors />} />
         <Route path="/procedures" element={<Procedures />} />
