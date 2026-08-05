@@ -423,7 +423,7 @@ export default function InsuranceBulkImport() {
             </div>
 
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Duplicate rule: exact match on (insurer, month, year, status, amount) is rejected and logged.</p>
+              <p className="text-xs text-muted-foreground">Safe upsert: identical (insurer, month, year, status, amount) rows are rejected as duplicates and logged; changed amounts update the existing record with old/new values in the audit trail.</p>
               <Button onClick={runImport} disabled={importing} className="gap-2">
                 {importing ? "Importing..." : <>Import <ArrowRight className="w-4 h-4" /></>}
               </Button>
@@ -436,7 +436,7 @@ export default function InsuranceBulkImport() {
             <CheckCircle2 className="w-5 h-5 text-success" />
             <div className="text-sm">
               <div className="font-medium">Import complete</div>
-              <div className="text-muted-foreground">Inserted <b>{summary.inserted}</b> · Duplicates rejected <b>{summary.duplicates}</b> · New insurers <b>{summary.created}</b></div>
+              <div className="text-muted-foreground">Inserted <b>{summary.inserted}</b> · Updated <b>{summary.updated}</b> · Duplicates rejected <b>{summary.duplicates}</b> · New insurers <b>{summary.created}</b></div>
             </div>
           </div>
         )}
