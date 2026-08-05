@@ -339,10 +339,15 @@ export default function InsuranceBulkImport() {
 
             {missing.length > 0 && (
               <div>
-                <h3 className="font-heading font-semibold mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4 text-warning" />Resolve missing insurers</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-heading font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-warning" />Resolve missing insurers</h3>
+                  <Button variant="outline" size="sm" onClick={runAiMatch} disabled={aiMatching} className="gap-2">
+                    <Sparkles className="w-4 h-4" />{aiMatching ? "AI matching..." : "AI match insurers"}
+                  </Button>
+                </div>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="data-table text-sm">
-                    <thead><tr><th>Name in file</th><th>Action</th><th>Target / New name</th></tr></thead>
+                    <thead><tr><th>Name in file</th><th>Action</th><th>Target / New name</th><th>AI suggestion</th></tr></thead>
                     <tbody>
                       {missing.map((name) => {
                         const d = missingMap[name] || { action: "map" };
@@ -371,6 +376,16 @@ export default function InsuranceBulkImport() {
                                   onChange={(e) => setMissingMap((m) => ({ ...m, [name]: { ...d, newName: e.target.value } }))} />
                               )}
                               {d.action === "skip" && <span className="text-xs text-muted-foreground">Rows will be dropped</span>}
+                            </td>
+                            <td className="text-xs text-muted-foreground max-w-[220px]">
+                              {d.aiReason ? (
+                                <span>
+                                  {typeof d.aiConfidence === "number" && (
+                                    <Badge variant="outline" className="mr-1">{Math.round(d.aiConfidence * 100)}%</Badge>
+                                  )}
+                                  {d.aiReason}
+                                </span>
+                              ) : "—"}
                             </td>
                           </tr>
                         );
