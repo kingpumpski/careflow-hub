@@ -6,7 +6,7 @@ export interface AIMessage {
 export interface AICompletionRequest {
   messages: AIMessage[];
   /** Optional structured business context serialised into the prompt */
-  context?: Record<string, unknown>;
+  context?: object;
 }
 
 export interface AIProvider {
