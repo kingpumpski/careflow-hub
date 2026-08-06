@@ -128,12 +128,28 @@
     @apply bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:shadow-md;
   }
 
+  .surface-card {
+    @apply bg-card rounded-xl border border-border shadow-sm transition-all duration-200;
+  }
+
+  .kpi-card {
+    @apply bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-200 disabled:cursor-default;
+  }
+
+  .section-heading {
+    @apply text-xs font-semibold uppercase tracking-widest text-muted-foreground;
+  }
+
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-150 text-sm font-medium;
   }
 
   .sidebar-item-active {
     @apply bg-sidebar-accent text-sidebar-primary font-semibold;
+  }
+
+  .sidebar-group-label {
+    @apply px-3 pt-4 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-sidebar-muted;
   }
 
   .page-header {
