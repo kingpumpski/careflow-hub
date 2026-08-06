@@ -4,7 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import AppLayout from "@/components/layout/AppLayout";
+import AppShell from "@/components/layout/AppShell";
+import "./App.css";
 import AuthPage from "@/pages/AuthPage";
 import Dashboard from "@/pages/Dashboard";
 import PreAuthorization from "@/pages/PreAuthorization";
@@ -60,7 +61,7 @@ function ProtectedRoutes() {
 
   return (
     <Routes>
-      <Route element={<AppLayout />}>
+      <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/pre-auth" element={<PreAuthorization />} />
         <Route path="/claims" element={<Claims />} />
