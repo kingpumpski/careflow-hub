@@ -64,7 +64,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Insurer Scorecard", path: "/insurer-scorecard", permission: "analytics.read" },
       { label: "Service Lines", path: "/service-lines", permission: "analytics.read" },
       { label: "Fraud Alerts", path: "/fraud-alerts", permission: "analytics.read" },
-      { label: "AI Insights", path: "/ai-assistant", permission: "analytics.read" },
     ],
   },
   {
