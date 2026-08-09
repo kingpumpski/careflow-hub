@@ -17,7 +17,6 @@ const LABELS: Record<string, string> = {
   catalog: "Catalog Items",
   insurance: "Insurance Companies",
   users: "Users",
-  "ai-assistant": "AI Assistant",
   ledger: "General Ledger",
   settings: "Settings",
   "audit-trail": "Audit Trail",
