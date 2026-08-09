@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import AidahBubble from "@/components/ai/AidahBubble";
 
 /** Application shell: persistent sidebar, sticky header, responsive mobile drawer. */
 export default function AppShell() {
@@ -33,6 +34,8 @@ export default function AppShell() {
           </div>
         </main>
       </div>
+
+      <AidahBubble />
     </div>
   );
 }
