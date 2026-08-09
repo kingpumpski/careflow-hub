@@ -275,29 +275,22 @@ async function buildPreAuthDoc(preauth: any, items: any[], companyInfo: Letterhe
   return doc;
 }
 
-export function exportReportPDF(title: string, data: any[], columns: string[], companyInfo: any) {
+export async function exportReportPDF(title: string, data: any[], columns: string[], companyInfo: LetterheadConfig) {
   const doc = new jsPDF("landscape");
-
-  doc.setFontSize(16);
-  doc.text(companyInfo?.provider_name || "Medical Facility", 14, 20);
+  const y = await drawLetterhead(doc, companyInfo || {}, title);
   doc.setFontSize(9);
-  doc.setTextColor(100);
-  if (companyInfo?.provider_address) doc.text(companyInfo.provider_address, 14, 27);
-  doc.setFontSize(14);
-  doc.setTextColor(0);
-  doc.text(title, 14, 38);
-  doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 45);
+  doc.setTextColor(120);
+  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, y);
 
   autoTable(doc, {
-    startY: 52,
+    startY: y + 6,
     head: [columns],
     body: data,
     theme: "grid",
-    headStyles: { fillColor: [30, 64, 120] },
+    headStyles: { fillColor: hexToRgb(companyInfo?.accent_color) },
   });
 
+  drawBankingFooter(doc, companyInfo || {});
   doc.save(`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
 }
 
