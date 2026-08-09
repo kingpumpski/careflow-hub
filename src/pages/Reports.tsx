@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
@@ -24,10 +25,7 @@ export default function Reports() {
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useSupabaseQuery("system_settings");
 
-  const companyInfo = {
-    provider_name: settings?.find?.((s: any) => s.key === "provider_name")?.value || "",
-    provider_address: settings?.find?.((s: any) => s.key === "provider_address")?.value || "",
-  };
+  const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);

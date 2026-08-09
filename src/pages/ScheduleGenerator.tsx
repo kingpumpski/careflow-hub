@@ -3,6 +3,7 @@ import { ClipboardList, FileDown, FileSpreadsheet, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -36,11 +37,10 @@ export default function ScheduleGenerator() {
     return Array.from(set).sort((a, b) => b - a);
   }, [claims, currentYear]);
 
-  const companyInfo = useMemo(() => {
-    const map: Record<string, string> = {};
-    (settings || []).forEach((s: any) => { map[s.key] = s.value; });
-    return { provider_name: map.provider_name || "Medical Facility", provider_address: map.provider_address || "" };
-  }, [settings]);
+  const companyInfo = useMemo(
+    () => buildLetterheadConfig((k: string) => (settings || []).find((s: any) => s.key === k)?.value || ""),
+    [settings]
+  );
 
   const insurerName = insurerId === "all"
     ? "All Insurance Companies"
