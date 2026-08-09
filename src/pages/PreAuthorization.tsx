@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { exportPreAuthPDF, preAuthPdfBase64 } from "@/lib/exportUtils";
+import { buildLetterheadConfig } from "@/lib/letterhead";
 import { useAuth } from "@/contexts/AuthContext";
 
 const statusStyles: Record<string, string> = {
@@ -90,13 +91,9 @@ export default function PreAuthorization() {
   const getProcedureName = (id: string) => (procedures || []).find((p: any) => p.id === id)?.procedure_name || "—";
   const getDoctorName = (id: string) => (doctors || []).find((d: any) => d.id === id)?.doctor_name || "—";
 
-  const companyInfo = {
-    provider_name: settings?.find?.((s: any) => s.key === "provider_name")?.value || "",
-    provider_address: settings?.find?.((s: any) => s.key === "provider_address")?.value || "",
-    provider_phone: settings?.find?.((s: any) => s.key === "provider_phone")?.value || "",
-  };
-
   const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
+
+  const companyInfo = buildLetterheadConfig(getS);
 
   const snapshotAndNotify = async (pa: any, newState: string, note?: string) => {
     const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id);
@@ -182,7 +179,7 @@ ${hospital}`;
         insurance_name: getInsurerName(pa.insurance_company_id),
         doctor_name: getDoctorName(pa.doctor_id),
       };
-      const { base64, filename } = preAuthPdfBase64(docMeta, itemsData || [], companyInfo);
+      const { base64, filename } = await preAuthPdfBase64(docMeta, itemsData || [], companyInfo);
       const { to, cc, subject, body } = buildEmailDraft(pa);
 
       const { data, error } = await supabase.functions.invoke("send-preauth-email", {
@@ -196,7 +193,7 @@ ${hospital}`;
       if (error || (data && (data as any).ok === false)) {
         const msg = (data as any)?.error || error?.message || "Email send failed";
         toast({ title: "Email failed — opened fallback draft", description: msg, variant: "destructive" });
-        exportPreAuthPDF(docMeta, itemsData || [], companyInfo);
+        await exportPreAuthPDF(docMeta, itemsData || [], companyInfo);
         const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         window.open(mailto, "_blank");
       } else {
@@ -253,9 +250,9 @@ ${hospital}`;
     await reloadTimeline(pa.id);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!viewPreauth) return;
-    exportPreAuthPDF({
+    await exportPreAuthPDF({
       ...viewPreauth,
       patient_name: getPatientName(viewPreauth.patient_id),
       insurance_name: getInsurerName(viewPreauth.insurance_company_id),
