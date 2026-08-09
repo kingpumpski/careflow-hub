@@ -67,34 +67,180 @@ export function exportClaimsExcel(data: any[], totals: GrandTotals) {
   XLSX.writeFile(wb, "claims-report.xlsx");
 }
 
-export function exportPreAuthPDF(preauth: any, items: any[], companyInfo: any) {
-  buildPreAuthDoc(preauth, items, companyInfo).save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+export interface BankingPartner {
+  bank_name: string;
+  account_name?: string;
+  account_number?: string;
+  branch?: string;
+  swift?: string;
 }
 
-export function preAuthPdfBase64(preauth: any, items: any[], companyInfo: any): { base64: string; filename: string } {
-  const doc = buildPreAuthDoc(preauth, items, companyInfo);
+export interface LetterheadConfig {
+  provider_name?: string;
+  provider_address?: string;
+  provider_phone?: string;
+  provider_email?: string;
+  logo_url?: string;
+  accent_color?: string;      // hex, e.g. #1E4078
+  header_style?: "bar" | "rule" | "minimal";
+  show_banking?: boolean;
+  banking_partners?: BankingPartner[];
+  footer_note?: string;
+}
+
+function hexToRgb(hex?: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return [30, 64, 120];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Loads an image URL into a data URI usable by jsPDF. Returns null on failure. */
+export async function loadImageDataUrl(url?: string): Promise<{ data: string; format: string } | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const format = blob.type.includes("png") ? "PNG" : blob.type.includes("webp") ? "WEBP" : "JPEG";
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    return { data, format };
+  } catch {
+    return null;
+  }
+}
+
+export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+  const doc = await buildPreAuthDoc(preauth, items, companyInfo);
+  doc.save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+}
+
+export async function preAuthPdfBase64(preauth: any, items: any[], companyInfo: LetterheadConfig): Promise<{ base64: string; filename: string }> {
+  const doc = await buildPreAuthDoc(preauth, items, companyInfo);
   const dataUri = doc.output("datauristring");
   const base64 = dataUri.split(",")[1] || "";
   return { base64, filename: `preauth-${preauth.id?.slice(0, 8) || "request"}.pdf` };
 }
 
-function buildPreAuthDoc(preauth: any, items: any[], companyInfo: any): jsPDF {
-  const doc = new jsPDF();
+/** Draws the branded letterhead (logo, provider identity, accent styling) and returns the next Y. */
+export async function drawLetterhead(doc: jsPDF, cfg: LetterheadConfig, title: string): Promise<number> {
+  const accent = hexToRgb(cfg.accent_color);
+  const pageW = doc.internal.pageSize.getWidth();
+  const style = cfg.header_style || "bar";
 
-  // Company header
+  if (style === "bar") {
+    doc.setFillColor(accent[0], accent[1], accent[2]);
+    doc.rect(0, 0, pageW, 4, "F");
+  }
+
+  const logo = await loadImageDataUrl(cfg.logo_url);
+  let textX = 14;
+  if (logo) {
+    try {
+      doc.addImage(logo.data, logo.format as any, 14, 10, 22, 22);
+      textX = 41;
+    } catch { /* unsupported image, fall back to text-only */ }
+  }
+
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text(companyInfo?.provider_name || "Medical Facility", 14, 20);
-  doc.setFontSize(9);
-  doc.setTextColor(100);
-  if (companyInfo?.provider_address) doc.text(companyInfo.provider_address, 14, 27);
-  if (companyInfo?.provider_phone) doc.text(`Tel: ${companyInfo.provider_phone}`, 14, 33);
+  doc.setTextColor(accent[0], accent[1], accent[2]);
+  doc.text(cfg.provider_name || "Medical Facility", textX, 19);
 
-  doc.setFontSize(14);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(110);
+  let ly = 25;
+  if (cfg.provider_address) { doc.text(cfg.provider_address, textX, ly); ly += 5; }
+  const contact = [cfg.provider_phone ? `Tel: ${cfg.provider_phone}` : "", cfg.provider_email || ""].filter(Boolean).join("   •   ");
+  if (contact) { doc.text(contact, textX, ly); ly += 5; }
+
+  const ruleY = Math.max(ly + 1, 34);
+  if (style !== "minimal") {
+    doc.setDrawColor(accent[0], accent[1], accent[2]);
+    doc.setLineWidth(0.8);
+    doc.line(14, ruleY, pageW - 14, ruleY);
+    doc.setLineWidth(0.2);
+    doc.setDrawColor(accent[0], accent[1], accent[2]);
+    doc.line(14, ruleY + 1.6, pageW - 14, ruleY + 1.6);
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
   doc.setTextColor(0);
-  doc.text("Pre-Authorization Request", 14, 45);
+  doc.text(title.toUpperCase(), 14, ruleY + 12);
+  doc.setFont("helvetica", "normal");
+
+  return ruleY + 20;
+}
+
+/** Draws the banking-partner footer band: filled chips for primary banks, outlined for the rest. */
+export function drawBankingFooter(doc: jsPDF, cfg: LetterheadConfig) {
+  const partners = (cfg.banking_partners || []).filter((b) => b?.bank_name);
+  if (cfg.show_banking === false || partners.length === 0) return;
+
+  const accent = hexToRgb(cfg.accent_color);
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const rows = Math.ceil(partners.length / 2);
+  const bandH = 16 + rows * 12;
+  const top = pageH - bandH - 8;
+
+  doc.setDrawColor(accent[0], accent[1], accent[2]);
+  doc.setLineWidth(0.5);
+  doc.line(14, top, pageW - 14, top);
+
+  doc.setFontSize(8);
+  doc.setTextColor(accent[0], accent[1], accent[2]);
+  doc.setFont("helvetica", "bold");
+  doc.text("BANKING PARTNERS", 14, top + 6);
+  doc.setFont("helvetica", "normal");
+
+  const colW = (pageW - 28) / 2;
+  partners.forEach((b, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = 14 + col * colW;
+    const y = top + 11 + row * 12;
+
+    // Icon: filled marker for the first two (primary), outlined for the rest.
+    if (i < 2) {
+      doc.setFillColor(accent[0], accent[1], accent[2]);
+      doc.circle(x + 2, y + 1.2, 2, "F");
+    } else {
+      doc.setDrawColor(accent[0], accent[1], accent[2]);
+      doc.setLineWidth(0.5);
+      doc.circle(x + 2, y + 1.2, 2, "S");
+    }
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(40);
+    doc.setFont("helvetica", "bold");
+    doc.text(b.bank_name, x + 6, y + 1);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(110);
+    const line2 = [b.account_name, b.account_number ? `A/C ${b.account_number}` : "", b.branch, b.swift ? `SWIFT ${b.swift}` : ""]
+      .filter(Boolean).join(" • ");
+    if (line2) doc.text(doc.splitTextToSize(line2, colW - 8)[0], x + 6, y + 5.5);
+  });
+
+  if (cfg.footer_note) {
+    doc.setFontSize(7.5);
+    doc.setTextColor(140);
+    doc.text(doc.splitTextToSize(cfg.footer_note, pageW - 28)[0], 14, pageH - 6);
+  }
+}
+
+async function buildPreAuthDoc(preauth: any, items: any[], companyInfo: LetterheadConfig): Promise<jsPDF> {
+  const doc = new jsPDF();
+  let y = await drawLetterhead(doc, companyInfo || {}, "Pre-Authorization Request");
 
   doc.setFontSize(10);
-  let y = 55;
   const addLine = (label: string, value: string) => {
     doc.setTextColor(100);
     doc.text(label, 14, y);
@@ -121,10 +267,11 @@ function buildPreAuthDoc(preauth: any, items: any[], companyInfo: any): jsPDF {
     ]),
     foot: [["", "Total", "", "", `GH¢ ${Number(preauth.total_cost || 0).toLocaleString()}`]],
     theme: "grid",
-    headStyles: { fillColor: [30, 64, 120] },
+    headStyles: { fillColor: hexToRgb(companyInfo?.accent_color) },
     footStyles: { fillColor: [220, 240, 220], textColor: [0, 0, 0], fontStyle: "bold" },
   });
 
+  drawBankingFooter(doc, companyInfo || {});
   return doc;
 }
 
