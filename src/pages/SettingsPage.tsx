@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send } from "lucide-react";
+import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send, Landmark, Plus, Trash2, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { parseBankingPartners, LETTERHEAD_STYLES } from "@/lib/letterhead";
+import type { BankingPartner } from "@/lib/exportUtils";
+
+const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string; hint: string }> = {
+  gmail: { host: "smtp.gmail.com", port: "587", secure: "tls", hint: "Gmail requires 2-Step Verification and a 16-character App Password (not your normal password). Username is your full Gmail/Workspace address." },
+  gmail_ssl: { host: "smtp.gmail.com", port: "465", secure: "ssl", hint: "Gmail over implicit SSL. Use an App Password as the password." },
+  outlook: { host: "smtp.office365.com", port: "587", secure: "tls", hint: "Microsoft 365 / Outlook. SMTP AUTH must be enabled for the mailbox." },
+  custom: { host: "", port: "587", secure: "tls", hint: "Enter your own mail server details." },
+};
 
 export default function SettingsPage() {
   const { data: settings, refetch } = useSupabaseQuery("system_settings");
@@ -38,6 +47,14 @@ export default function SettingsPage() {
   const [officerName, setOfficerName] = useState("");
   const [officerPosition, setOfficerPosition] = useState("");
   const [officerPhone, setOfficerPhone] = useState("");
+  const [smtpPreset, setSmtpPreset] = useState("custom");
+
+  // Banking partners & letterhead design
+  const [bankingPartners, setBankingPartners] = useState<BankingPartner[]>([]);
+  const [letterheadAccent, setLetterheadAccent] = useState("#1E4078");
+  const [letterheadStyle, setLetterheadStyle] = useState("bar");
+  const [showBanking, setShowBanking] = useState(true);
+  const [footerNote, setFooterNote] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -60,6 +77,16 @@ export default function SettingsPage() {
       setOfficerName(getSetting("officer_name"));
       setOfficerPosition(getSetting("officer_position"));
       setOfficerPhone(getSetting("officer_phone"));
+      setBankingPartners(parseBankingPartners(getSetting("banking_partners")));
+      setLetterheadAccent(getSetting("letterhead_accent") || "#1E4078");
+      setLetterheadStyle(getSetting("letterhead_style") || "bar");
+      setShowBanking(getSetting("letterhead_show_banking") !== "false");
+      setFooterNote(getSetting("letterhead_footer_note"));
+      const host = getSetting("smtp_host");
+      setSmtpPreset(
+        host === "smtp.gmail.com" ? (getSetting("smtp_port") === "465" ? "gmail_ssl" : "gmail")
+        : host === "smtp.office365.com" ? "outlook" : "custom"
+      );
     }
   }, [settings]);
 
