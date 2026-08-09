@@ -416,6 +416,31 @@ export default function SettingsPage() {
             </h3>
             <p className="text-xs text-muted-foreground">Used by Pre-Authorization "Complete Request" to send the request to insurers. Leave blank to fall back to your local mail client (mailto).</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Email Provider</Label>
+                <select
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={smtpPreset}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSmtpPreset(key);
+                    const preset = SMTP_PRESETS[key];
+                    if (preset && key !== "custom") {
+                      setSmtpHost(preset.host);
+                      setSmtpPort(preset.port);
+                      setSmtpSecure(preset.secure);
+                    }
+                  }}
+                >
+                  <option value="gmail">Gmail / Google Workspace (STARTTLS 587)</option>
+                  <option value="gmail_ssl">Gmail / Google Workspace (SSL 465)</option>
+                  <option value="outlook">Microsoft 365 / Outlook</option>
+                  <option value="custom">Custom SMTP server</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground bg-muted rounded-md p-3">{SMTP_PRESETS[smtpPreset]?.hint}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><Label>SMTP Host</Label><Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" className="mt-1" /></div>
               <div><Label>SMTP Port</Label><Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" className="mt-1" /></div>
               <div><Label>Username</Label><Input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="user@hospital.com" className="mt-1" /></div>
