@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send } from "lucide-react";
+import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send, Landmark, Plus, Trash2, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { parseBankingPartners, LETTERHEAD_STYLES } from "@/lib/letterhead";
+import type { BankingPartner } from "@/lib/exportUtils";
+
+const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string; hint: string }> = {
+  gmail: { host: "smtp.gmail.com", port: "587", secure: "tls", hint: "Gmail requires 2-Step Verification and a 16-character App Password (not your normal password). Username is your full Gmail/Workspace address." },
+  gmail_ssl: { host: "smtp.gmail.com", port: "465", secure: "ssl", hint: "Gmail over implicit SSL. Use an App Password as the password." },
+  outlook: { host: "smtp.office365.com", port: "587", secure: "tls", hint: "Microsoft 365 / Outlook. SMTP AUTH must be enabled for the mailbox." },
+  custom: { host: "", port: "587", secure: "tls", hint: "Enter your own mail server details." },
+};
 
 export default function SettingsPage() {
   const { data: settings, refetch } = useSupabaseQuery("system_settings");
@@ -38,6 +47,14 @@ export default function SettingsPage() {
   const [officerName, setOfficerName] = useState("");
   const [officerPosition, setOfficerPosition] = useState("");
   const [officerPhone, setOfficerPhone] = useState("");
+  const [smtpPreset, setSmtpPreset] = useState("custom");
+
+  // Banking partners & letterhead design
+  const [bankingPartners, setBankingPartners] = useState<BankingPartner[]>([]);
+  const [letterheadAccent, setLetterheadAccent] = useState("#1E4078");
+  const [letterheadStyle, setLetterheadStyle] = useState("bar");
+  const [showBanking, setShowBanking] = useState(true);
+  const [footerNote, setFooterNote] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -60,6 +77,16 @@ export default function SettingsPage() {
       setOfficerName(getSetting("officer_name"));
       setOfficerPosition(getSetting("officer_position"));
       setOfficerPhone(getSetting("officer_phone"));
+      setBankingPartners(parseBankingPartners(getSetting("banking_partners")));
+      setLetterheadAccent(getSetting("letterhead_accent") || "#1E4078");
+      setLetterheadStyle(getSetting("letterhead_style") || "bar");
+      setShowBanking(getSetting("letterhead_show_banking") !== "false");
+      setFooterNote(getSetting("letterhead_footer_note"));
+      const host = getSetting("smtp_host");
+      setSmtpPreset(
+        host === "smtp.gmail.com" ? (getSetting("smtp_port") === "465" ? "gmail_ssl" : "gmail")
+        : host === "smtp.office365.com" ? "outlook" : "custom"
+      );
     }
   }, [settings]);
 
@@ -172,6 +199,157 @@ export default function SettingsPage() {
             </div>
             <Button size="sm" onClick={handleSaveProvider}>Save Provider Info</Button>
           </div>
+
+          <div className="stat-card space-y-4">
+            <h3 className="font-heading font-semibold flex items-center gap-2">
+              <Landmark className="w-4 h-4 text-primary" />
+              Banking Partners
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Displayed in the letterhead footer of pre-authorization documents and reports. The first two partners render with filled markers (primary); the rest use outlined markers.
+            </p>
+
+            {bankingPartners.length === 0 && (
+              <p className="text-sm text-muted-foreground">No banking partners added yet.</p>
+            )}
+
+            <div className="space-y-3">
+              {bankingPartners.map((b, idx) => (
+                <div key={idx} className="rounded-lg border border-border p-3 space-y-3 relative">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block w-3 h-3 rounded-full ${idx < 2 ? "bg-primary" : "border-2 border-primary"}`} />
+                    <span className="text-xs font-medium text-muted-foreground">{idx < 2 ? "Primary" : "Secondary"} partner {idx + 1}</span>
+                    <button
+                      aria-label="Remove banking partner"
+                      className="ml-auto p-1 rounded text-destructive hover:bg-destructive/10"
+                      onClick={() => setBankingPartners(bankingPartners.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {([
+                      ["bank_name", "Bank Name *", "e.g. Ecobank Ghana"],
+                      ["account_name", "Account Name", "e.g. MedClaims Hospital Ltd"],
+                      ["account_number", "Account Number", "e.g. 1441000123456"],
+                      ["branch", "Branch", "e.g. Ridge Towers, Accra"],
+                      ["swift", "SWIFT / BIC", "e.g. ECOCGHAC"],
+                    ] as [keyof BankingPartner, string, string][]).map(([field, label, ph]) => (
+                      <div key={field}>
+                        <Label>{label}</Label>
+                        <Input
+                          value={(b[field] as string) || ""}
+                          placeholder={ph}
+                          className="mt-1"
+                          onChange={(e) => setBankingPartners(bankingPartners.map((p, i) => i === idx ? { ...p, [field]: e.target.value } : p))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBankingPartners([...bankingPartners, { bank_name: "" }])}>
+                <Plus className="w-4 h-4" />Add Banking Partner
+              </Button>
+              <Button size="sm" onClick={async () => {
+                const clean = bankingPartners.filter((b) => (b.bank_name || "").trim());
+                await saveSetting("banking_partners", JSON.stringify(clean));
+                setBankingPartners(clean);
+                toast({ title: "Banking partners saved", description: `${clean.length} partner(s) will appear on documents` });
+              }}>Save Banking Partners</Button>
+            </div>
+          </div>
+
+          <div className="stat-card space-y-4">
+            <h3 className="font-heading font-semibold flex items-center gap-2">
+              <PenTool className="w-4 h-4 text-primary" />
+              Letterhead Designer
+            </h3>
+            <p className="text-xs text-muted-foreground">Controls the branded header and footer applied to pre-authorization documents and exported reports. The organization logo from the General tab is used automatically.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Accent Colour</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input type="color" value={letterheadAccent} onChange={(e) => setLetterheadAccent(e.target.value)} className="w-14 p-1 h-9" />
+                  <Input value={letterheadAccent} onChange={(e) => setLetterheadAccent(e.target.value)} placeholder="#1E4078" />
+                </div>
+              </div>
+              <div>
+                <Label>Header Style</Label>
+                <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={letterheadStyle} onChange={(e) => setLetterheadStyle(e.target.value)}>
+                  {LETTERHEAD_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input id="show-banking" type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={showBanking} onChange={(e) => setShowBanking(e.target.checked)} />
+                <Label htmlFor="show-banking" className="cursor-pointer">Show banking partners footer</Label>
+              </div>
+              <div>
+                <Label>Footer Note</Label>
+                <Input value={footerNote} onChange={(e) => setFooterNote(e.target.value)} placeholder="e.g. Accredited provider — all payments by bank transfer only" className="mt-1" />
+              </div>
+            </div>
+
+            {/* Live letterhead preview */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              {letterheadStyle === "bar" && <div className="h-1.5 w-full" style={{ backgroundColor: letterheadAccent }} />}
+              <div className="p-4">
+                <div className="flex items-start gap-3">
+                  {logoUrl && <img src={logoUrl} alt="Organization logo preview" className="w-12 h-12 object-contain" />}
+                  <div className="min-w-0">
+                    <p className="font-heading font-bold text-base truncate" style={{ color: letterheadAccent }}>{providerName || "Medical Facility"}</p>
+                    {providerAddress && <p className="text-xs text-muted-foreground">{providerAddress}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      {[providerPhone && `Tel: ${providerPhone}`, providerEmail].filter(Boolean).join("   •   ")}
+                    </p>
+                  </div>
+                </div>
+                {letterheadStyle !== "minimal" && (
+                  <div className="mt-3 space-y-0.5">
+                    <div className="h-[2px] w-full" style={{ backgroundColor: letterheadAccent }} />
+                    <div className="h-[1px] w-full" style={{ backgroundColor: letterheadAccent }} />
+                  </div>
+                )}
+                <p className="mt-3 font-heading font-bold text-sm tracking-wide">PRE-AUTHORIZATION REQUEST</p>
+                {showBanking && bankingPartners.some((b) => b.bank_name) && (
+                  <div className="mt-5 pt-3 border-t" style={{ borderColor: letterheadAccent }}>
+                    <p className="text-[10px] font-bold tracking-wider" style={{ color: letterheadAccent }}>BANKING PARTNERS</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                      {bankingPartners.filter((b) => b.bank_name).map((b, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span
+                            className="mt-1 inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                            style={i < 2 ? { backgroundColor: letterheadAccent } : { border: `2px solid ${letterheadAccent}` }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold truncate">{b.bank_name}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {[b.account_name, b.account_number && `A/C ${b.account_number}`, b.branch, b.swift && `SWIFT ${b.swift}`].filter(Boolean).join(" • ")}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {footerNote && <p className="text-[10px] text-muted-foreground mt-3">{footerNote}</p>}
+              </div>
+            </div>
+
+            <Button size="sm" onClick={async () => {
+              await Promise.all([
+                saveSetting("letterhead_accent", letterheadAccent),
+                saveSetting("letterhead_style", letterheadStyle),
+                saveSetting("letterhead_show_banking", showBanking ? "true" : "false"),
+                saveSetting("letterhead_footer_note", footerNote),
+              ]);
+              toast({ title: "Letterhead design saved" });
+            }}>Save Letterhead Design</Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="general" className="space-y-4 mt-4">
@@ -237,6 +415,31 @@ export default function SettingsPage() {
               SMTP Configuration
             </h3>
             <p className="text-xs text-muted-foreground">Used by Pre-Authorization "Complete Request" to send the request to insurers. Leave blank to fall back to your local mail client (mailto).</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Email Provider</Label>
+                <select
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={smtpPreset}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSmtpPreset(key);
+                    const preset = SMTP_PRESETS[key];
+                    if (preset && key !== "custom") {
+                      setSmtpHost(preset.host);
+                      setSmtpPort(preset.port);
+                      setSmtpSecure(preset.secure);
+                    }
+                  }}
+                >
+                  <option value="gmail">Gmail / Google Workspace (STARTTLS 587)</option>
+                  <option value="gmail_ssl">Gmail / Google Workspace (SSL 465)</option>
+                  <option value="outlook">Microsoft 365 / Outlook</option>
+                  <option value="custom">Custom SMTP server</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground bg-muted rounded-md p-3">{SMTP_PRESETS[smtpPreset]?.hint}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><Label>SMTP Host</Label><Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" className="mt-1" /></div>
               <div><Label>SMTP Port</Label><Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" className="mt-1" /></div>

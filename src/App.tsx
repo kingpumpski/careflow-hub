@@ -23,7 +23,6 @@ import ProcedureTemplates from "@/pages/ProcedureTemplates";
 import CatalogItems from "@/pages/CatalogItems";
 import InsuranceCompanies from "@/pages/InsuranceCompanies";
 import UsersPage from "@/pages/UsersPage";
-import AIAssistant from "@/pages/AIAssistant";
 import SettingsPage from "@/pages/SettingsPage";
 import Ledger from "@/pages/Ledger";
 import AuditTrail from "@/pages/AuditTrail";
@@ -78,7 +77,6 @@ function ProtectedRoutes() {
         <Route path="/catalog" element={<CatalogItems />} />
         <Route path="/insurance" element={<InsuranceCompanies />} />
         <Route path="/users" element={<UsersPage />} />
-        <Route path="/ai-assistant" element={<AIAssistant />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/audit-trail" element={<AuditTrail />} />
