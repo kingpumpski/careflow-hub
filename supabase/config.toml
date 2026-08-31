@@ -1,4 +1,6 @@
 project_id = "snnvwptxcijlgzdcvbkl"
 
+# Chat is an authenticated user feature. Keep JWT verification enabled so
+# unauthenticated callers are rejected before the function can access claims data.
 [functions.chat]
-verify_jwt = false
+verify_jwt = true
