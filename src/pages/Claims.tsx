@@ -323,7 +323,9 @@ export default function Claims() {
           <h1 className="page-title">Claims Management</h1>
           <p className="page-description">Net Claim = Submitted − Rejected | Outstanding = Net Claim − Paid − WHT ({taxRate}%)</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <DownloadTemplate columns={claimImportColumns} fileName="claims-import-template" />
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import History</Button>
           <Button variant="destructive" onClick={() => setRejectDialogOpen(true)} className="gap-2">
             <AlertTriangle className="w-4 h-4" />Submit Rejection
           </Button>
