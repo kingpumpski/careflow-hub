@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { toast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
@@ -43,8 +42,9 @@ export default function AuthPage() {
           description: "Please check your email to verify your account.",
         });
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "An unexpected authentication error occurred.";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -52,23 +52,17 @@ export default function AuthPage() {
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+      },
     });
     setLoading(false);
 
-    if (result.error) {
-      toast({ title: "Google sign-in failed", description: result.error.message, variant: "destructive" });
-      return;
+    if (error) {
+      toast({ title: "Google sign-in failed", description: error.message, variant: "destructive" });
     }
-
-    if (result.redirected) {
-      // Browser will redirect to Google; let it happen.
-      return;
-    }
-
-    toast({ title: "Welcome!", description: "Successfully signed in with Google." });
-    navigate("/");
   };
 
   return (
