@@ -1,5 +1,6 @@
--- Pre-Authorization Submission Lifecycle
--- Immutable revisions, delivery manifests, submissions, responses and audit events.
+-- Pre-Authorization Document + Email Handoff Lifecycle
+-- Immutable revisions, email recipient/attachment manifests and audit events.
+-- Insurer response tracking is intentionally outside this module's mandate.
 
 CREATE TABLE IF NOT EXISTS public.preauthorization_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,20 +34,6 @@ CREATE TABLE IF NOT EXISTS public.preauthorization_submissions (
   UNIQUE(preauth_id, idempotency_key)
 );
 
-CREATE TABLE IF NOT EXISTS public.preauthorization_responses (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  preauth_id uuid NOT NULL REFERENCES public.pre_authorizations(id) ON DELETE CASCADE,
-  submission_id uuid REFERENCES public.preauthorization_submissions(id) ON DELETE SET NULL,
-  response_status text NOT NULL CHECK (response_status IN ('pending','approved','partially_approved','declined','more_information','expired','cancelled')),
-  authorization_number text,
-  authorized_amount numeric(14,2),
-  response_date timestamptz NOT NULL DEFAULT now(),
-  valid_until date,
-  notes text,
-  recorded_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS public.preauthorization_audit_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   preauth_id uuid NOT NULL REFERENCES public.pre_authorizations(id) ON DELETE CASCADE,
@@ -60,19 +47,16 @@ CREATE TABLE IF NOT EXISTS public.preauthorization_audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_preauth_versions_preauth ON public.preauthorization_versions(preauth_id, version_number DESC);
 CREATE INDEX IF NOT EXISTS idx_preauth_submissions_preauth ON public.preauthorization_submissions(preauth_id, prepared_at DESC);
-CREATE INDEX IF NOT EXISTS idx_preauth_responses_preauth ON public.preauthorization_responses(preauth_id, response_date DESC);
 CREATE INDEX IF NOT EXISTS idx_preauth_audit_preauth ON public.preauthorization_audit_events(preauth_id, occurred_at DESC);
 
 ALTER TABLE public.preauthorization_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.preauthorization_submissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.preauthorization_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.preauthorization_audit_events ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT, INSERT ON public.preauthorization_versions TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.preauthorization_submissions TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.preauthorization_responses TO authenticated;
 GRANT SELECT, INSERT ON public.preauthorization_audit_events TO authenticated;
-GRANT ALL ON public.preauthorization_versions, public.preauthorization_submissions, public.preauthorization_responses, public.preauthorization_audit_events TO service_role;
+GRANT ALL ON public.preauthorization_versions, public.preauthorization_submissions, public.preauthorization_audit_events TO service_role;
 
 DROP POLICY IF EXISTS "Authenticated manage preauth versions" ON public.preauthorization_versions;
 CREATE POLICY "Authenticated manage preauth versions" ON public.preauthorization_versions
@@ -84,10 +68,6 @@ DROP POLICY IF EXISTS "Authenticated manage preauth submissions" ON public.preau
 CREATE POLICY "Authenticated manage preauth submissions" ON public.preauthorization_submissions
   FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
-DROP POLICY IF EXISTS "Authenticated manage preauth responses" ON public.preauthorization_responses;
-CREATE POLICY "Authenticated manage preauth responses" ON public.preauthorization_responses
-  FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
-
 DROP POLICY IF EXISTS "Authenticated manage preauth audit" ON public.preauthorization_audit_events;
 CREATE POLICY "Authenticated manage preauth audit" ON public.preauthorization_audit_events
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -97,17 +77,17 @@ CREATE POLICY "Authenticated create preauth audit" ON public.preauthorization_au
 -- Revision rows are append-only. Updates/deletes are intentionally denied to authenticated users.
 REVOKE UPDATE, DELETE ON public.preauthorization_versions FROM authenticated;
 
--- Keep the parent record aligned with the lifecycle state for existing dashboards.
+-- Keep the parent record aligned with the document-finalized/email-handoff state.
 CREATE OR REPLACE FUNCTION public.sync_preauthorization_submission_state()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF NEW.status IN ('submitted','delivery_pending','delivered') THEN
+  IF NEW.status IN ('prepared','submitted','delivery_pending','delivered') THEN
     UPDATE public.pre_authorizations
-    SET status = 'submitted', current_state = 'Submitted', document_finalized_at = COALESCE(document_finalized_at, NEW.prepared_at)
+    SET status = 'submitted', current_state = 'Email handoff prepared', document_finalized_at = COALESCE(document_finalized_at, NEW.prepared_at)
     WHERE id = NEW.preauth_id;
   ELSIF NEW.status = 'failed' THEN
     UPDATE public.pre_authorizations
-    SET current_state = 'Submission failed'
+    SET current_state = 'Email preparation failed'
     WHERE id = NEW.preauth_id;
   END IF;
   RETURN NEW;
