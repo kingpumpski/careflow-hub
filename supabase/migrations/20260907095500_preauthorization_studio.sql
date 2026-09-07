@@ -10,6 +10,15 @@ ALTER TABLE public.pre_authorizations
   ADD COLUMN IF NOT EXISTS document_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS document_finalized_at timestamptz;
 
+ALTER TABLE public.preauth_items
+  ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'procedure';
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'preauth_items_category_check') THEN
+    ALTER TABLE public.preauth_items ADD CONSTRAINT preauth_items_category_check CHECK (category IN ('procedure', 'laboratory', 'drugs', 'accommodation', 'other'));
+  END IF;
+END $$;
+
 UPDATE public.pre_authorizations
 SET request_number = 'PA-' || EXTRACT(YEAR FROM COALESCE(created_at, now()))::text || '-' || UPPER(SUBSTRING(REPLACE(id::text, '-', '') FROM 1 FOR 8))
 WHERE request_number IS NULL;
