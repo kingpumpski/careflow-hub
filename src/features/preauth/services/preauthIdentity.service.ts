@@ -65,24 +65,26 @@ export async function findDuplicatePreAuthorization(input: DuplicateInput) {
     policyReference: input.insurerPolicyReference || null,
   };
   const payload = normalizePreAuthIdentity(client, insurance);
-  const args = {
-    p_patient_id: payload.patient_id, p_client_name: payload.client_name, p_client_date_of_birth: payload.client_date_of_birth,
-    p_client_identifier: payload.client_identifier, p_client_membership_number: payload.client_membership_number,
-    p_insurance_company_id: payload.insurance_company_id, p_insurer_name: payload.insurer_name,
-    p_insurer_member_number: payload.insurer_member_number, p_insurer_plan_name: payload.insurer_plan_name,
-    p_insurer_policy_reference: payload.insurer_policy_reference, p_doctor_id: input.doctorId || null,
-    p_procedure_id: input.procedureId || null, p_procedure_date: input.procedureDate || null, p_diagnosis: clean(input.diagnosis),
-    p_total_cost: Number(input.totalCost || 0), p_items: input.items.map((item) => ({ description: item.description.trim(), quantity: Number(item.quantity), unit_price: Number(item.unit_price), amount: Number(item.amount) })),
+
+  const { data, error } = await (supabase.rpc as any)("find_duplicate_preauthorization_text_first", {
+    p_client_name: payload.client_name,
+    p_client_date_of_birth: payload.client_date_of_birth,
+    p_insurer_name: payload.insurer_name,
+    p_insurer_member_number: payload.insurer_member_number,
+    p_procedure_date: input.procedureDate || null,
+    p_procedure_id: input.procedureId || null,
+    p_doctor_id: input.doctorId || null,
+    p_diagnosis: clean(input.diagnosis),
+    p_total_cost: input.totalCost == null ? null : Number(input.totalCost),
     p_exclude_id: input.excludeId || null,
-  };
-  const rpc = "find_duplicate_preauthorization_text_first";
-  const { data, error } = await (supabase.rpc as any)(rpc, args);
+  });
   if (error) {
-    // Keep older deployments usable while the text-first migration is being rolled out.
+    // Keep older deployments usable while the text-first migration is rolled out.
     const fallback = await (supabase.rpc as any)("find_duplicate_preauthorization", {
       p_patient_id: payload.patient_id, p_insurance_company_id: payload.insurance_company_id,
       p_doctor_id: input.doctorId || null, p_procedure_id: input.procedureId || null,
-      p_procedure_date: input.procedureDate || null, p_diagnosis: clean(input.diagnosis), p_items: args.p_items,
+      p_procedure_date: input.procedureDate || null, p_diagnosis: clean(input.diagnosis),
+      p_items: input.items.map((item) => ({ description: item.description.trim(), quantity: Number(item.quantity), unit_price: Number(item.unit_price), amount: Number(item.amount) })),
       p_exclude_id: input.excludeId || null,
     });
     if (fallback.error) throw error;
@@ -94,10 +96,11 @@ export async function findDuplicatePreAuthorization(input: DuplicateInput) {
 export async function searchPreAuthClientSuggestions(query: string, limit = 8) {
   const q = query.trim();
   if (!q) return [];
-  const safe = q.replace(/[%_]/g, "\\$&");
+  if (limit < 1 || limit > 50) throw new Error("Suggestion limit must be between 1 and 50");
+  const safe = q.replace(/[%_\\]/g, "\\$&");
   const { data, error } = await (supabase.from("preauth_client_suggestions") as any)
     .select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,source_patient_id,use_count,last_used_at")
-    .or(`normalized_name.ilike.%${safe}%,membership_number.ilike.%${safe}%,phone.ilike.%${safe}%`)
+    .or(`normalized_name.ilike.%${safe}%,membership_number.ilike.%${safe}%,phone.ilike.%${safe}%,identifier.ilike.%${safe}%`)
     .order("last_used_at", { ascending: false }).limit(limit);
   if (error) throw error;
   return data || [];
@@ -106,7 +109,7 @@ export async function searchPreAuthClientSuggestions(query: string, limit = 8) {
 export async function createPreAuthorizationAtomic(payload: Record<string, unknown>, items: PreAuthDedupItem[], saveClientSuggestion = true) {
   const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", {
     p_payload: payload,
-    p_items: items.map((item) => ({ description: item.description.trim(), quantity: Number(item.quantity), unit_price: Number(item.unit_price), amount: Number(item.amount) })),
+    p_items: items.map((item) => ({ description: item.description.trim(), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
     p_save_client_suggestion: saveClientSuggestion,
   });
   if (error) throw error;
