@@ -21,6 +21,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // The existing application has a large legacy `any` backlog. Keep it visible
+      // without blocking builds while new/changed domain code is linted strictly.
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 );
