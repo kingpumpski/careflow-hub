@@ -20,19 +20,36 @@ export interface StudioItem {
   amount: number;
 }
 
+function escapeLike(value: string): string {
+  return value.replace(/[%_\\]/g, (match) => `\\${match}`);
+}
+
 export async function searchClientSuggestions(query: string, limit = 12): Promise<ClientSuggestion[]> {
   const q = query.trim();
+  if (limit < 1 || limit > 50) throw new Error("Suggestion limit must be between 1 and 50");
+
   let request = (supabase.from("preauth_client_suggestions") as any)
     .select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at")
     .order("last_used_at", { ascending: false })
     .limit(limit);
-  if (q) request = request.ilike("normalized_name", `%${q.toLowerCase()}%`);
+
+  if (q) {
+    const pattern = `%${escapeLike(q)}%`;
+    request = request.or(
+      `normalized_name.ilike.${pattern},membership_number.ilike.${pattern},phone.ilike.${pattern},identifier.ilike.${pattern}`,
+    );
+  }
+
   const { data, error } = await request;
   if (error) throw error;
-  return data || [];
+  return (data || []) as ClientSuggestion[];
 }
 
-export async function createPreAuthorizationAtomic(payload: Record<string, unknown>, items: StudioItem[], saveClientSuggestion: boolean) {
+export async function createPreAuthorizationAtomic(
+  payload: Record<string, unknown>,
+  items: StudioItem[],
+  saveClientSuggestion: boolean,
+) {
   const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", {
     p_payload: payload,
     p_items: items,
