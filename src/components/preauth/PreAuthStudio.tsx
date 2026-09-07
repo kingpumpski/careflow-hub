@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Plus, Trash2, UserRound, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
-import { useSupabaseQuery, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
-import { createPreAuthorizationAtomic, searchClientSuggestions, type ClientSuggestion } from "@/features/preauth/services/preauthStudio.service";
+import { createPreAuthorizationAtomic, getPreAuthorizationErrorMessage, searchClientSuggestions, updatePreAuthorizationAtomic, type ClientSuggestion } from "@/features/preauth/services/preauthStudio.service";
 
 interface Item { id: string; description: string; quantity: number; unitPrice: number }
 interface Props { onBack: () => void; editData?: any }
-
 const makeItem = (): Item => ({ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0 });
 
 export default function PreAuthStudio({ onBack, editData }: Props) {
-  const { user } = useAuth();
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: doctors } = useSupabaseQuery("doctors");
   const { data: procedures } = useSupabaseQuery("procedures");
@@ -24,8 +21,6 @@ export default function PreAuthStudio({ onBack, editData }: Props) {
   const { data: templates } = useSupabaseQuery("procedure_templates");
   const { data: catalog } = useSupabaseQuery("preauth_catalog_items");
   const { data: settings } = useSupabaseQuery("system_settings");
-  const updatePreauth = useSupabaseUpdate("pre_authorizations");
-
   const editing = Boolean(editData);
   const [client, setClient] = useState({ patientId: "", name: "", dob: "", phone: "", email: "", address: "", identifier: "", membership: "" });
   const [insurance, setInsurance] = useState({ id: "", name: "", memberNumber: "", plan: "", policy: "", phone: "", email: "" });
@@ -54,12 +49,7 @@ export default function PreAuthStudio({ onBack, editData }: Props) {
 
   useEffect(() => {
     if (!editData) return;
-    setClient({
-      patientId: editData.patient_id || "", name: editData.client_name || editData.patient_name || "",
-      dob: editData.client_date_of_birth || "", phone: editData.client_phone || "", email: editData.client_email || "",
-      address: editData.client_address || "", identifier: editData.client_identifier || "",
-      membership: editData.client_membership_number || editData.membership_number || "",
-    });
+    setClient({ patientId: editData.patient_id || "", name: editData.client_name || editData.patient_name || "", dob: editData.client_date_of_birth || "", phone: editData.client_phone || "", email: editData.client_email || "", address: editData.client_address || "", identifier: editData.client_identifier || "", membership: editData.client_membership_number || editData.membership_number || "" });
     setInsurance({ id: editData.insurance_company_id || "", name: editData.insurer_name || "", memberNumber: editData.insurer_member_number || "", plan: editData.insurer_plan_name || "", policy: editData.insurer_policy_reference || "", phone: editData.insurer_phone || "", email: editData.insurer_email || "" });
     setDoctorId(editData.doctor_id || ""); setProcedureId(editData.procedure_id || ""); setProcedureDate(editData.procedure_date || "");
     setAccommodationDays(editData.accommodation_days ?? ""); setClinicalNotes(editData.clinical_notes || ""); setApprovalNotes(editData.approval_notes || "");
@@ -107,35 +97,25 @@ export default function PreAuthStudio({ onBack, editData }: Props) {
         clinical_notes: clinicalNotes.trim() || null, approval_notes: approvalNotes.trim() || null, custom_diagnoses: extraDiagnoses,
         diagnosis_ids: diagnosisId ? [diagnosisId] : [], template_id: templateId || null,
       };
-      if (editing) {
-        await updatePreauth.mutateAsync({ id: editData.id, ...payload });
-        await (supabase.from("preauth_items") as any).delete().eq("preauth_id", editData.id);
-        await (supabase.from("preauth_items") as any).insert(valid.map((x) => ({ preauth_id: editData.id, description: x.description.trim(), quantity: Number(x.quantity), unit_price: Number(x.unitPrice), amount: Number(x.quantity) * Number(x.unitPrice) })));
-      } else {
-        await createPreAuthorizationAtomic(payload, valid.map((x) => ({ description: x.description.trim(), quantity: Number(x.quantity), unit_price: Number(x.unitPrice), amount: Number(x.quantity) * Number(x.unitPrice) })), saveSuggestion);
-      }
-      toast({ title: editing ? "Pre-authorization updated" : "Pre-authorization created", description: `Total: GH¢ ${total.toLocaleString()}` });
+      const serviceItems = valid.map((x) => ({ description: x.description.trim(), quantity: Number(x.quantity), unit_price: Number(x.unitPrice), amount: Number(x.quantity) * Number(x.unitPrice) }));
+      if (editing) await updatePreAuthorizationAtomic(editData.id, payload, serviceItems, "amended");
+      else await createPreAuthorizationAtomic(payload, serviceItems, saveSuggestion);
+      toast({ title: editing ? "Pre-authorization amended" : "Pre-authorization created", description: `Total: ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
       onBack();
     } catch (e: any) {
-      toast({ title: "Pre-authorization not saved", description: String(e?.message || "Unable to save request."), variant: "destructive" });
+      toast({ title: "Pre-authorization not saved", description: getPreAuthorizationErrorMessage(e), variant: "destructive" });
     } finally { setBusy(false); }
   };
 
   const field = (label: string, value: string, onChange: (v: string) => void, placeholder?: string, type = "text") => <div><Label>{label}</Label><Input type={type} className="mt-1" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></div>;
 
   return <div className="space-y-6 max-w-6xl pb-10">
-    <div className="flex items-center gap-3"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="w-5 h-5" /></Button><div><h1 className="page-title">{editing ? "Edit Pre-Authorization" : "Pre-Authorization Studio"}</h1><p className="page-description">Text-first, insurer-independent authorization generation.</p></div></div>
-
+    <div className="flex items-center gap-3"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="w-5 h-5" /></Button><div><h1 className="page-title">{editing ? "Amend Pre-Authorization" : "Pre-Authorization Studio"}</h1><p className="page-description">Text-first, insurer-independent authorization generation.</p></div></div>
     <div className="stat-card"><div className="flex items-start gap-3"><UserRound className="w-5 h-5 mt-0.5" /><div><h2 className="font-heading font-semibold">Client identity is independent from insurance</h2><p className="text-sm text-muted-foreground mt-1">Use a saved client as a suggestion, type a new client, or combine both. Editing this request never changes the saved client record.</p></div></div></div>
-
     <section className="stat-card space-y-4"><h2 className="font-heading font-semibold">Client / Patient</h2><div className="relative">{field("Search previous client suggestions", clientSearch, (v) => { setClientSearch(v); setShowSuggestions(true); }, "Name, membership number or phone...")} {showSuggestions && suggestions.length > 0 && <div className="absolute z-50 left-0 right-0 mt-1 rounded-md border bg-popover shadow-lg overflow-hidden">{suggestions.map((x) => <button key={x.id} type="button" className="w-full text-left px-3 py-2 hover:bg-muted text-sm" onClick={() => selectSuggestion(x)}><span className="font-medium">{x.client_name}</span><span className="block text-muted-foreground">{x.membership_number || x.phone || "Saved client"}</span></button>)}</div>}</div><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{field("Client name *", client.name, (v) => updateClient({ name: v }), "Full name")} {field("Date of birth", client.dob, (v) => updateClient({ dob: v }), "", "date")} {field("Phone", client.phone, (v) => updateClient({ phone: v }), "Phone number")} {field("Email", client.email, (v) => updateClient({ email: v }), "Email address", "email")} {field("Client/member identifier", client.identifier, (v) => updateClient({ identifier: v }), "National/client identifier")} {field("Membership number", client.membership, (v) => updateClient({ membership: v }), "Membership/card number")}</div>{field("Address", client.address, (v) => updateClient({ address: v }), "Client address")} {!editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={saveSuggestion} onChange={(e) => setSaveSuggestion(e.target.checked)} />Remember this client for future pre-authorization suggestions</label>}</section>
-
     <section className="stat-card space-y-4"><h2 className="font-heading font-semibold">Insurance / Payer</h2><p className="text-xs text-muted-foreground">This is request-specific. It does not overwrite or become the client's permanent insurer.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><Label>Saved insurer (optional)</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={insurance.id} onChange={(e) => selectInsurer(e.target.value)}><option value="">Select directory insurer...</option>{(insurers || []).filter((x: any) => x.is_active !== false).map((x: any) => <option key={x.id} value={x.id}>{x.company_name}</option>)}</select></div>{field("Insurer name *", insurance.name, (v) => updateInsurance({ name: v }), "Type insurer if not listed")}{field("Member number", insurance.memberNumber, (v) => updateInsurance({ memberNumber: v }))}{field("Plan / product", insurance.plan, (v) => updateInsurance({ plan: v }))}{field("Policy reference", insurance.policy, (v) => updateInsurance({ policy: v }))}{field("Insurer phone", insurance.phone, (v) => updateInsurance({ phone: v }))}{field("Insurer email", insurance.email, (v) => updateInsurance({ email: v }), "Email", "email")}</div></section>
-
     <section className="stat-card space-y-4"><h2 className="font-heading font-semibold">Clinical / Request Details</h2><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><Label>Procedure template</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={templateId} onChange={(e) => selectTemplate(e.target.value)}><option value="">No template</option>{(templates || []).map((x: any) => <option key={x.id} value={x.id}>{x.template_name}</option>)}</select></div><div><Label>Procedure</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Select procedure...</option>{(procedures || []).map((x: any) => <option key={x.id} value={x.id}>{x.procedure_name}</option>)}</select></div><div><Label>Doctor</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">Select doctor...</option>{(doctors || []).map((x: any) => <option key={x.id} value={x.id}>{x.doctor_name}</option>)}</select></div><div><Label>Diagnosis</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={diagnosisId} onChange={(e) => setDiagnosisId(e.target.value)}><option value="">Select diagnosis...</option>{(diagnoses || []).map((x: any) => <option key={x.id} value={x.id}>{x.code} — {x.description}</option>)}</select></div>{field("Procedure date", procedureDate, setProcedureDate, "", "date")}{field("Accommodation days", String(accommodationDays), (v) => setAccommodationDays(v === "" ? "" : Number(v)), "Days", "number")}</div><div><Label>Clinical notes</Label><Textarea className="mt-1" value={clinicalNotes} onChange={(e) => setClinicalNotes(e.target.value)} placeholder="Clinical justification and relevant notes..." /></div><div><Label>Additional diagnosis / text</Label><div className="flex gap-2 mt-1"><Input value={customDiagnosis} onChange={(e) => setCustomDiagnosis(e.target.value)} placeholder="Type another diagnosis or clinical term..." /><Button type="button" variant="outline" onClick={addCustomDiagnosis}>Add</Button></div>{extraDiagnoses.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{extraDiagnoses.map((x) => <button type="button" key={x} className="rounded-full border px-3 py-1 text-xs" onClick={() => setExtraDiagnoses((d) => d.filter((v) => v !== x))}>{x} ×</button>)}</div>}</div></section>
-
-    <section className="stat-card space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-heading font-semibold">Services & Charges</h2><p className="text-xs text-muted-foreground">Use the catalogue for speed or type any charge manually.</p></div><Button type="button" variant="outline" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Add line</Button></div>{items.map((x) => <div key={x.id} className="grid grid-cols-[1fr_90px_130px_40px] gap-2 items-end"><div><Label>Description</Label><Input className="mt-1" value={x.description} onChange={(e) => patchItem(x.id, { description: e.target.value })} placeholder="Service / item" /></div><div><Label>Qty</Label><Input className="mt-1" type="number" min="1" value={x.quantity} onChange={(e) => patchItem(x.id, { quantity: Number(e.target.value) })} /></div><div><Label>Unit charge</Label><Input className="mt-1" type="number" min="0" step="0.01" value={x.unitPrice} onChange={(e) => patchItem(x.id, { unitPrice: Number(e.target.value) })} /></div><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(x.id)}><Trash2 className="w-4 h-4" /></Button>{(catalog || []).length > 0 && <div className="col-span-full"><div className="flex flex-wrap gap-1">{(catalog || []).slice(0, 8).map((c: any) => <button type="button" key={c.id} className="text-xs border rounded px-2 py-1 hover:bg-muted" onClick={() => patchItem(x.id, { description: c.item_name, unitPrice: Number(c.unit_price) || 0 })}>{c.item_name}</button>)}</div></div>}</div>)}<div className="flex justify-end border-t pt-4 text-lg font-semibold">Total: GH¢ {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></section>
-
-    <div className="flex justify-end gap-3"><Button variant="outline" onClick={onBack}>Cancel</Button><Button onClick={submit} disabled={busy}>{busy ? "Saving…" : editing ? "Save changes" : "Create pre-authorization"}</Button></div>
+    <section className="stat-card space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-heading font-semibold">Services & Charges</h2><p className="text-xs text-muted-foreground">Use the catalogue for speed or type any charge manually.</p></div><Button type="button" variant="outline" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Add line</Button></div>{items.map((x) => <div key={x.id} className="grid grid-cols-[1fr_90px_130px_40px] gap-2 items-end"><div><Label>Description</Label><Input className="mt-1" value={x.description} onChange={(e) => patchItem(x.id, { description: e.target.value })} placeholder="Service / item" /></div><div><Label>Qty</Label><Input className="mt-1" type="number" min="1" value={x.quantity} onChange={(e) => patchItem(x.id, { quantity: Number(e.target.value) })} /></div><div><Label>Unit charge</Label><Input className="mt-1" type="number" min="0" step="0.01" value={x.unitPrice} onChange={(e) => patchItem(x.id, { unitPrice: Number(e.target.value) })} /></div><Button type="button" variant="ghost" size="icon" onClick={() => removeItem(x.id)}><Trash2 className="w-4 h-4" /></Button>{(catalog || []).length > 0 && <div className="col-span-full"><div className="flex flex-wrap gap-1">{(catalog || []).slice(0, 8).map((c: any) => <button type="button" key={c.id} className="text-xs border rounded px-2 py-1 hover:bg-muted" onClick={() => patchItem(x.id, { description: c.item_name, unitPrice: Number(c.unit_price) || 0 })}>{c.item_name}</button>)}</div></div>}</div>)}<div className="flex justify-end border-t pt-4 text-lg font-semibold">Total: {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></section>
+    <div className="flex justify-end gap-3"><Button variant="outline" onClick={onBack}>Cancel</Button><Button onClick={submit} disabled={busy}>{busy ? "Saving…" : editing ? "Save amendment" : "Create pre-authorization"}</Button></div>
   </div>;
 }
