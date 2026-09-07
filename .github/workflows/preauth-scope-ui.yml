@@ -1,0 +1,64 @@
+name: Pre-Authorization Scope UI Hardening
+
+on:
+  push:
+    branches: [feat/preauthorization-studio]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/preauthorization-studio
+          fetch-depth: 0
+      - name: Align UI terminology with module boundary
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/PreAuthorizationStudio.tsx')
+          s = p.read_text()
+          replacements = {
+              'then review and submit a frozen revision to the selected insurance partner.': 'then freeze the request and prepare the final email package for the selected insurance partner.',
+              'const submitRequest = async () => {': 'const finalizeRequest = async () => {',
+              'status: "delivery_pending",': 'status: "prepared",',
+              '          submitted_by: user?.id || null,\n          prepared_at: now,\n          submitted_at: now,': '          submitted_by: user?.id || null,\n          prepared_at: now,',
+              'status: "submitted",\n        current_state: "Submitted",': 'status: "submitted",\n        current_state: "Email handoff prepared",',
+              'toast({ title: "Request submitted for email delivery", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The email client is ready for final send.` });': 'toast({ title: "Authorization request prepared", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The PDF and email are ready for your final review and send.` });',
+              'toast({ title: "Submission failed", description: error.message || "The request could not be frozen and submitted.", variant: "destructive" });': 'toast({ title: "Request preparation failed", description: error.message || "The request could not be frozen and prepared.", variant: "destructive" });',
+              'The final submission uses the frozen revision snapshot.': 'The final email package uses the frozen revision snapshot.',
+              'Freeze & submit': 'Freeze & prepare email',
+              'Freezing & submitting…': 'Freezing & preparing…',
+              'Submission safeguard:': 'Request preparation safeguard:',
+              'The system records the revision, recipients, attachment manifest and audit event.': 'The system records the frozen revision, recipients, attachment manifest and preparation audit event. The officer remains responsible for sending the email.',
+              'onClick={submitRequest}': 'onClick={finalizeRequest}',
+              'className="gap-2"><Send': 'className="gap-2"><Send',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s)
+          PY
+      - name: Commit scope-aligned UI
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/PreAuthorizationStudio.tsx
+          if git diff --cached --quiet; then
+            echo 'No UI changes required.'
+            exit 0
+          fi
+          git commit -m 'refactor: align preauthorization UI with email handoff scope'
+          git push origin HEAD:feat/preauthorization-studio
+      - name: Remove one-shot workflow
+        if: success()
+        shell: bash
+        run: |
+          git rm .github/workflows/preauth-scope-ui.yml
+          git commit -m 'chore: remove one-shot preauthorization scope workflow'
+          git push origin HEAD:feat/preauthorization-studio
