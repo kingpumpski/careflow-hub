@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, Eye, EyeOff } from "lucide-react";
+import { Shield, Eye, EyeOff, Chrome } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { toast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
@@ -46,6 +48,27 @@ export default function AuthPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: window.location.origin,
+    });
+    setLoading(false);
+
+    if (result.error) {
+      toast({ title: "Google sign-in failed", description: result.error.message, variant: "destructive" });
+      return;
+    }
+
+    if (result.redirected) {
+      // Browser will redirect to Google; let it happen.
+      return;
+    }
+
+    toast({ title: "Welcome!", description: "Successfully signed in with Google." });
+    navigate("/");
   };
 
   return (
@@ -102,6 +125,24 @@ export default function AuthPage() {
               {isLogin ? "Sign Up" : "Sign In"}
             </button>
           </p>
+
+          <div className="relative my-5">
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+              or
+            </span>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <Chrome className="w-4 h-4" />
+            Continue with Google
+          </Button>
         </div>
       </div>
     </div>
