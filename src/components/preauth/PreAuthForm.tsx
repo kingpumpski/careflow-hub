@@ -1,1 +1,1 @@
-export { default } from "./PreAuthTextFirstForm";
+export { default } from "./PreAuthStudio";
