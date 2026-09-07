@@ -19,10 +19,6 @@ BEGIN
   IF p_version_number IS NULL OR p_version_number < 1 THEN RAISE EXCEPTION 'INVALID_DOCUMENT_VERSION'; END IF;
   IF p_document_type IS NULL OR length(trim(p_document_type))=0 OR length(p_document_type)>100 THEN RAISE EXCEPTION 'INVALID_DOCUMENT_TYPE'; END IF;
   IF p_format IS NULL OR length(trim(p_format))=0 OR length(p_format)>20 THEN RAISE EXCEPTION 'INVALID_DOCUMENT_FORMAT'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.preauthorization_versions v WHERE v.pre_auth_id=p_preauth_id AND v.version_number=p_version_number) THEN
-    -- This branch is intentionally replaced below; it prevents an unsafe silent registration.
-    NULL;
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM public.preauthorization_versions v WHERE v.preauth_id=p_preauth_id AND v.version_number=p_version_number) THEN RAISE EXCEPTION 'VERSION_NOT_FOUND'; END IF;
 
   INSERT INTO public.preauth_documents(facility_id,preauth_id,version_number,document_type,format,storage_provider,storage_path,content_sha256,status,generated_by,metadata)
