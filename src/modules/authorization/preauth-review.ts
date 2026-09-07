@@ -86,11 +86,21 @@ export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewR
   };
 }
 
+/** Builds a deterministic business snapshot for the frozen revision, PDF and email handoff. */
 export function buildPreAuthDocumentPayload(input: PreAuthReviewInput, requestNumber?: string) {
+  const items = input.items
+    .filter((item) => item.description.trim())
+    .map((item) => ({
+      category: item.category,
+      description: item.description.trim(),
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      amount: itemAmount(item),
+    }));
+
   return {
     schemaVersion: 1,
     requestNumber: requestNumber || null,
-    generatedAt: new Date().toISOString(),
     patient: {
       id: input.patientId,
       name: input.patientName.trim(),
@@ -113,14 +123,8 @@ export function buildPreAuthDocumentPayload(input: PreAuthReviewInput, requestNu
     document: {
       format: input.format,
       currency: input.currency.trim(),
-      items: input.items.filter((item) => item.description.trim()).map((item) => ({
-        category: item.category,
-        description: item.description.trim(),
-        quantity: Number(item.quantity) || 0,
-        unitPrice: Number(item.unitPrice) || 0,
-        amount: itemAmount(item),
-      })),
-      total: totalItems(input.items),
+      items,
+      total: items.reduce((sum, item) => sum + item.amount, 0),
     },
   };
 }
