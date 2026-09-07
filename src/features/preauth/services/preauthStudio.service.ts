@@ -52,9 +52,39 @@ export async function createPreAuthorizationAtomic(
 ) {
   const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", {
     p_payload: payload,
-    p_items: items,
+    p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })),
     p_save_client_suggestion: saveClientSuggestion,
   });
   if (error) throw error;
   return data;
+}
+
+export async function updatePreAuthorizationAtomic(
+  preauthId: string,
+  payload: Record<string, unknown>,
+  items: StudioItem[],
+  reason = "amended",
+) {
+  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", {
+    p_preauth_id: preauthId,
+    p_payload: payload,
+    p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })),
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export function getPreAuthorizationErrorMessage(error: unknown): string {
+  const message = String((error as { message?: string })?.message || error || "");
+  if (message.includes("DUPLICATE_PREAUTH")) {
+    return "A matching pre-authorization already exists. Review the existing request before creating another one.";
+  }
+  if (message.includes("TOTAL_COST_MISMATCH")) {
+    return "The submitted total does not match the charge lines. Recheck the quantities and unit charges.";
+  }
+  if (message.includes("PREAUTH_ITEMS_REQUIRED")) return "Add at least one valid service or charge line.";
+  if (message.includes("CLIENT_NAME_REQUIRED")) return "Client name is required.";
+  if (message.includes("INSURER_NAME_REQUIRED")) return "Insurer name is required.";
+  return message || "Unable to save the pre-authorization.";
 }
