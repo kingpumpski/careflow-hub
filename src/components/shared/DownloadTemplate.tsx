@@ -1,35 +1,39 @@
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import * as XLSX from "xlsx";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { buildTemplate, type ImportColumn } from "@/lib/importUtils";
 
 interface DownloadTemplateProps {
-  columns: { key: string; label: string }[];
+  columns: ImportColumn[];
   fileName: string;
+  /** When set, downloads that format directly instead of showing a menu. */
   format?: "csv" | "excel";
 }
 
-export default function DownloadTemplate({ columns, fileName, format = "csv" }: DownloadTemplateProps) {
-  const handleDownload = () => {
-    if (format === "excel") {
-      const ws = XLSX.utils.aoa_to_sheet([columns.map(c => c.label)]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Template");
-      XLSX.writeFile(wb, `${fileName}.xlsx`);
-    } else {
-      const csv = columns.map(c => c.label).join(",") + "\n";
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${fileName}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
+export default function DownloadTemplate({ columns, fileName, format }: DownloadTemplateProps) {
+  if (format) {
+    return (
+      <Button variant="ghost" size="sm" onClick={() => buildTemplate(columns, fileName, format)} className="gap-1 text-xs h-7">
+        <Download className="w-3 h-3" />Template
+      </Button>
+    );
+  }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleDownload} className="gap-1 text-xs h-7">
-      <Download className="w-3 h-3" />Template
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="gap-1 text-xs h-7">
+          <Download className="w-3 h-3" />Template
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => buildTemplate(columns, fileName, "excel")}>
+          <FileSpreadsheet className="w-4 h-4 mr-2" />Excel (.xlsx)
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => buildTemplate(columns, fileName, "csv")}>
+          <FileText className="w-4 h-4 mr-2" />CSV (.csv)
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
