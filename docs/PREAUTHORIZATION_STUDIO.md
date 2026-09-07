@@ -28,8 +28,14 @@ The international option keeps the same clinical and financial data but presents
 
 `preauth_insurer_tariffs` supports negotiated unit prices per insurer for either a procedure or a catalog item, with effective dates and an active flag. This prevents the global facility tariff from being silently treated as the insurer's tariff.
 
+## Final review contract
+
+Before a request is treated as submission-ready, `src/modules/authorization/preauth-review.ts` validates the immutable business facts independently of the UI. Blocking errors cover missing patient, insurer, procedure/date, charge lines, non-positive totals, invalid quantities/prices, currency, and missing insurer submission email. Non-blocking warnings identify incomplete clinical or contact information.
+
+The same module exposes `buildPreAuthDocumentPayload`, which creates a serialisable document snapshot without UI-only row identifiers. This payload is intended to become the canonical revision snapshot for audit/history and later document-version persistence.
+
 ## Submission safety
 
 The Studio separates preparation from submission. A draft can be previewed and modified without marking it completed. Existing lifecycle/version/audit functionality remains available in the Authorization Requests screen.
 
-The Studio should eventually be extended with a final review gate that requires confirmation of membership number, insurer, procedure, date, total, attachments and recipient addresses before submission.
+The next integration step is to place the review contract directly between draft editing and submission, then persist the approved snapshot/revision and recipient/attachment manifest before delivery. This keeps the generated document, email content and submitted request tied to the same revision.
