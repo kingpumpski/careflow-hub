@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Copy, Download, FileCheck2, Mail, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Download, FileCheck2, Mail, Plus, Save, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,8 @@ import { useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
+import { validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
+import { buildPreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
 
 const blankItem = (): PreAuthStudioItem => ({ id: crypto.randomUUID(), category: "procedure", description: "", quantity: 1, unitPrice: 0 });
 
@@ -39,7 +41,11 @@ export default function PreAuthorizationStudio() {
   const [items, setItems] = useState<PreAuthStudioItem[]>([blankItem()]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [savedId, setSavedId] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [warningsConfirmed, setWarningsConfirmed] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
 
   const selectedPatient = (patients || []).find((p: any) => p.id === patientId);
   const selectedInsurer = (insurers || []).find((i: any) => i.id === insurerId);
@@ -76,8 +82,8 @@ export default function PreAuthorizationStudio() {
     setItems((current) => current.map((row) => row.id === id ? { ...row, description: item.item_name, unitPrice: override ?? Number(item.unit_price) || 0 } : row));
   };
 
-  const pdfData = (): PreAuthPdfData => ({
-    requestNumber: savedId ? requestNumber : undefined,
+  const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({
+    requestNumber: savedId ? finalRequestNumber : undefined,
     issuedDate: new Date().toLocaleDateString("en-GB"),
     patientName: effectivePatientName,
     membershipNumber,
@@ -110,14 +116,36 @@ export default function PreAuthorizationStudio() {
     senderEmail: getSetting("claims_sender_email"),
   }), [effectivePatientName, membershipNumber, effectiveProcedure, procedureDate, diagnosis, selectedInsurer, providerName, settings]);
 
-  const saveDraft = async () => {
+  const reviewInput = useMemo<PreAuthReviewInput>(() => ({
+    patientId,
+    patientName: effectivePatientName,
+    membershipNumber,
+    insurerId,
+    insurerName: selectedInsurer?.company_name || "",
+    procedureId,
+    procedureName: effectiveProcedure,
+    procedureDate,
+    diagnosis,
+    doctorName: selectedDoctor?.doctor_name || "",
+    patientPhone: patientPhone || selectedPatient?.phone || "",
+    companyName: companyName || selectedInsurer?.company_name || "",
+    insurerEmail: selectedInsurer?.email || "",
+    providerEmail: getSetting("provider_email"),
+    currency,
+    format,
+    items,
+  }), [patientId, effectivePatientName, membershipNumber, insurerId, selectedInsurer, procedureId, effectiveProcedure, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, currency, format, items, settings]);
+
+  const review = useMemo(() => validatePreAuthReview(reviewInput), [reviewInput]);
+  const duplicateSignature = [patientId, membershipNumber.trim().toUpperCase(), procedureId, procedureDate, insurerId].join("|");
+
+  const saveDraft = async (): Promise<string | null> => {
     if (!patientId || !insurerId || !procedureDate || !procedureId) {
       toast({ title: "Required information missing", description: "Patient, insurer, procedure, and procedure date are required.", variant: "destructive" });
-      return;
+      return null;
     }
     setSaving(true);
     try {
-      const duplicateSignature = [patientId, membershipNumber.trim().toUpperCase(), procedureId, procedureDate, insurerId].join("|");
       const payload = {
         patient_id: patientId, insurance_company_id: insurerId, doctor_id: doctorId || null, procedure_id: procedureId,
         procedure_date: procedureDate, diagnosis: diagnosis || null, total_cost: total, provider_name: providerName,
@@ -135,9 +163,26 @@ export default function PreAuthorizationStudio() {
       }
       setSavedId(id);
       toast({ title: "Draft saved", description: `Request ${buildRequestNumber(id)} is ready for review.` });
+      return id;
     } catch (error: any) {
       toast({ title: "Unable to save draft", description: error.message || "Please try again.", variant: "destructive" });
+      return null;
     } finally { setSaving(false); }
+  };
+
+  const reviewRequest = async () => {
+    const id = savedId || await saveDraft();
+    if (!id) return;
+    const { data } = await (supabase.from("pre_authorizations") as any)
+      .select("id,request_number,status,current_state,procedure_date,duplicate_signature")
+      .eq("duplicate_signature", duplicateSignature)
+      .neq("id", id)
+      .in("status", ["draft", "submitted", "pending", "approved", "under_review"])
+      .order("created_at", { ascending: false })
+      .limit(5);
+    setDuplicateMatches(data || []);
+    setWarningsConfirmed(false);
+    setReviewOpen(true);
   };
 
   const openEmail = () => {
@@ -146,13 +191,111 @@ export default function PreAuthorizationStudio() {
     window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, "_blank");
   };
 
+  const submitRequest = async () => {
+    const id = savedId || await saveDraft();
+    if (!id) return;
+    if (!review.ready) {
+      setReviewOpen(true);
+      toast({ title: "Resolve blocking errors", description: `${review.errors.length} blocking issue(s) must be corrected before submission.`, variant: "destructive" });
+      return;
+    }
+    if (review.warnings.length && !warningsConfirmed) {
+      setReviewOpen(true);
+      toast({ title: "Confirm review warnings", description: "Review the warnings and explicitly confirm them before submission.", variant: "destructive" });
+      return;
+    }
+    if (duplicateMatches.length) {
+      toast({ title: "Possible duplicate request", description: "Review the existing matching requests before creating another submission.", variant: "destructive" });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data: latest } = await (supabase.from("preauthorization_versions") as any)
+        .select("version_number")
+        .eq("preauth_id", id)
+        .order("version_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const versionNumber = Number(latest?.version_number || 0) + 1;
+      const finalRequestNumber = buildRequestNumber(id);
+      const submissionPackage = buildPreAuthSubmissionPackage({
+        preauthId: id,
+        versionNumber,
+        requestNumber: finalRequestNumber,
+        reviewInput,
+        subject: email.subject,
+        messageBody: email.body,
+        insurerEmail: selectedInsurer?.email,
+        insurerName: selectedInsurer?.company_name,
+        additionalEmails: selectedInsurer?.additional_emails,
+        ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
+      });
+      if (!submissionPackage.recipients.some((recipient) => recipient.type === "to")) {
+        throw new Error("The insurer does not have a valid submission email address.");
+      }
+
+      const { data: version, error: versionError } = await (supabase.from("preauthorization_versions") as any)
+        .insert({ preauth_id: id, version_number: versionNumber, snapshot: submissionPackage.snapshot, total_cost: review.total, created_by: user?.id || null })
+        .select("id")
+        .single();
+      if (versionError) throw versionError;
+
+      await downloadPreAuthPdf(pdfData(finalRequestNumber), items);
+
+      const now = new Date().toISOString();
+      const { data: submission, error: submissionError } = await (supabase.from("preauthorization_submissions") as any)
+        .insert({
+          preauth_id: id,
+          version_id: version.id,
+          idempotency_key: submissionPackage.idempotencyKey,
+          submission_channel: "email",
+          status: "delivery_pending",
+          recipient_manifest: submissionPackage.recipients,
+          attachment_manifest: submissionPackage.attachments,
+          subject: submissionPackage.subject,
+          message_body: submissionPackage.messageBody,
+          submitted_by: user?.id || null,
+          prepared_at: now,
+          submitted_at: now,
+        })
+        .select("id")
+        .single();
+      if (submissionError) throw submissionError;
+
+      await (supabase.from("pre_authorizations") as any).update({
+        document_revision: versionNumber,
+        document_payload: submissionPackage.snapshot,
+        document_finalized_at: now,
+        status: "submitted",
+        current_state: "Submitted",
+      }).eq("id", id);
+
+      await (supabase.from("preauthorization_audit_events") as any).insert({
+        preauth_id: id,
+        version_id: version.id,
+        submission_id: submission.id,
+        event_type: "submission_handoff",
+        event_data: { versionNumber, recipientCount: submissionPackage.recipients.length, attachmentCount: submissionPackage.attachments.length },
+        actor_id: user?.id || null,
+      });
+
+      setSavedId(id);
+      setReviewOpen(false);
+      openEmail();
+      toast({ title: "Request submitted for email delivery", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The email client is ready for final send.` });
+    } catch (error: any) {
+      toast({ title: "Submission failed", description: error.message || "The request could not be frozen and submitted.", variant: "destructive" });
+    } finally { setSubmitting(false); }
+  };
+
   const copyEmail = async () => { await navigator.clipboard.writeText(email.body); toast({ title: "Email copied", description: "The professional insurer email draft is on your clipboard." }); };
 
   return (
     <div className="space-y-6 max-w-[1500px]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><div className="flex items-center gap-2"><FileCheck2 className="h-6 w-6 text-primary" /><h1 className="page-title">Pre-Authorization Studio</h1><Badge variant="outline">Document-first workflow</Badge></div><p className="page-description">Create once, edit safely, preview, save a unique request, then submit to the selected insurance partner.</p></div>
-        <div className="flex gap-2"><Button variant="outline" onClick={() => downloadPreAuthPdf(pdfData(), items)} className="gap-2"><Download className="h-4 w-4" /> Preview / PDF</Button><Button onClick={saveDraft} disabled={saving} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save draft"}</Button></div>
+        <div><div className="flex items-center gap-2"><FileCheck2 className="h-6 w-6 text-primary" /><h1 className="page-title">Pre-Authorization Studio</h1><Badge variant="outline">Document-first workflow</Badge></div><p className="page-description">Create once, edit safely, preview, save a unique request, then review and submit a frozen revision to the selected insurance partner.</p></div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => downloadPreAuthPdf(pdfData(), items)} className="gap-2"><Download className="h-4 w-4" /> Preview / PDF</Button><Button variant="outline" onClick={reviewRequest} disabled={saving || submitting} className="gap-2"><FileCheck2 className="h-4 w-4" /> Review request</Button><Button onClick={saveDraft} disabled={saving || submitting} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save draft"}</Button></div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
@@ -162,7 +305,7 @@ export default function PreAuthorizationStudio() {
             <div className="grid gap-3 md:grid-cols-2">
               <div><Label>Patient / Client *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={patientId} onChange={(e) => setPatientId(e.target.value)}><option value="">Select patient</option>{(patients || []).map((p: any) => <option key={p.id} value={p.id}>{p.patient_name} {p.membership_number ? `— ${p.membership_number}` : ""}</option>)}</select></div>
               <div><Label>Insurance partner *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={insurerId} onChange={(e) => setInsurerId(e.target.value)}><option value="">Select insurer</option>{(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}</select></div>
-              <div><Label>Doctor / Surgeon</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">Select provider</option>{(doctors || []).map((d: any) => <option key={d.id} value={d.id}>{d.doctor_name}</option>)}</select></div>
+              <div><Label>Doctor / Surgeon</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 py-2 text-sm" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">Select provider</option>{(doctors || []).map((d: any) => <option key={d.id} value={d.id}>{d.doctor_name}</option>)}</select></div>
               <div><Label>Procedure *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Select procedure</option>{(procedures || []).map((p: any) => <option key={p.id} value={p.id}>{p.procedure_name}</option>)}</select></div>
               <div><Label>Procedure date *</Label><Input className="mt-1" type="date" value={procedureDate} onChange={(e) => setProcedureDate(e.target.value)} /></div>
               <div><Label>Patient telephone</Label><Input className="mt-1" value={patientPhone} onChange={(e) => setPatientPhone(e.target.value)} placeholder="Optional override" /></div>
@@ -180,10 +323,18 @@ export default function PreAuthorizationStudio() {
             </tbody><tfoot><tr><td colSpan={4} className="p-3 text-right font-bold">TOTAL</td><td className="p-3 text-right font-bold">{currency} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td /></tr></tfoot></table></div>
           </section>
 
-          <section className="stat-card"><div className="flex items-center justify-between gap-3"><div><h2 className="font-heading font-semibold">3. Submission email</h2><p className="text-xs text-muted-foreground">The wording changes automatically according to the procedure date.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={copyEmail} className="gap-2"><Copy className="h-4 w-4" /> Copy</Button><Button size="sm" onClick={openEmail} className="gap-2"><Mail className="h-4 w-4" /> Open email</Button></div></div><div className="mt-4 rounded-md border bg-muted/30 p-4 space-y-3"><div className="text-xs text-muted-foreground">To: {selectedInsurer?.email || "Select an insurer"} · Subject: {email.subject}</div><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{email.body}</pre></div></section>
+          {reviewOpen && <section className="stat-card space-y-4 border-primary/30"><div className="flex items-start justify-between gap-4"><div><h2 className="font-heading font-semibold">3. Review & freeze revision</h2><p className="text-xs text-muted-foreground">Submission is blocked until all errors are resolved. Warnings require explicit confirmation.</p></div><Badge variant={review.ready ? "default" : "destructive"}>{review.ready ? "Ready for review" : "Action required"}</Badge></div>
+            {review.errors.length > 0 && <div className="space-y-2"><div className="flex items-center gap-2 font-semibold text-destructive"><AlertTriangle className="h-4 w-4" /> Blocking errors</div>{review.errors.map((item) => <div key={`${item.field}-${item.message}`} className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm">{item.message}</div>)}</div>}
+            {review.warnings.length > 0 && <div className="space-y-2"><div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Review warnings</div>{review.warnings.map((item) => <div key={`${item.field}-${item.message}`} className="rounded-md border bg-muted/20 p-2 text-sm">{item.message}</div>)}<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={warningsConfirmed} onChange={(e) => setWarningsConfirmed(e.target.checked)} /> I have reviewed and confirm these warnings.</label></div>}
+            {review.errors.length === 0 && review.warnings.length === 0 && <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-sm"><CheckCircle2 className="h-4 w-4" /> All required review checks passed.</div>}
+            {duplicateMatches.length > 0 && <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm"><div className="font-semibold">Possible duplicate request detected</div><div className="mt-1 text-muted-foreground">Matching client, membership, insurer, procedure and procedure date already exist. Review the existing request before submitting another version.</div><div className="mt-2 space-y-1">{duplicateMatches.map((match) => <div key={match.id} className="font-mono text-xs">{match.request_number || match.id} · {match.status} · {match.current_state || "—"}</div>)}</div></div>}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3"><div><div className="text-xs uppercase tracking-wide text-muted-foreground">Final amount</div><div className="text-lg font-bold">{currency} {review.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div></div><Button onClick={submitRequest} disabled={submitting || !review.ready || (review.warnings.length > 0 && !warningsConfirmed) || duplicateMatches.length > 0} className="gap-2"><Send className="h-4 w-4" /> {submitting ? "Freezing & submitting…" : "Freeze & submit"}</Button></div>
+          </section>}
+
+          <section className="stat-card"><div className="flex items-center justify-between gap-3"><div><h2 className="font-heading font-semibold">4. Submission email</h2><p className="text-xs text-muted-foreground">The wording changes automatically according to the procedure date. The final submission uses the frozen revision snapshot.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={copyEmail} className="gap-2"><Copy className="h-4 w-4" /> Copy</Button><Button size="sm" onClick={openEmail} className="gap-2"><Mail className="h-4 w-4" /> Open email</Button></div></div><div className="mt-4 rounded-md border bg-muted/30 p-4 space-y-3"><div className="text-xs text-muted-foreground">To: {selectedInsurer?.email || "Select an insurer"} · Subject: {email.subject}</div><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{email.body}</pre></div></section>
         </div>
 
-        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{new Date().toLocaleDateString("en-GB")}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Submission safeguard:</b> save a draft before sending. The system stores the request number and a duplicate signature based on client, membership, insurer, procedure and procedure date.</div></aside>
+        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{new Date().toLocaleDateString("en-GB")}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Submission safeguard:</b> save a draft, review the request, resolve blocking errors, confirm warnings, then freeze the exact revision before handoff. The system records the revision, recipients, attachment manifest and audit event.</div></aside>
       </div>
     </div>
   );
