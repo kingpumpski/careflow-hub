@@ -57,17 +57,32 @@ describe("pre-authorization review", () => {
     expect(result.warnings.map((entry) => entry.field)).toEqual(expect.arrayContaining(["membershipNumber", "doctor", "diagnosis"]));
   });
 
-  it("builds a stable document payload without UI-only ids", () => {
-    const payload = buildPreAuthDocumentPayload(baseInput(), "PA-2026-ABC12345");
-    expect(payload.requestNumber).toBe("PA-2026-ABC12345");
-    expect(payload.document.items[0]).toEqual({
+  it("builds a deterministic document payload without UI-only ids or timestamps", () => {
+    const input = baseInput();
+    const first = buildPreAuthDocumentPayload(input, "PA-2026-ABC12345");
+    const second = buildPreAuthDocumentPayload(input, "PA-2026-ABC12345");
+
+    expect(first).toEqual(second);
+    expect(first.requestNumber).toBe("PA-2026-ABC12345");
+    expect(first.document.items[0]).toEqual({
       category: "procedure",
       description: "Caesarean Section",
       quantity: 1,
       unitPrice: 4500,
       amount: 4500,
     });
-    expect(payload.document.total).toBe(4500);
-    expect(payload.document.items[0]).not.toHaveProperty("id");
+    expect(first.document.total).toBe(4500);
+    expect(first.document.items[0]).not.toHaveProperty("id");
+    expect(first).not.toHaveProperty("generatedAt");
+  });
+
+  it("calculates the frozen total from the canonical billable items", () => {
+    const input = baseInput();
+    input.items.push({ id: "2", category: "laboratory", description: "", quantity: 2, unitPrice: 100 });
+    input.items.push({ id: "3", category: "drugs", description: "Medication", quantity: 2, unitPrice: 250 });
+
+    const payload = buildPreAuthDocumentPayload(input, "PA-2026-ABC12345");
+    expect(payload.document.total).toBe(5000);
+    expect(payload.document.items).toHaveLength(2);
   });
 });
