@@ -191,7 +191,7 @@ export default function PreAuthorizationStudio() {
     window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, "_blank");
   };
 
-  const submitRequest = async () => {
+  const finalizeRequest = async () => {
     const id = savedId || await saveDraft();
     if (!id) return;
     if (!review.ready) {
@@ -250,14 +250,13 @@ export default function PreAuthorizationStudio() {
           version_id: version.id,
           idempotency_key: submissionPackage.idempotencyKey,
           submission_channel: "email",
-          status: "delivery_pending",
+          status: "prepared",
           recipient_manifest: submissionPackage.recipients,
           attachment_manifest: submissionPackage.attachments,
           subject: submissionPackage.subject,
           message_body: submissionPackage.messageBody,
           submitted_by: user?.id || null,
           prepared_at: now,
-          submitted_at: now,
         })
         .select("id")
         .single();
@@ -268,7 +267,7 @@ export default function PreAuthorizationStudio() {
         document_payload: submissionPackage.snapshot,
         document_finalized_at: now,
         status: "submitted",
-        current_state: "Submitted",
+        current_state: "Email handoff prepared",
       }).eq("id", id);
 
       await (supabase.from("preauthorization_audit_events") as any).insert({
@@ -283,9 +282,9 @@ export default function PreAuthorizationStudio() {
       setSavedId(id);
       setReviewOpen(false);
       openEmail();
-      toast({ title: "Request submitted for email delivery", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The email client is ready for final send.` });
+      toast({ title: "Authorization request prepared", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The PDF and email are ready for your final review and send.` });
     } catch (error: any) {
-      toast({ title: "Submission failed", description: error.message || "The request could not be frozen and submitted.", variant: "destructive" });
+      toast({ title: "Request preparation failed", description: error.message || "The request could not be frozen and prepared.", variant: "destructive" });
     } finally { setSubmitting(false); }
   };
 
@@ -294,7 +293,7 @@ export default function PreAuthorizationStudio() {
   return (
     <div className="space-y-6 max-w-[1500px]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><div className="flex items-center gap-2"><FileCheck2 className="h-6 w-6 text-primary" /><h1 className="page-title">Pre-Authorization Studio</h1><Badge variant="outline">Document-first workflow</Badge></div><p className="page-description">Create once, edit safely, preview, save a unique request, then review and submit a frozen revision to the selected insurance partner.</p></div>
+        <div><div className="flex items-center gap-2"><FileCheck2 className="h-6 w-6 text-primary" /><h1 className="page-title">Pre-Authorization Studio</h1><Badge variant="outline">Document-first workflow</Badge></div><p className="page-description">Create once, edit safely, preview, save a unique request, then freeze the request and prepare the final email package for the selected insurance partner.</p></div>
         <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => downloadPreAuthPdf(pdfData(), items)} className="gap-2"><Download className="h-4 w-4" /> Preview / PDF</Button><Button variant="outline" onClick={reviewRequest} disabled={saving || submitting} className="gap-2"><FileCheck2 className="h-4 w-4" /> Review request</Button><Button onClick={saveDraft} disabled={saving || submitting} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save draft"}</Button></div>
       </div>
 
@@ -328,13 +327,13 @@ export default function PreAuthorizationStudio() {
             {review.warnings.length > 0 && <div className="space-y-2"><div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Review warnings</div>{review.warnings.map((item) => <div key={`${item.field}-${item.message}`} className="rounded-md border bg-muted/20 p-2 text-sm">{item.message}</div>)}<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={warningsConfirmed} onChange={(e) => setWarningsConfirmed(e.target.checked)} /> I have reviewed and confirm these warnings.</label></div>}
             {review.errors.length === 0 && review.warnings.length === 0 && <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-sm"><CheckCircle2 className="h-4 w-4" /> All required review checks passed.</div>}
             {duplicateMatches.length > 0 && <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm"><div className="font-semibold">Possible duplicate request detected</div><div className="mt-1 text-muted-foreground">Matching client, membership, insurer, procedure and procedure date already exist. Review the existing request before submitting another version.</div><div className="mt-2 space-y-1">{duplicateMatches.map((match) => <div key={match.id} className="font-mono text-xs">{match.request_number || match.id} · {match.status} · {match.current_state || "—"}</div>)}</div></div>}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3"><div><div className="text-xs uppercase tracking-wide text-muted-foreground">Final amount</div><div className="text-lg font-bold">{currency} {review.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div></div><Button onClick={submitRequest} disabled={submitting || !review.ready || (review.warnings.length > 0 && !warningsConfirmed) || duplicateMatches.length > 0} className="gap-2"><Send className="h-4 w-4" /> {submitting ? "Freezing & submitting…" : "Freeze & submit"}</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3"><div><div className="text-xs uppercase tracking-wide text-muted-foreground">Final amount</div><div className="text-lg font-bold">{currency} {review.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div></div><Button onClick={finalizeRequest} disabled={submitting || !review.ready || (review.warnings.length > 0 && !warningsConfirmed) || duplicateMatches.length > 0} className="gap-2"><Send className="h-4 w-4" /> {submitting ? "Freezing & preparing…" : "Freeze & prepare email"}</Button></div>
           </section>}
 
-          <section className="stat-card"><div className="flex items-center justify-between gap-3"><div><h2 className="font-heading font-semibold">4. Submission email</h2><p className="text-xs text-muted-foreground">The wording changes automatically according to the procedure date. The final submission uses the frozen revision snapshot.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={copyEmail} className="gap-2"><Copy className="h-4 w-4" /> Copy</Button><Button size="sm" onClick={openEmail} className="gap-2"><Mail className="h-4 w-4" /> Open email</Button></div></div><div className="mt-4 rounded-md border bg-muted/30 p-4 space-y-3"><div className="text-xs text-muted-foreground">To: {selectedInsurer?.email || "Select an insurer"} · Subject: {email.subject}</div><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{email.body}</pre></div></section>
+          <section className="stat-card"><div className="flex items-center justify-between gap-3"><div><h2 className="font-heading font-semibold">4. Submission email</h2><p className="text-xs text-muted-foreground">The wording changes automatically according to the procedure date. The final email package uses the frozen revision snapshot.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={copyEmail} className="gap-2"><Copy className="h-4 w-4" /> Copy</Button><Button size="sm" onClick={openEmail} className="gap-2"><Mail className="h-4 w-4" /> Open email</Button></div></div><div className="mt-4 rounded-md border bg-muted/30 p-4 space-y-3"><div className="text-xs text-muted-foreground">To: {selectedInsurer?.email || "Select an insurer"} · Subject: {email.subject}</div><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{email.body}</pre></div></section>
         </div>
 
-        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{new Date().toLocaleDateString("en-GB")}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Submission safeguard:</b> save a draft, review the request, resolve blocking errors, confirm warnings, then freeze the exact revision before handoff. The system records the revision, recipients, attachment manifest and audit event.</div></aside>
+        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{new Date().toLocaleDateString("en-GB")}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Request preparation safeguard:</b> save a draft, review the request, resolve blocking errors, confirm warnings, then freeze the exact revision before handoff. The system records the frozen revision, recipients, attachment manifest and preparation audit event. The officer remains responsible for sending the email.</div></aside>
       </div>
     </div>
   );
