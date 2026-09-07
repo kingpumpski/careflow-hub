@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Search, Download, Plus, AlertTriangle } from "lucide-react";
+import { Search, Download, Plus, AlertTriangle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { Label } from "@/components/ui/label";
 import EntityDialog from "@/components/shared/EntityDialog";
 import FilterBar from "@/components/shared/FilterBar";
@@ -12,6 +12,9 @@ import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { exportClaimsPDF, exportClaimsExcel } from "@/lib/exportUtils";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import DownloadTemplate from "@/components/shared/DownloadTemplate";
+import type { ImportColumn } from "@/lib/importUtils";
 
 const statusStyles: Record<string, string> = {
   draft: "bg-muted text-muted-foreground border-border",
@@ -39,6 +42,8 @@ export default function Claims() {
   const insertClaim = useSupabaseInsert("claims");
   const insertWHT = useSupabaseInsert("withholding_tax");
   const insertLedger = useSupabaseInsert("ledger_entries");
+  const bulkInsertClaims = useSupabaseBulkInsert("claims");
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<any>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -50,6 +55,15 @@ export default function Claims() {
 
   const isLoading = claimsLoading || insurersLoading;
   const taxRate = Number(settings?.find?.((s: any) => s.key === "withholding_tax_rate")?.value || "5");
+
+  const claimImportColumns: ImportColumn[] = [
+    { key: "insurance_company_id", label: "Insurance Company", required: true, type: "lookup", options: (insurers || []).map((i: any) => ({ label: i.company_name, value: i.id })), hint: "Must match a registered insurance company name" },
+    { key: "claim_amount", label: "Claim Amount", required: true, type: "number" },
+    { key: "claim_month", label: "Claim Month", required: true, type: "integer", example: 1, hint: "1-12 or month name" },
+    { key: "claim_year", label: "Claim Year", required: true, type: "integer", example: new Date().getFullYear() },
+    { key: "submission_date", label: "Submission Date", type: "date", hint: "Defaults to the first day of the claim month" },
+    { key: "status", label: "Status", type: "text", example: "submitted", hint: "submitted, approved, paid, rejected, partial" },
+  ];
 
   const aggregated = (insurers || []).map((ins: any) => {
     const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
@@ -524,6 +538,22 @@ export default function Claims() {
           </Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Historical Claims"
+        templateName="claims-import-template"
+        description="Upload monthly claim totals per insurance company. Aggregate figures only — no patient-level data."
+        columns={claimImportColumns}
+        onImport={async (rows) => {
+          await bulkInsertClaims.mutateAsync(rows.map((r) => ({
+            ...r,
+            status: (r.status || "submitted").toString().toLowerCase().replace(/\s+/g, "_"),
+            submission_date: r.submission_date || `${r.claim_year}-${String(r.claim_month).padStart(2, "0")}-01`,
+          })));
+        }}
+      />
     </div>
   );
 }
