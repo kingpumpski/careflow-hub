@@ -21,12 +21,11 @@ export interface FacilityMembership {
 }
 
 export async function listMyPreAuthFacilities(): Promise<FacilityMembership[]> {
-  const { data, error } = await supabase
-    .from("facility_memberships" as never)
+  const { data, error } = await (supabase.from("facility_memberships") as any)
     .select("id,facility_id,user_id,role,status,facility:facilities(id,code,name,country_code,timezone,default_currency,date_format,active)")
     .eq("status", "active");
   if (error) throw error;
-  return (data ?? []) as unknown as FacilityMembership[];
+  return (data ?? []) as FacilityMembership[];
 }
 
 export function getStoredFacilityId(): string | null {
