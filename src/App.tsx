@@ -9,6 +9,7 @@ import "./App.css";
 import AuthPage from "@/pages/AuthPage";
 import Dashboard from "@/pages/Dashboard";
 import PreAuthorization from "@/pages/PreAuthorization";
+import PreAuthorizationStudio from "@/pages/PreAuthorizationStudio";
 import Claims from "@/pages/Claims";
 import Payments from "@/pages/Payments";
 import Outstanding from "@/pages/Outstanding";
@@ -44,25 +45,14 @@ const queryClient = new QueryClient();
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="text-center space-y-3"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" /><p className="text-sm text-muted-foreground">Loading...</p></div></div>;
   if (!user) return <Navigate to="/auth" replace />;
-
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/pre-auth" element={<PreAuthorization />} />
+        <Route path="/pre-auth/studio" element={<PreAuthorizationStudio />} />
         <Route path="/claims" element={<Claims />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/outstanding" element={<Outstanding />} />
