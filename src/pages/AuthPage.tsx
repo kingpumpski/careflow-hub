@@ -125,6 +125,24 @@ export default function AuthPage() {
               {isLogin ? "Sign Up" : "Sign In"}
             </button>
           </p>
+
+          <div className="relative my-5">
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+              or
+            </span>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <Chrome className="w-4 h-4" />
+            Continue with Google
+          </Button>
         </div>
       </div>
     </div>
