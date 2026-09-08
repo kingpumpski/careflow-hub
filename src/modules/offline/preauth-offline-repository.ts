@@ -131,6 +131,7 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
 export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: PreAuthReviewInput, doctorId?: string | null, notes?: string | null): Promise<OfflinePreAuthDraft> {
   const signature = duplicateSignature(reviewInput);
   const timestamp = now();
+  let previousItemIds: string[] = [];
 
   const result = await runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
     const draftRequest = store.get(getOfflineStorageKey("preauthorizations", preauthId));
@@ -170,6 +171,7 @@ export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: 
         itemIdsRequest.onerror = () => reject(itemIdsRequest.error ?? new Error("Unable to read offline charge lines."));
         itemIdsRequest.onsuccess = () => {
           const oldItems = (itemIdsRequest.result as OfflinePreAuthDraft[]).filter((item) => item.preauth_id === preauthId);
+          previousItemIds = oldItems.map((item) => item.id);
           let pendingDeletes = oldItems.length;
           const saveItems = () => {
             const items = itemRows(preauthId, reviewInput, timestamp);
@@ -194,10 +196,9 @@ export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: 
 
   const currentItems = await listOffline<OfflinePreAuthDraft>("preauth_items");
   const newItems = currentItems.filter((item) => item.preauth_id === preauthId);
-  const previousItems = currentItems.filter((item) => item.preauth_id === preauthId);
   await queuePreAuthRows(result, newItems, "update", undefined, `preauth:${preauthId}:update:${timestamp}`);
-  for (const item of previousItems.filter((item) => !newItems.some((next) => next.id === item.id))) {
-    await queueMutation("preauth_items", "delete", item.id, undefined, `preauth:${preauthId}:delete:${item.id}:${timestamp}`);
+  for (const itemId of previousItemIds.filter((id) => !newItems.some((item) => item.id === id))) {
+    await queueMutation("preauth_items", "delete", itemId, undefined, `preauth:${preauthId}:delete:${itemId}:${timestamp}`);
   }
   return result;
 }
@@ -249,12 +250,24 @@ export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: Pre
     };
   });
 
-  const facilityId = getStoredFacilityId();
-  const base = facilityId ? { facility_id: facilityId } : {};
-  const actorId = doctorId ?? undefined;
-  await queueMutation("pre_authorizations", "update", preauthId, { ...base, status: "submitted", current_state: "Email handoff prepared", request_number: result.requestNumber, document_revision: result.versionNumber, document_payload: result.snapshot, document_finalized_at: new Date().toISOString(), doctor_id: doctorId ?? reviewInput.doctorId ?? null, clinical_notes: notes ?? null }, idempotencyKey, actorId);
-  await queueMutation("preauthorization_versions", "insert", String(result.snapshot.id ?? `${preauthId}:v${result.versionNumber}`), { ...base, ...result.snapshot, preauth_id: preauthId, version_number: result.versionNumber }, `${idempotencyKey}:version`, actorId);
-  await queueMutation("preauthorization_submissions", "insert", String(result.submission.id), { ...base, ...result.submission }, idempotencyKey, actorId);
-  await queueMutation("preauthorization_audit_events", "insert", String(result.submission.id), { ...base, preauth_id: preauthId, version_id: result.submission.version_id, submission_id: result.submission.id, event_type: "email_handoff_prepared", event_data: { versionNumber: result.versionNumber, recipientCount: Array.isArray(recipientManifest) ? recipientManifest.length : 0, attachmentCount: 1 }, createdAt: new Date().toISOString() }, `${idempotencyKey}:audit`, actorId);
+  await enqueueSyncOperation({
+    table: "pre_authorizations",
+    type: "rpc",
+    recordId: preauthId,
+    rpcName: "finalize_preauthorization_handoff",
+    rpcArgs: {
+      p_preauth_id: preauthId,
+      p_snapshot: snapshot,
+      p_total_cost: totalCost,
+      p_recipient_manifest: recipientManifest,
+      p_attachment_manifest: result.submission.attachment_manifest ?? [],
+      p_subject: subject,
+      p_message_body: messageBody,
+      p_idempotency_key: idempotencyKey,
+    },
+    facilityId: getStoredFacilityId() ?? undefined,
+    idempotencyKey,
+  });
+
   return result;
 }
