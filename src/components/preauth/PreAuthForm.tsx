@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import PreAuthStudio from "./PreAuthStudio";
 import { listMyPreAuthFacilities, getStoredFacilityId, storeFacilityId, type FacilityMembership } from "@/features/preauth/services/preauthFacility.service";
+import { getPreAuthorizationRevision } from "@/features/preauth/services/preauthStudio.service";
 import { Label } from "@/components/ui/label";
 
 export default function PreAuthForm(props: { onBack: () => void; editData?: any }) {
@@ -8,17 +9,22 @@ export default function PreAuthForm(props: { onBack: () => void; editData?: any 
   const [facilityId, setFacilityId] = useState(getStoredFacilityId() || "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [editSession, setEditSession] = useState<any>(props.editData || null);
 
   useEffect(() => {
     void listMyPreAuthFacilities()
-      .then((rows) => {
+      .then(async (rows) => {
         setMemberships(rows);
         if (!facilityId && rows.length === 1) {
           setFacilityId(rows[0].facility_id);
           storeFacilityId(rows[0].facility_id);
         }
+        if (props.editData?.id) {
+          const revision = await getPreAuthorizationRevision(String(props.editData.id));
+          setEditSession({ ...props.editData, baseVersion: revision || props.editData.updated_at || props.editData.updatedAt || null });
+        }
       })
-      .catch((e) => setError(String(e?.message || e || "Unable to load facilities.")))
+      .catch((e) => setError(String(e?.message || e || "Unable to load facility or edit-session data.")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -54,5 +60,5 @@ export default function PreAuthForm(props: { onBack: () => void; editData?: any 
     return null;
   }
 
-  return <PreAuthStudio {...props} />;
+  return <PreAuthStudio {...props} editData={editSession} />;
 }
