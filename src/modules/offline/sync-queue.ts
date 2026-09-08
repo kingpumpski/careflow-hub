@@ -93,7 +93,9 @@ export async function listSyncOperations(): Promise<SyncOperation[]> {
   return values;
 }
 
-function normalizeOperation(value: SyncOperation): SyncOperation { return { ...value, nextAttemptAt: value.nextAttemptAt ?? value.createdAt, status: value.status ?? "pending", attempts: value.attempts ?? 0 }; }
+function normalizeOperation(value: SyncOperation): SyncOperation {
+  return { ...value, nextAttemptAt: value.nextAttemptAt ?? value.createdAt, status: value.status ?? "pending", attempts: value.attempts ?? 0 };
+}
 
 async function writeOperation(operation: SyncOperation): Promise<void> {
   const db = await openSyncDb();
@@ -122,7 +124,7 @@ function classifySyncError(error: unknown): { code: string; blocked: boolean } {
   const code = String((error as { code?: string })?.code ?? "");
   const status = Number((error as { status?: number })?.status ?? 0);
   const lower = message.toLowerCase();
-  const blocked = status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key");
+  const blocked = status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key") || lower.includes("sync_conflict:");
   return { code: code || String(status || "SYNC_ERROR"), blocked };
 }
 
@@ -138,6 +140,21 @@ async function recordSyncFailure(operation: SyncOperation, error: unknown): Prom
   await writeOperation({ ...operation, attempts, status: blocked ? "blocked" : "failed", nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString(), lastError: String((error as { message?: string })?.message ?? error), lastErrorCode: classified.code });
 }
 
+function toSupabasePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...payload };
+  delete normalized.entity;
+  delete normalized.storageKey;
+  if (Object.prototype.hasOwnProperty.call(normalized, "createdAt") && !Object.prototype.hasOwnProperty.call(normalized, "created_at")) {
+    normalized.created_at = normalized.createdAt;
+    delete normalized.createdAt;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "updatedAt") && !Object.prototype.hasOwnProperty.call(normalized, "updated_at")) {
+    normalized.updated_at = normalized.updatedAt;
+    delete normalized.updatedAt;
+  }
+  return normalized;
+}
+
 async function applyOperation(operation: SyncOperation): Promise<void> {
   if (operation.type === "rpc") {
     if (!operation.rpcName) throw new Error(`Sync operation ${operation.id} has no RPC name.`);
@@ -146,18 +163,27 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
     return;
   }
 
-  const query = (supabase.from(operation.table) as any);
-  const payload = operation.payload ? { ...operation.payload } : undefined;
+  const query = supabase.from(operation.table) as any;
+  const payload = operation.payload ? toSupabasePayload(operation.payload) : undefined;
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
+
   if (operation.type === "delete") {
     const { error } = await query.delete().eq("id", operation.recordId);
     if (error) throw error;
     return;
   }
+
   if (!payload) throw new Error(`Sync operation ${operation.id} has no payload.`);
-  const { error } = await query.upsert(payload, { onConflict: "id" });
-  if (error) throw error;
+
+  if (operation.type === "update") {
+    const { data, error } = await query.update(payload).eq("id", operation.recordId).select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} no longer exists or is outside the current facility scope.`);
+    return;
+  }
+
+  await query.upsert(payload, { onConflict: "id" });
 }
 
 export async function pullSupabaseDataToOffline(): Promise<{ tables: number; records: number; skipped: number }> {
@@ -173,7 +199,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
       .filter((row) => typeof row.id === "string")
       .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
     const safeRows = rows.filter((row) => {
-      const changed = operations.some((operation) => operation.recordId === row.id && operation.status !== "blocked");
+      const changed = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
       if (changed) skipped += 1;
       return !changed;
     });
