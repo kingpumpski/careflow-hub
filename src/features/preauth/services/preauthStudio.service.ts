@@ -68,7 +68,9 @@ export async function createPreAuthorizationAtomic(payload: Record<string, unkno
 
 export async function updatePreAuthorizationAtomic(preauthId: string, payload: Record<string, unknown>, items: StudioItem[], reason = "amended") {
   if (getCareFlowDataMode() === "offline") return updateOfflinePreAuthDraft(preauthId, toReviewInput({ ...withFacility(payload), id: preauthId }, items), payload.doctor_id ? String(payload.doctor_id) : null, reason);
-  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
+  await assertPreAuthorizationRevision(preauthId, typeof payload.baseVersion === "string" ? payload.baseVersion : undefined);
+  const { baseVersion: _baseVersion, ...serverPayload } = payload;
+  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(serverPayload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
   if (error) throw error;
   return data;
 }
