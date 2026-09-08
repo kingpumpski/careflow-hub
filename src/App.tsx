@@ -11,7 +11,7 @@ import "./App.css";
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const PreAuthorization = lazy(() => import("@/pages/PreAuthorization"));
-const PreAuthorizationStudio = lazy(() => import("@/pages/PreAuthorizationStudio"));
+const PreAuthorizationStudioRoute = lazy(() => import("@/pages/PreAuthorizationStudioRoute"));
 const Claims = lazy(() => import("@/pages/Claims"));
 const Payments = lazy(() => import("@/pages/Payments"));
 const Outstanding = lazy(() => import("@/pages/Outstanding"));
@@ -66,7 +66,7 @@ function ProtectedRoutes() {
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/pre-auth" element={<PreAuthorization />} />
-          <Route path="/pre-auth/studio" element={<PreAuthorizationStudio />} />
+          <Route path="/pre-auth/studio" element={<PreAuthorizationStudioRoute />} />
           <Route path="/claims" element={<Claims />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/outstanding" element={<Outstanding />} />
