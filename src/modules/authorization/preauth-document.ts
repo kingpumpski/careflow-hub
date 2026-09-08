@@ -31,24 +31,7 @@ function addPatientBlock(doc: jsPDF, data: PreAuthPdfData, y: number) { const wi
 function sectionRows(items: PreAuthStudioItem[], category: PreAuthStudioItem["category"], currency: string) { return items.filter((item) => item.category === category).map((item) => [item.description, String(item.quantity), money(item.unitPrice, currency), money(itemAmount(item), currency)]); }
 
 export function preAuthPdfDataFromSnapshot(snapshot: PreAuthFrozenSnapshot): PreAuthPdfData {
-  return {
-    requestNumber: snapshot.requestNumber || undefined,
-    issuedDate: snapshot.issuedDate || undefined,
-    patientName: snapshot.patient.name,
-    membershipNumber: snapshot.patient.membershipNumber,
-    patientPhone: snapshot.patient.phone || undefined,
-    companyName: snapshot.patient.companyName || snapshot.insurer.name || undefined,
-    providerName: snapshot.provider.name || "MEDICAL FACILITY",
-    providerAddress: snapshot.provider.address || undefined,
-    providerPhone: snapshot.provider.phone || undefined,
-    doctorName: snapshot.clinical.doctorName || undefined,
-    procedureName: snapshot.clinical.procedureName,
-    procedureDate: snapshot.clinical.procedureDate,
-    diagnosis: snapshot.clinical.diagnosis || undefined,
-    currency: snapshot.document.currency,
-    format: snapshot.document.format,
-    logoUrl: snapshot.provider.logoUrl || undefined,
-  };
+  return { requestNumber: snapshot.requestNumber || undefined, issuedDate: snapshot.issuedDate || undefined, patientName: snapshot.patient.name, membershipNumber: snapshot.patient.membershipNumber, patientPhone: snapshot.patient.phone || undefined, companyName: snapshot.patient.companyName || snapshot.insurer.name || undefined, providerName: snapshot.provider.name || "MEDICAL FACILITY", providerAddress: snapshot.provider.address || undefined, providerPhone: snapshot.provider.phone || undefined, doctorName: snapshot.clinical.doctorName || undefined, procedureName: snapshot.clinical.procedureName, procedureDate: snapshot.clinical.procedureDate, diagnosis: snapshot.clinical.diagnosis || undefined, currency: snapshot.document.currency, format: snapshot.document.format, logoUrl: snapshot.provider.logoUrl || undefined };
 }
 
 export async function buildPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudioItem[]) {
@@ -60,7 +43,7 @@ export async function buildPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudio
   const categories: Array<[PreAuthStudioItem["category"], string]> = [["procedure", "Procedure / Consultation / Accommodation / Other"], ["laboratory", "Laboratory examinations"], ["drugs", "Drugs"], ["accommodation", "Accommodation"], ["other", "Other services"]];
   let tableY = y + 2;
   for (const [category, title] of categories) { const rows = sectionRows(items, category, currency); if (!rows.length) continue; autoTable(doc, { startY: tableY, margin: { left: 16, right: 16 }, head: [[{ content: title, colSpan: 4, styles: { halign: "left" } }], ["Description", "Quantity", `Unit (${currency})`, `Amount (${currency})`]], body: rows, theme: "grid", styles: { font: "helvetica", fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: accent, textColor: 255, fontStyle: "bold" }, columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 22, halign: "center" }, 2: { cellWidth: 30, halign: "right" }, 3: { cellWidth: 32, halign: "right" } } }); tableY = (doc as any).lastAutoTable.finalY + 3; }
-  const total = totalItems(items); autoTable(doc, { startY: Math.min(tableY, height - 42), margin: { left: 16, right: 16 }, body: [["", "", "TOTAL", money(total, currency)]], theme: "grid", styles: { font: "helvetica", fontSize: 9, fontStyle: "bold" }, columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 22 }, 2: { cellWidth: 30, halign: "right" }, 3: { cellWidth: 32, halign: "right" } } });
+  const total = totalItems(items); autoTable(doc, { startY: tableY, margin: { left: 16, right: 16 }, body: [["", "", "TOTAL", money(total, currency)]], theme: "grid", styles: { font: "helvetica", fontSize: 9, fontStyle: "bold" }, columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 22 }, 2: { cellWidth: 30, halign: "right" }, 3: { cellWidth: 32, halign: "right" } } });
   doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(100); doc.text(format === "international" ? "This provider-generated request is submitted for insurer review. Coverage and authorization remain subject to the member's policy and the insurer's requirements." : "Charges are submitted for insurer review and are subject to the member's benefit terms and applicable tariff.", 16, height - 10);
   return doc;
 }
