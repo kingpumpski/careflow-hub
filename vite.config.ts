@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
+      "@/lib/exportUtils": path.resolve(__dirname, "./src/lib/exportUtils.lazy.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },
