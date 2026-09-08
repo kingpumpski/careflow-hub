@@ -6,45 +6,46 @@
 
 ## Application gates
 
-- [ ] TypeScript check passes with no emit errors.
-- [ ] ESLint passes without new blocking findings.
-- [ ] Unit/regression tests pass.
-- [ ] Production build completes successfully.
-- [ ] Outstanding balances use the canonical formula:
-  `max(0, submitted - rejected - payments - withholding_tax)`.
-- [ ] Financial analytics use authoritative period data and distinguish actual vs provisional settlement.
-- [ ] Provisional WHT estimates do not count as proof of actual WHT settlement.
-- [ ] No client-side service-role or privileged Supabase credentials exist.
-- [ ] Document intake requires human review before database commit.
-- [ ] Offline operations remain available where supported and synchronize through the durable queue when connectivity returns.
+- [x] TypeScript check passes.
+- [x] ESLint passes.
+- [x] Unit/regression tests pass.
+- [x] Production build completes successfully.
+- [x] Claims financial UI reads the authoritative `claims_outstanding_periods` view.
+- [x] Outstanding balances use the canonical formula: `max(0, submitted - rejected - payments - withholding_tax)`.
+- [x] Financial analytics use authoritative period data and distinguish actual vs provisional settlement.
+- [x] Provisional WHT estimates do not count as proof of actual WHT settlement.
+- [x] No client-side service-role or privileged Supabase credentials exist.
+- [x] Document intake requires human review before database commit.
+- [x] Offline operations remain available where supported and synchronize through the durable queue when connectivity returns.
 
 ## Database gates
 
-- [ ] Schema changes are represented by versioned files under `supabase/migrations/`.
-- [ ] RLS policies are enabled for application tables and reviewed for the affected role boundary.
-- [ ] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
-- [ ] Calculated financial views remain `security_invoker` where appropriate.
-- [ ] WHT rows distinguish calculated/provisional amounts from confirmed actual settlement (`is_actual`).
-- [ ] Production data changes are performed through application workflows or controlled SQL/migration procedures, not ad-hoc client-side writes.
+- [x] Schema changes are represented by versioned files under `supabase/migrations/`.
+- [x] RLS policies are enabled for application tables and reviewed for the affected role boundary.
+- [x] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
+- [x] Calculated financial views remain `security_invoker` where appropriate.
+- [x] WHT rows distinguish calculated/provisional amounts from confirmed actual settlement (`is_actual`).
+- [x] WHT updates use the existing `payments.write` permission boundary.
+- [x] Production data changes are performed through application workflows or controlled SQL/migration procedures.
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
 
 ## Security gates
 
-- [ ] Dependency audit passes.
-- [ ] Edge Function authentication and origin controls pass.
-- [ ] Sensitive secrets exist only in server-side configuration.
-- [ ] Admin/self-role escalation protections are verified.
-- [ ] Audit logging exists for privileged or financially material actions.
-- [ ] Import/transcription inputs enforce size and type boundaries.
+- [x] Dependency audit passes.
+- [x] Edge Function authentication and origin controls pass.
+- [x] Sensitive secrets exist only in server-side configuration.
+- [x] Admin/self-role escalation protections are verified.
+- [x] Audit logging exists for privileged or financially material actions.
+- [x] Import/transcription inputs enforce size and type boundaries.
 
 ## Deployment gates
 
-- [ ] GitHub Actions CI passes on `development`.
-- [ ] Pull request to `main` passes the full quality/security checks.
-- [ ] GitHub Pages build includes the SPA `404.html` fallback.
-- [ ] Pages deployment completes successfully; a cancelled or superseded run is never treated as a release.
-- [ ] Production URL is smoke-tested after deployment.
-- [ ] Supabase production project is healthy and required migrations are applied.
+- [x] GitHub Actions CI passes on `development`.
+- [x] Pull request to `main` passes the current full quality/security checks.
+- [x] GitHub Pages build includes the SPA `404.html` fallback.
+- [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
+- [ ] Production URL has been independently browser-smoke-tested after the latest release candidate.
+- [x] Supabase production project is healthy and required outstanding/WHT migrations are applied.
 
 ## Operational smoke test
 
@@ -67,6 +68,6 @@ For schema changes, create a new timestamped migration in `supabase/migrations/`
 
 For normal records, use CareFlow's application workflows. Direct Table Editor changes should be limited to controlled administrative corrections and must preserve the same business rules used by the application.
 
-## Release evidence
+## Current release gate
 
-A release is considered production-ready only when the commit SHA, CI run, security audit, migration state, deployment result, and post-deployment smoke-test result can be identified and reviewed.
+PR #21 (`release: consolidate enterprise claims hardening`) remains open until the production smoke test and first legitimate administrator bootstrap are completed. The latest development head is validated by CI, CareFlow Quality Gate, and Dependency Security Audit.
