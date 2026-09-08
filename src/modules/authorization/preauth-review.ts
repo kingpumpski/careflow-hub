@@ -46,6 +46,22 @@ const issue = (field: string, message: string, severity: PreAuthReviewIssue["sev
   severity,
 });
 
+export function buildDuplicateSignature(input: {
+  patientId: string;
+  membershipNumber: string;
+  procedureId?: string | null;
+  procedureDate: string;
+  insurerId?: string | null;
+}): string {
+  return [
+    input.patientId,
+    input.membershipNumber.trim().toUpperCase(),
+    input.procedureId || "",
+    input.procedureDate,
+    input.insurerId || "",
+  ].join("|");
+}
+
 export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewResult {
   const errors: PreAuthReviewIssue[] = [];
   const warnings: PreAuthReviewIssue[] = [];
@@ -63,15 +79,9 @@ export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewR
   input.items.forEach((item, index) => {
     const quantity = Number(item.quantity);
     const unitPrice = Number(item.unitPrice);
-    if (!item.description.trim() && (quantity > 0 || unitPrice > 0)) {
-      errors.push(issue(`items.${index}`, "A charge line with an amount must have a description.", "error"));
-    }
-    if (item.description.trim() && (!Number.isFinite(quantity) || quantity <= 0)) {
-      errors.push(issue(`items.${index}.quantity`, "Quantity must be greater than zero.", "error"));
-    }
-    if (item.description.trim() && (!Number.isFinite(unitPrice) || unitPrice < 0)) {
-      errors.push(issue(`items.${index}.unitPrice`, "Unit price cannot be negative.", "error"));
-    }
+    if (!item.description.trim() && (quantity > 0 || unitPrice > 0)) errors.push(issue(`items.${index}`, "A charge line with an amount must have a description.", "error"));
+    if (item.description.trim() && (!Number.isFinite(quantity) || quantity <= 0)) errors.push(issue(`items.${index}.quantity`, "Quantity must be greater than zero.", "error"));
+    if (item.description.trim() && (!Number.isFinite(unitPrice) || unitPrice < 0)) errors.push(issue(`items.${index}.unitPrice`, "Unit price cannot be negative.", "error"));
   });
 
   if (!input.doctorName?.trim()) warnings.push(issue("doctor", "Doctor/provider has not been selected.", "warning"));
@@ -83,26 +93,17 @@ export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewR
   const total = totalItems(billableItems);
   if (total <= 0) errors.push(issue("total", "The request total must be greater than zero.", "error"));
 
-  return {
-    ready: errors.length === 0,
-    errors,
-    warnings,
-    total,
-    itemCount: billableItems.length,
-  };
+  return { ready: errors.length === 0, errors, warnings, total, itemCount: billableItems.length };
 }
 
-/** Builds a deterministic business snapshot for the frozen revision, PDF and email handoff. */
 export function buildPreAuthDocumentPayload(input: PreAuthReviewInput, requestNumber?: string) {
-  const items = input.items
-    .filter((item) => item.description.trim())
-    .map((item) => ({
-      category: item.category,
-      description: item.description.trim(),
-      quantity: Number(item.quantity) || 0,
-      unitPrice: Number(item.unitPrice) || 0,
-      amount: itemAmount(item),
-    }));
+  const items = input.items.filter((item) => item.description.trim()).map((item) => ({
+    category: item.category,
+    description: item.description.trim(),
+    quantity: Number(item.quantity) || 0,
+    unitPrice: Number(item.unitPrice) || 0,
+    amount: itemAmount(item),
+  }));
 
   return {
     schemaVersion: 1,
