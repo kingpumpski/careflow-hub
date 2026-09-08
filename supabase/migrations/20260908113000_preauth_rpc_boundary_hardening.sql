@@ -1,9 +1,7 @@
 -- Pre-Authorization lifecycle boundary hardening.
 -- The authoritative workflow is document preparation + officer email-client handoff.
--- Legacy insurer-submission execution RPCs are deliberately not recreated.
+-- Legacy insurer-submission execution and automatic version-capture paths are retired.
 
--- Frozen revisions must carry their parent facility explicitly so RLS can scope them
--- without trusting joins from arbitrary caller input.
 ALTER TABLE public.preauthorization_versions
   ADD COLUMN IF NOT EXISTS facility_id uuid REFERENCES public.facilities(id) ON DELETE RESTRICT;
 
@@ -16,13 +14,16 @@ WHERE v.preauth_id = p.id
 CREATE INDEX IF NOT EXISTS idx_preauthorization_versions_facility
   ON public.preauthorization_versions(facility_id, preauth_id, version_number DESC);
 
--- The authoritative handoff records are always prepared-only. They do not mean
--- that an insurer has received or delivered the request.
 ALTER TABLE public.preauthorization_submissions
   DROP CONSTRAINT IF EXISTS preauthorization_submissions_status_check;
 ALTER TABLE public.preauthorization_submissions
   ADD CONSTRAINT preauthorization_submissions_status_check
   CHECK (status = 'prepared');
+
+-- A draft/save must not silently create an immutable final revision. Revision
+-- creation is reserved for the explicit Freeze & Prepare operation below.
+DROP TRIGGER IF EXISTS trg_capture_preauth_version ON public.pre_authorizations;
+DROP TRIGGER IF EXISTS trg_capture_preauth_version_deferred ON public.pre_authorizations;
 
 -- Remove historical execution RPCs if they still exist. They must not be exposed
 -- as a second submission path beside the document-first handoff workflow.
@@ -30,8 +31,9 @@ DROP FUNCTION IF EXISTS public.submit_preauthorization(UUID,TEXT,TEXT,TEXT);
 DROP FUNCTION IF EXISTS public.process_preauth_submission(UUID);
 DROP FUNCTION IF EXISTS public.complete_preauth_submission(UUID,TEXT,TEXT);
 DROP FUNCTION IF EXISTS public.fail_preauth_submission(UUID,TEXT,TEXT);
+DROP FUNCTION IF EXISTS public.create_preauth_version(UUID,TEXT);
+DROP FUNCTION IF EXISTS public.preauth_snapshot(UUID);
 
--- Legacy execution register is retained only for historical compatibility.
 DO $$
 BEGIN
   IF to_regclass('public.preauth_submissions') IS NOT NULL THEN
@@ -39,11 +41,6 @@ BEGIN
     REVOKE INSERT, UPDATE, DELETE ON public.preauth_submissions FROM authenticated;
   END IF;
 END $$;
-
--- Revoke obsolete version helpers that used the historical schema shape. The
--- authoritative client workflow below uses one atomic handoff function instead.
-DROP FUNCTION IF EXISTS public.create_preauth_version(UUID,TEXT);
-DROP FUNCTION IF EXISTS public.preauth_snapshot(UUID);
 
 CREATE OR REPLACE FUNCTION public.finalize_preauthorization_handoff(
   p_preauth_id uuid,
@@ -111,12 +108,8 @@ BEGIN
     RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
   END IF;
 
-  -- One revision can be finalized at a time for a request.
-  PERFORM pg_advisory_xact_lock(
-    hashtextextended('preauth-handoff:' || p_preauth_id::text, 0)
-  );
+  PERFORM pg_advisory_xact_lock(hashtextextended('preauth-handoff:' || p_preauth_id::text, 0));
 
-  -- Retry-safe handoff: the same request revision/key returns the existing record.
   SELECT s.id, s.version_id
     INTO v_submission_id, v_version_id
   FROM public.preauthorization_submissions s
@@ -143,50 +136,22 @@ BEGIN
   WHERE preauth_id = p_preauth_id;
 
   INSERT INTO public.preauthorization_versions (
-    preauth_id,
-    version_number,
-    snapshot,
-    total_cost,
-    created_by,
-    facility_id
+    preauth_id, version_number, snapshot, total_cost, created_by, facility_id
   )
   VALUES (
-    p_preauth_id,
-    v_version_number,
-    p_snapshot,
-    round(p_total_cost, 2),
-    v_actor,
-    v_facility
+    p_preauth_id, v_version_number, p_snapshot, round(p_total_cost, 2), v_actor, v_facility
   )
   RETURNING id INTO v_version_id;
 
   INSERT INTO public.preauthorization_submissions (
-    preauth_id,
-    version_id,
-    idempotency_key,
-    submission_channel,
-    status,
-    recipient_manifest,
-    attachment_manifest,
-    subject,
-    message_body,
-    submitted_by,
-    prepared_at,
-    facility_id
+    preauth_id, version_id, idempotency_key, submission_channel, status,
+    recipient_manifest, attachment_manifest, subject, message_body,
+    submitted_by, prepared_at, facility_id
   )
   VALUES (
-    p_preauth_id,
-    v_version_id,
-    v_key,
-    'email',
-    'prepared',
-    p_recipient_manifest,
-    p_attachment_manifest,
-    v_subject,
-    v_body,
-    v_actor,
-    now(),
-    v_facility
+    p_preauth_id, v_version_id, v_key, 'email', 'prepared',
+    p_recipient_manifest, p_attachment_manifest, v_subject, v_body,
+    v_actor, now(), v_facility
   )
   RETURNING id INTO v_submission_id;
 
