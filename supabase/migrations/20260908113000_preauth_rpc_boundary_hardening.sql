@@ -17,16 +17,11 @@ CREATE INDEX IF NOT EXISTS idx_preauthorization_versions_facility
 ALTER TABLE public.preauthorization_submissions
   DROP CONSTRAINT IF EXISTS preauthorization_submissions_status_check;
 ALTER TABLE public.preauthorization_submissions
-  ADD CONSTRAINT preauthorization_submissions_status_check
-  CHECK (status = 'prepared');
+  ADD CONSTRAINT preauthorization_submissions_status_check CHECK (status = 'prepared');
 
--- A draft/save must not silently create an immutable final revision. Revision
--- creation is reserved for the explicit Freeze & Prepare operation below.
 DROP TRIGGER IF EXISTS trg_capture_preauth_version ON public.pre_authorizations;
 DROP TRIGGER IF EXISTS trg_capture_preauth_version_deferred ON public.pre_authorizations;
 
--- Remove historical execution RPCs if they still exist. They must not be exposed
--- as a second submission path beside the document-first handoff workflow.
 DROP FUNCTION IF EXISTS public.submit_preauthorization(UUID,TEXT,TEXT,TEXT);
 DROP FUNCTION IF EXISTS public.process_preauth_submission(UUID);
 DROP FUNCTION IF EXISTS public.complete_preauth_submission(UUID,TEXT,TEXT);
@@ -69,91 +64,60 @@ DECLARE
   v_body text;
   v_manifest jsonb;
   v_snapshot_total numeric;
+  v_existing_snapshot jsonb;
 BEGIN
   v_actor := (select auth.uid());
-  IF v_actor IS NULL THEN
-    RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
-  END IF;
+  IF v_actor IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501'; END IF;
 
-  IF p_preauth_id IS NULL OR p_snapshot IS NULL OR jsonb_typeof(p_snapshot) <> 'object' THEN
-    RAISE EXCEPTION 'INVALID_HANDOFF_PAYLOAD' USING ERRCODE = '22023';
-  END IF;
-  IF p_total_cost IS NULL OR p_total_cost < 0 THEN
-    RAISE EXCEPTION 'INVALID_TOTAL_COST' USING ERRCODE = '22023';
-  END IF;
-  IF jsonb_typeof(coalesce(p_recipient_manifest, '[]'::jsonb)) <> 'array'
-     OR jsonb_typeof(coalesce(p_attachment_manifest, '[]'::jsonb)) <> 'array' THEN
-    RAISE EXCEPTION 'INVALID_MANIFEST' USING ERRCODE = '22023';
-  END IF;
+  IF p_preauth_id IS NULL OR p_snapshot IS NULL OR jsonb_typeof(p_snapshot) <> 'object' THEN RAISE EXCEPTION 'INVALID_HANDOFF_PAYLOAD' USING ERRCODE = '22023'; END IF;
+  IF p_total_cost IS NULL OR p_total_cost < 0 THEN RAISE EXCEPTION 'INVALID_TOTAL_COST' USING ERRCODE = '22023'; END IF;
+  IF jsonb_typeof(coalesce(p_recipient_manifest, '[]'::jsonb)) <> 'array' OR jsonb_typeof(coalesce(p_attachment_manifest, '[]'::jsonb)) <> 'array' THEN RAISE EXCEPTION 'INVALID_MANIFEST' USING ERRCODE = '22023'; END IF;
 
   v_key := nullif(btrim(coalesce(p_idempotency_key, '')), '');
-  IF v_key IS NULL OR length(v_key) > 200 THEN
-    RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY' USING ERRCODE = '22023';
-  END IF;
+  IF v_key IS NULL OR length(v_key) > 200 THEN RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY' USING ERRCODE = '22023'; END IF;
   v_subject := nullif(btrim(coalesce(p_subject, '')), '');
   v_body := coalesce(p_message_body, '');
-  IF v_subject IS NULL OR length(v_subject) > 500 OR length(v_body) > 50000 THEN
-    RAISE EXCEPTION 'INVALID_EMAIL_CONTENT' USING ERRCODE = '22023';
-  END IF;
+  IF v_subject IS NULL OR length(v_subject) > 500 OR length(v_body) > 50000 THEN RAISE EXCEPTION 'INVALID_EMAIL_CONTENT' USING ERRCODE = '22023'; END IF;
 
-  SELECT * INTO v_p
-  FROM public.pre_authorizations
-  WHERE id = p_preauth_id
-  FOR UPDATE;
-
-  IF v_p.id IS NULL THEN
-    RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING ERRCODE = 'P0002';
-  END IF;
+  SELECT * INTO v_p FROM public.pre_authorizations WHERE id = p_preauth_id FOR UPDATE;
+  IF v_p.id IS NULL THEN RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING ERRCODE = 'P0002'; END IF;
 
   v_facility := v_p.facility_id;
-  IF v_facility IS NULL OR NOT public.user_has_facility_access(v_facility) THEN
-    RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
-  END IF;
+  IF v_facility IS NULL OR NOT public.user_has_facility_access(v_facility) THEN RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501'; END IF;
 
-  IF nullif(btrim(coalesce(p_snapshot->>'requestNumber', '')), '') IS DISTINCT FROM nullif(btrim(v_p.request_number), '') THEN
-    RAISE EXCEPTION 'REQUEST_NUMBER_MISMATCH' USING ERRCODE = '23514';
-  END IF;
+  IF nullif(btrim(coalesce(p_snapshot->>'requestNumber', '')), '') IS DISTINCT FROM nullif(btrim(v_p.request_number), '') THEN RAISE EXCEPTION 'REQUEST_NUMBER_MISMATCH' USING ERRCODE = '23514'; END IF;
 
   v_snapshot_total := nullif(p_snapshot #>> '{document,total}', '')::numeric;
-  IF v_snapshot_total IS NULL OR round(v_snapshot_total, 2) <> round(p_total_cost, 2) THEN
-    RAISE EXCEPTION 'SNAPSHOT_TOTAL_MISMATCH' USING ERRCODE = '23514';
-  END IF;
+  IF v_snapshot_total IS NULL OR round(v_snapshot_total, 2) <> round(p_total_cost, 2) THEN RAISE EXCEPTION 'SNAPSHOT_TOTAL_MISMATCH' USING ERRCODE = '23514'; END IF;
 
   IF NOT EXISTS (
-    SELECT 1
-    FROM jsonb_array_elements(coalesce(p_recipient_manifest, '[]'::jsonb)) recipient
-    WHERE recipient->>'type' = 'to'
-      AND length(btrim(coalesce(recipient->>'email', ''))) > 3
-  ) THEN
-    RAISE EXCEPTION 'INSURER_RECIPIENT_REQUIRED' USING ERRCODE = '22023';
-  END IF;
+    SELECT 1 FROM jsonb_array_elements(coalesce(p_recipient_manifest, '[]'::jsonb)) recipient
+    WHERE recipient->>'type' = 'to' AND length(btrim(coalesce(recipient->>'email', ''))) > 3
+  ) THEN RAISE EXCEPTION 'INSURER_RECIPIENT_REQUIRED' USING ERRCODE = '22023'; END IF;
 
   PERFORM pg_advisory_xact_lock(hashtextextended('preauth-handoff:' || p_preauth_id::text, 0));
 
-  SELECT s.id, s.version_id
-    INTO v_submission_id, v_version_id
+  SELECT s.id, s.version_id, v.snapshot
+    INTO v_submission_id, v_version_id, v_existing_snapshot
   FROM public.preauthorization_submissions s
-  WHERE s.preauth_id = p_preauth_id
-    AND s.idempotency_key = v_key
+  JOIN public.preauthorization_versions v ON v.id = s.version_id
+  WHERE s.preauth_id = p_preauth_id AND s.idempotency_key = v_key
   LIMIT 1;
 
   IF v_submission_id IS NOT NULL THEN
-    SELECT v.version_number INTO v_version_number
-    FROM public.preauthorization_versions v
-    WHERE v.id = v_version_id;
-
-    RETURN jsonb_build_object(
-      'version_id', v_version_id,
-      'version_number', v_version_number,
-      'submission_id', v_submission_id,
-      'idempotent', true
-    );
+    IF v_existing_snapshot IS DISTINCT FROM p_snapshot THEN
+      RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT' USING ERRCODE = '23514';
+    END IF;
+    SELECT version_number INTO v_version_number FROM public.preauthorization_versions WHERE id = v_version_id;
+    RETURN jsonb_build_object('version_id', v_version_id, 'version_number', v_version_number, 'submission_id', v_submission_id, 'idempotent', true);
   END IF;
 
-  SELECT coalesce(max(version_number), 0) + 1
-    INTO v_version_number
-  FROM public.preauthorization_versions
-  WHERE preauth_id = p_preauth_id;
+  IF lower(coalesce(v_p.status, '')) = 'submitted' THEN
+    RAISE EXCEPTION 'PREAUTH_ALREADY_FINALIZED' USING ERRCODE = '23514';
+  END IF;
+
+  SELECT coalesce(max(version_number), 0) + 1 INTO v_version_number
+  FROM public.preauthorization_versions WHERE preauth_id = p_preauth_id;
 
   v_manifest := coalesce(p_attachment_manifest, '[]'::jsonb);
   IF jsonb_array_length(v_manifest) = 0 THEN
@@ -166,20 +130,16 @@ BEGIN
     ));
   END IF;
 
-  INSERT INTO public.preauthorization_versions (
-    preauth_id, version_number, snapshot, total_cost, created_by, facility_id
-  )
-  VALUES (
-    p_preauth_id, v_version_number, p_snapshot, round(p_total_cost, 2), v_actor, v_facility
-  )
+  INSERT INTO public.preauthorization_versions(preauth_id, version_number, snapshot, total_cost, created_by, facility_id)
+  VALUES(p_preauth_id, v_version_number, p_snapshot, round(p_total_cost, 2), v_actor, v_facility)
   RETURNING id INTO v_version_id;
 
-  INSERT INTO public.preauthorization_submissions (
+  INSERT INTO public.preauthorization_submissions(
     preauth_id, version_id, idempotency_key, submission_channel, status,
     recipient_manifest, attachment_manifest, subject, message_body,
     submitted_by, prepared_at, facility_id
   )
-  VALUES (
+  VALUES(
     p_preauth_id, v_version_id, v_key, 'email', 'prepared',
     p_recipient_manifest, v_manifest, v_subject, v_body,
     v_actor, now(), v_facility
@@ -208,4 +168,4 @@ REVOKE ALL ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMER
 GRANT EXECUTE ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMERIC,JSONB,JSONB,TEXT,TEXT,TEXT) TO authenticated;
 
 COMMENT ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMERIC,JSONB,JSONB,TEXT,TEXT,TEXT) IS
-  'Atomically freezes a facility-scoped pre-authorization revision and records a prepared email-client handoff. It does not send or deliver email.';
+  'Atomically freezes a facility-scoped pre-authorization revision and records a prepared email-client handoff. Conflicting reuse of an idempotency key is rejected.';
