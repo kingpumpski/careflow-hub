@@ -133,7 +133,46 @@
   }
 
   .kpi-card {
-    @apply bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-200 disabled:cursor-default;
+    @apply relative bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-300 ease-out disabled:cursor-default;
+    transform: translateZ(0);
+  }
+
+  .kpi-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(115deg, transparent 20%, hsl(var(--primary) / 0.06) 48%, transparent 76%);
+    transform: translateX(-100%);
+    transition: opacity 300ms ease, transform 650ms ease;
+  }
+
+  .kpi-card:hover:not(:disabled) {
+    transform: translate3d(0, -4px, 0);
+    box-shadow: 0 14px 30px -18px hsl(var(--foreground) / 0.35);
+    border-color: hsl(var(--primary) / 0.28);
+  }
+
+  .kpi-card:hover:not(:disabled)::after {
+    opacity: 1;
+    transform: translateX(100%);
+  }
+
+  .kpi-card:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  .kpi-card > div,
+  .kpi-card > span {
+    position: relative;
+    z-index: 1;
+  }
+
+  .kpi-card .group-hover\\:scale-105 {
+    transition: transform 300ms ease-out;
   }
 
   .section-heading {
@@ -174,5 +213,21 @@
 
   .data-table td {
     @apply py-3 px-4 border-b border-border/50;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi-card,
+  .kpi-card::after,
+  .kpi-card .group-hover\\:scale-105 {
+    transition: none !important;
+  }
+
+  .kpi-card:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .kpi-card:hover:not(:disabled)::after {
+    display: none;
   }
 }
