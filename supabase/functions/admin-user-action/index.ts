@@ -36,6 +36,15 @@ Deno.serve(async (req) => {
     const { data: roles, error: roleError } = await admin.from("user_roles").select("role").eq("user_id", user.id);
     if (roleError) return json(req, { error: "Unable to verify privileges" }, 500);
     if (!(roles || []).some((role: { role?: string | null }) => role.role === "superuser")) return json(req, { error: "Forbidden" }, 403);
+    const audit = async (action: string, targetUserId?: string | null, metadata: Record<string, unknown> = {}) => {
+      const { error } = await admin.from("security_audit_log").insert({
+        actor_user_id: user.id,
+        action,
+        target_user_id: targetUserId && isUuid(targetUserId) ? targetUserId : null,
+        metadata,
+      });
+      if (error) throw error;
+    };
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body || typeof body.action !== "string") return json(req, { error: "Invalid request" }, 400);
     const action = body.action;
@@ -57,6 +66,7 @@ Deno.serve(async (req) => {
         admin.from("app_permissions").select("key, label, category, description").order("category").order("label"),
       ]);
       if (profilesError || roleRowsError || overridesError || catalogError) throw profilesError || roleRowsError || overridesError || catalogError;
+      await audit("list_users");
       return json(req, { users, profiles: profiles ?? [], roles: roleRows ?? [], overrides: overrides ?? [], permissions: catalog ?? [] });
     }
 
@@ -70,17 +80,23 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } });
       if (error || !data.user) throw error ?? new Error("User creation failed");
       const userId = data.user.id;
-      const { error: profileError } = await admin.from("profiles").upsert({ id: userId, full_name: fullName, email }, { onConflict: "id" });
-      if (profileError) throw profileError;
-      const { data: existingRole, error: roleLookupError } = await admin.from("user_roles").select("id").eq("user_id", userId).maybeSingle();
-      if (roleLookupError) throw roleLookupError;
-      if (existingRole?.id) {
-        const { error } = await admin.from("user_roles").update({ role }).eq("id", existingRole.id);
-        if (error) throw error;
-      } else {
-        const { error } = await admin.from("user_roles").insert({ user_id: userId, role });
-        if (error) throw error;
+      try {
+        const { error: profileError } = await admin.from("profiles").upsert({ id: userId, full_name: fullName, email }, { onConflict: "id" });
+        if (profileError) throw profileError;
+        const { data: existingRole, error: roleLookupError } = await admin.from("user_roles").select("id").eq("user_id", userId).maybeSingle();
+        if (roleLookupError) throw roleLookupError;
+        if (existingRole?.id) {
+          const { error } = await admin.from("user_roles").update({ role }).eq("id", existingRole.id);
+          if (error) throw error;
+        } else {
+          const { error } = await admin.from("user_roles").insert({ user_id: userId, role });
+          if (error) throw error;
+        }
+      } catch (cause) {
+        await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+        throw cause;
       }
+      await audit("create_user", userId, { role });
       return json(req, { ok: true, user: { id: userId, email, full_name: fullName, role } });
     }
 
@@ -112,6 +128,7 @@ Deno.serve(async (req) => {
         const { error: overrideError } = await admin.from("user_permission_overrides").insert(overrides);
         if (overrideError) throw overrideError;
       }
+      await audit("update_access", targetUserId, { role, override_count: overrides.length });
       return json(req, { ok: true });
     }
 
@@ -120,16 +137,18 @@ Deno.serve(async (req) => {
       if (targetUserId === user.id) return json(req, { error: "A superuser cannot delete their own account from this action." }, 400);
       const { error } = await admin.auth.admin.deleteUser(targetUserId);
       if (error) throw error;
+      await audit("delete_user", targetUserId);
       return json(req, { ok: true });
     }
 
     if (action === "reset_password") {
-      const email = typeof body.email === "string" ? body.email.trim() : "";
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       if (!/^\S+@\S+\.\S+$/.test(email)) return json(req, { error: "Valid email required" }, 400);
       const publicAuth = createClient(SUPABASE_URL, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
       const redirectTo = Deno.env.get("PASSWORD_RESET_REDIRECT_URL")?.trim();
       const { error } = await publicAuth.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
       if (error) throw error;
+      await audit("password_reset_requested", null, { email });
       return json(req, { ok: true });
     }
 
@@ -140,6 +159,7 @@ Deno.serve(async (req) => {
       if (targetUserId === user.id) return json(req, { error: "Use the normal account password flow for your own account." }, 400);
       const { error } = await admin.auth.admin.updateUserById(targetUserId, { password: newPassword });
       if (error) throw error;
+      await audit("set_password", targetUserId);
       return json(req, { ok: true });
     }
     return json(req, { error: "Unknown action" }, 400);
