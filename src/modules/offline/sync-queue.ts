@@ -155,6 +155,11 @@ export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<
   return normalized;
 }
 
+function withBaseVersion<T extends { eq: (column: string, value: string | number) => T }>(query: T, operation: SyncOperation): T {
+  if (operation.baseVersion === undefined || operation.baseVersion === null) return query;
+  return query.eq("updated_at", operation.baseVersion);
+}
+
 async function applyOperation(operation: SyncOperation): Promise<void> {
   if (operation.type === "rpc") {
     if (!operation.rpcName) throw new Error(`Sync operation ${operation.id} has no RPC name.`);
@@ -167,15 +172,18 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
   if (operation.type === "delete") {
-    const { error } = await query.delete().eq("id", operation.recordId);
+    const guardedQuery = withBaseVersion(query.delete().eq("id", operation.recordId), operation);
+    const { data, error } = await guardedQuery.select("id").maybeSingle();
     if (error) throw error;
+    if (operation.baseVersion !== undefined && !data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} changed or is outside the current facility scope.`);
     return;
   }
   if (!payload) throw new Error(`Sync operation ${operation.id} has no payload.`);
   if (operation.type === "update") {
-    const { data, error } = await query.update(payload).eq("id", operation.recordId).select("id").maybeSingle();
+    const guardedQuery = withBaseVersion(query.update(payload).eq("id", operation.recordId), operation);
+    const { data, error } = await guardedQuery.select("id").maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} no longer exists or is outside the current facility scope.`);
+    if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} changed, no longer exists, or is outside the current facility scope.`);
     return;
   }
   await query.upsert(payload, { onConflict: "id" });
