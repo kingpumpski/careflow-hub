@@ -15,7 +15,11 @@ export function usePermissions() {
     void (async () => {
       const { data, error } = await (supabase.rpc as any)("get_my_permissions");
       if (!active) return;
-      setServerPermissions(!error && Array.isArray(data) ? new Set(data.map((row: { permission_key?: string }) => row.permission_key).filter(Boolean) as Permission[]) : null);
+      const effective = Array.isArray(data) ? data.map((row: { permission_key?: string }) => row.permission_key).filter(Boolean) as Permission[] : [];
+      // An empty RPC response is treated as unavailable rather than as an intentional
+      // zero-permission grant. This prevents a transient/RLS mismatch from silently
+      // demoting administrators to a viewer-like permission set.
+      setServerPermissions(!error && effective.length > 0 ? new Set(effective) : null);
       setPermissionLoading(false);
     })();
     return () => { active = false; };

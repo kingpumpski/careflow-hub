@@ -35,7 +35,8 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: roles, error: roleError } = await admin.from("user_roles").select("role").eq("user_id", user.id);
     if (roleError) return json(req, { error: "Unable to verify privileges" }, 500);
-    if (!(roles || []).some((role: { role?: string | null }) => role.role === "superuser")) return json(req, { error: "Forbidden" }, 403);
+    const currentRole = (roles ?? []).find((role: { role?: string | null }) => VALID_ROLES.has(role.role ?? ""))?.role ?? null;
+    if (currentRole !== "superuser" && currentRole !== "admin") return json(req, { error: "Forbidden" }, 403);
     const audit = async (action: string, targetUserId?: string | null, metadata: Record<string, unknown> = {}) => {
       const { error } = await admin.from("security_audit_log").insert({
         actor_user_id: user.id,
@@ -102,9 +103,9 @@ Deno.serve(async (req) => {
 
     if (action === "update_access") {
       if (!isUuid(targetUserId)) return json(req, { error: "Valid target_user_id required" }, 400);
-      if (targetUserId === user.id && body.role && body.role !== "superuser") return json(req, { error: "You cannot remove your own superuser role." }, 400);
       const role = cleanText(body.role, 40);
       if (!VALID_ROLES.has(role)) return json(req, { error: "Invalid role" }, 400);
+      if (targetUserId === user.id && role !== currentRole) return json(req, { error: "You cannot change your own administrative role." }, 400);
       const rawOverrides = body.overrides;
       if (!Array.isArray(rawOverrides) || rawOverrides.length > MAX_PERMISSION_KEYS) return json(req, { error: "Invalid permission overrides" }, 400);
       const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), granted: item.granted }));
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
 
     if (action === "delete_user") {
       if (!isUuid(targetUserId)) return json(req, { error: "Valid target_user_id required" }, 400);
-      if (targetUserId === user.id) return json(req, { error: "A superuser cannot delete their own account from this action." }, 400);
+      if (targetUserId === user.id) return json(req, { error: "A user cannot delete their own account from this action." }, 400);
       const { error } = await admin.auth.admin.deleteUser(targetUserId);
       if (error) throw error;
       await audit("delete_user", targetUserId);

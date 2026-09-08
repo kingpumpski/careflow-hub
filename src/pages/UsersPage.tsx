@@ -33,7 +33,7 @@ export default function UsersPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [pwForm, setPwForm] = useState({ user_id: "", new_password: "" });
-  const isSuperuser = userRole === "superuser";
+  const canManageUsers = userRole === "superuser" || userRole === "admin";
   const roleMap = useMemo(() => new Map(roles.map((r) => [r.user_id, r.role])), [roles]);
   const categories = useMemo(() => Array.from(new Set(permissions.map((p) => p.category))), [permissions]);
 
@@ -54,7 +54,7 @@ export default function UsersPage() {
     } catch (err: any) { toast({ title: "Unable to load users", description: err.message, variant: "destructive" }); }
     finally { setLoading(false); }
   };
-  useEffect(() => { if (isSuperuser) void loadUsers(); else setLoading(false); }, [isSuperuser]);
+  useEffect(() => { if (canManageUsers) void loadUsers(); else setLoading(false); }, [canManageUsers]);
 
   const openAccess = (profile: ManagedUser) => {
     const role = roleMap.get(profile.id) ?? "viewer";
@@ -87,7 +87,7 @@ export default function UsersPage() {
   const deleteUser = async (profile: ManagedUser) => {
     const current = (await supabase.auth.getUser()).data.user?.id;
     if (profile.id === current) { toast({ title: "Action blocked", description: "You cannot delete your own account here.", variant: "destructive" }); return; }
-    if (!confirm(`Permanently delete user "${profile.full_name || profile.email}"? This cannot be undone.`)) return;
+    if (!confirm(`Permanently delete user \"${profile.full_name || profile.email}\"? This cannot be undone.`)) return;
     try { await invokeAdmin({ action: "delete_user", target_user_id: profile.id }); toast({ title: "User deleted" }); await loadUsers(); }
     catch (err: any) { toast({ title: "Unable to delete user", description: err.message, variant: "destructive" }); }
   };
@@ -97,7 +97,7 @@ export default function UsersPage() {
     catch (err: any) { toast({ title: "Unable to update password", description: err.message, variant: "destructive" }); }
   };
   const filtered = users.filter((p) => `${p.full_name ?? ""} ${p.email ?? ""}`.toLowerCase().includes(search.toLowerCase()));
-  if (!isSuperuser) return <div className="stat-card py-12 text-center text-muted-foreground">You do not have permission to manage user accounts.</div>;
+  if (!canManageUsers) return <div className="stat-card py-12 text-center text-muted-foreground">You do not have permission to manage user accounts.</div>;
 
   return <div className="space-y-6">
     <div className="page-header flex items-start justify-between"><div><h1 className="page-title">User Management</h1><p className="page-description">Create accounts and allocate roles and granular privileges.</p></div><Button onClick={() => setInviteOpen(true)} className="gap-2"><UserPlus className="w-4 h-4" />Add User</Button></div>

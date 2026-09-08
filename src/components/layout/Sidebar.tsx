@@ -20,6 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Rejections", path: "/rejections", permission: "claims.read" },
     { label: "Withholding Tax", path: "/withholding-tax", permission: "payments.read" },
     { label: "Bulk Import", path: "/insurance-import", permission: "masterdata.write" },
+    { label: "Document Intake", path: "/document-intake", permission: "masterdata.write" },
     { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
     { label: "Reports", path: "/reports", permission: "reports.read" },
     { label: "General Ledger", path: "/ledger", permission: "ledger.read" },

@@ -9,6 +9,7 @@ export const useAuth = () => useContext(AuthContext);
 const OFFLINE_USER_ID = "offline-careflow-user";
 const OFFLINE_USER_EMAIL = "offline@careflow.local";
 function createOfflineUser(): User { return { id: OFFLINE_USER_ID, aud: "authenticated", role: "authenticated", email: OFFLINE_USER_EMAIL, email_confirmed_at: new Date(0).toISOString(), phone: "", confirmed_at: new Date(0).toISOString(), last_sign_in_at: new Date().toISOString(), app_metadata: { provider: "offline", providers: ["offline"] }, user_metadata: { full_name: "CareFlow Offline Officer" }, identities: [], created_at: new Date(0).toISOString(), updated_at: new Date().toISOString(), is_anonymous: false } as User; }
+const ROLE_PRIORITY: Record<string, number> = { superuser: 100, admin: 90, claims_officer: 70, accounts_officer: 60, data_entry_officer: 50, auditor: 40, viewer: 10 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const mode = useCareFlowDataMode();
@@ -21,7 +22,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void supabase.auth.getSession().then(({ data: { session: nextSession } }) => { if (cancelled) return; setSession(nextSession); setUser(nextSession?.user ?? null); setLoading(false); if (nextSession?.user) { void fetchUserRole(nextSession.user.id); void fetchProfile(nextSession.user.id); } else setRoleLoading(false); }).catch(() => { if (!cancelled) { setUser(null); setSession(null); setUserRole(null); setProfile(null); setRoleLoading(false); setLoading(false); } });
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, [mode]);
-  const fetchUserRole = async (userId: string) => { setRoleLoading(true); const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId).limit(1).maybeSingle(); setUserRole(data?.role ?? "viewer"); setRoleLoading(false); };
+  const fetchUserRole = async (userId: string) => {
+    setRoleLoading(true);
+    try {
+      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+      if (error) throw error;
+      const resolved = (data ?? []).map((row) => String(row.role)).sort((a, b) => (ROLE_PRIORITY[b] ?? 0) - (ROLE_PRIORITY[a] ?? 0))[0] ?? null;
+      setUserRole(resolved);
+    } catch (error) {
+      console.error("Unable to resolve CareFlow user role", error);
+      setUserRole(null);
+    } finally { setRoleLoading(false); }
+  };
   const fetchProfile = async (userId: string) => { const { data } = await supabase.from("profiles").select("full_name, email").eq("id", userId).maybeSingle(); setProfile(data ?? null); };
   const signOut = async () => { if (isOfflineMode()) { setUser(null); return; } await supabase.auth.signOut(); };
   return <AuthContext.Provider value={{ user, session, loading, userRole, roleLoading, profile, signOut }}>{children}</AuthContext.Provider>;
