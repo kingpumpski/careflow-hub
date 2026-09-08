@@ -51,7 +51,7 @@ begin
   if (select auth.uid()) is null then raise exception 'Authentication required' using errcode='42501'; end if;
   select to_jsonb(p)-'created_by' into v_header from public.pre_authorizations p where p.id=p_id;
   if v_header is null then raise exception 'Pre-authorization not found' using errcode='P0002'; end if;
-  select coalesce(jsonb_agg(to_jsonb(i) order by i.id),'[]'::jsonb) into v_items from public.preauth_items i where i.preauth_id=p_id;
+  select coalesce(jsonb_agg(to_jsonb(i) order by i.id),'[]'::jsonb) into v_items from public.preauth_items i where i.preAuth_id=p_id;
   return jsonb_build_object('request',v_header,'items',v_items);
 end;
 $function$;
@@ -89,6 +89,9 @@ create or replace function public.preauth_snapshot(p_id uuid)
 returns jsonb language sql security invoker set search_path=''
 as $$ select security_internal.preauth_snapshot(p_id); $$;
 
+grant execute on function public.create_preauthorization_atomic(jsonb,jsonb,boolean) to authenticated;
+grant execute on function public.find_duplicate_preauthorization(uuid,uuid,uuid,uuid,date,text,jsonb,uuid) to authenticated;
+grant execute on function public.preauth_snapshot(uuid) to authenticated;
 revoke execute on function public.create_preauthorization_atomic(jsonb,jsonb,boolean) from anon;
 revoke execute on function public.find_duplicate_preauthorization(uuid,uuid,uuid,uuid,date,text,jsonb,uuid) from anon;
 revoke execute on function public.preauth_snapshot(uuid) from anon;
