@@ -6,18 +6,21 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { syncOfflineSettlementExceptions } from "@/modules/offline/settlement-exception-sync";
 import { updateOfflineSettlementExceptionStatus } from "@/modules/offline/settlement-exception-repository";
+import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import type { SettlementExceptionStatus } from "@/features/settlements/domain/settlement-exceptions";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function SettlementExceptionRegister({ periods }: { periods: any[] }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const offline = getCareFlowDataMode() === "offline";
   const { data: exceptions = [], isLoading } = useSupabaseQuery("settlement_exceptions", { orderBy: "detectedAt" });
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!offline) return;
     void syncOfflineSettlementExceptions(periods).then(() => queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] }));
-  }, [periods, queryClient]);
+  }, [periods, queryClient, offline]);
 
   const active = useMemo(() => exceptions.filter((row: any) => row.status !== "resolved" && row.status !== "waived"), [exceptions]);
   const counts = useMemo(() => ({
@@ -38,6 +41,8 @@ export default function SettlementExceptionRegister({ periods }: { periods: any[
       setBusyId(null);
     }
   };
+
+  if (!offline) return null;
 
   return <section className="stat-card space-y-4">
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
