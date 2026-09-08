@@ -16,10 +16,14 @@ export type OfflineEntity =
 
 export type OfflineRecord = Record<string, unknown> & { id: string };
 
+type StoredRecord = OfflineRecord & { storageKey: string; entity: OfflineEntity };
+
 const DB_NAME = "careflow-internal";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "records";
 const META_STORE = "metadata";
+
+const storageKey = (entity: OfflineEntity, id: string) => `${entity}:${id}`;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -28,8 +32,28 @@ function openDb(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error ?? new Error("Unable to open offline database."));
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      const tx = request.transaction;
+      if (tx && tx.objectStoreNames.contains(STORE_NAME)) {
+        const oldStore = tx.objectStore(STORE_NAME);
+        if (oldStore.keyPath === "id") {
+          const records: StoredRecord[] = [];
+          oldStore.openCursor().onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+            if (cursor) {
+              const value = cursor.value as OfflineRecord & { entity?: OfflineEntity };
+              if (value.entity) records.push({ ...value, storageKey: storageKey(value.entity, value.id) });
+              cursor.continue();
+            } else {
+              db.deleteObjectStore(STORE_NAME);
+              const store = db.createObjectStore(STORE_NAME, { keyPath: "storageKey" });
+              store.createIndex("entity", "entity", { unique: false });
+              store.createIndex("entity_updated", ["entity", "updatedAt"], { unique: false });
+              records.forEach((record) => store.put(record));
+            }
+          };
+        }
+      } else if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "storageKey" });
         store.createIndex("entity", "entity", { unique: false });
         store.createIndex("entity_updated", ["entity", "updatedAt"], { unique: false });
       }
@@ -60,23 +84,23 @@ export async function runOfflineTransaction<T>(
 }
 
 export async function putOffline<T extends OfflineRecord>(entity: OfflineEntity, record: T): Promise<T> {
-  const value = { ...record, entity, updatedAt: new Date().toISOString() };
+  const value: StoredRecord = { ...record, entity, storageKey: storageKey(entity, record.id), updatedAt: new Date().toISOString() };
   return runOfflineTransaction("readwrite", (store, resolve, reject) => {
     const request = store.put(value);
     request.onerror = () => reject(request.error ?? new Error(`Unable to save offline ${entity} record.`));
-    request.onsuccess = () => resolve(value as T);
+    request.onsuccess = () => resolve(record);
   });
 }
 
 export async function putManyOffline<T extends OfflineRecord>(entity: OfflineEntity, records: T[]): Promise<T[]> {
   return runOfflineTransaction("readwrite", (store, resolve, reject) => {
-    const values = records.map((record) => ({ ...record, entity, updatedAt: new Date().toISOString() }));
+    const values: StoredRecord[] = records.map((record) => ({ ...record, entity, storageKey: storageKey(entity, record.id), updatedAt: new Date().toISOString() }));
     let remaining = values.length;
     if (!remaining) { resolve([]); return; }
     values.forEach((value) => {
       const request = store.put(value);
       request.onerror = () => reject(request.error ?? new Error(`Unable to save offline ${entity} record.`));
-      request.onsuccess = () => { remaining -= 1; if (!remaining) resolve(values as T[]); };
+      request.onsuccess = () => { remaining -= 1; if (!remaining) resolve(records); };
     });
   });
 }
@@ -91,22 +115,17 @@ export async function listOffline<T extends OfflineRecord>(entity: OfflineEntity
 
 export async function getOffline<T extends OfflineRecord>(entity: OfflineEntity, id: string): Promise<T | undefined> {
   return runOfflineTransaction("readonly", (store, resolve, reject) => {
-    const request = store.get(id);
+    const request = store.get(storageKey(entity, id));
     request.onerror = () => reject(request.error ?? new Error(`Unable to read offline ${entity} record.`));
-    request.onsuccess = () => { const value = request.result as T | undefined; resolve(value?.entity === entity ? value : undefined); };
+    request.onsuccess = () => resolve(request.result as T | undefined);
   });
 }
 
 export async function deleteOffline(entity: OfflineEntity, id: string): Promise<void> {
   return runOfflineTransaction("readwrite", (store, resolve, reject) => {
-    const existing = store.get(id);
-    existing.onerror = () => reject(existing.error ?? new Error(`Unable to read offline ${entity} record.`));
-    existing.onsuccess = () => {
-      if (!existing.result || existing.result.entity !== entity) { resolve(undefined); return; }
-      const request = store.delete(id);
-      request.onerror = () => reject(request.error ?? new Error(`Unable to delete offline ${entity} record.`));
-      request.onsuccess = () => resolve(undefined);
-    };
+    const request = store.delete(storageKey(entity, id));
+    request.onerror = () => reject(request.error ?? new Error(`Unable to delete offline ${entity} record.`));
+    request.onsuccess = () => resolve(undefined);
   });
 }
 
