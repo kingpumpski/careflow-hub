@@ -69,3 +69,16 @@ export function calculateWithholdingTaxVariance(
 export function isSettlementConfirmed(status: SettlementStatus): boolean {
   return status === 'payment_advice_received' || status === 'reconciled';
 }
+
+/**
+ * Reconciliation is an explicit operational confirmation after payment advice
+ * has been entered. It cannot be performed while the period is still awaiting payment.
+ */
+export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'paymentAdviceReference' | 'paymentAdviceDate'>): boolean {
+  return period.settlementStatus === 'payment_advice_received'
+    && period.paymentReceived !== null
+    && period.rejectionAmount !== null
+    && period.actualWithholdingTax !== null
+    && Boolean(period.paymentAdviceReference?.trim())
+    && Boolean(period.paymentAdviceDate);
+}
