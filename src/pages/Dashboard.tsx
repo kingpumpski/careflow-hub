@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Shield, CreditCard, AlertTriangle, Ban, Percent, Wallet, Timer, TrendingUp, Building2,
@@ -43,6 +43,19 @@ export default function Dashboard() {
   /** Turns the per-year slices into the cycling frames a KPI card shows after its all-time figure. */
   const yearFrames = (build: (y: YearlyKpis) => { value: string; hint?: string; progress?: number }) =>
     yearly.slice(0, 5).map((y) => ({ label: String(y.year), ...build(y) }));
+
+  /** Shared cycle so every KPI card shows the same period (All time / year) at the same time. */
+  const slideCount = 1 + Math.min(yearly.length, 5);
+  const [frameIndex, setFrameIndex] = useState(0);
+  useEffect(() => {
+    if (slideCount < 2) return;
+    const id = window.setInterval(() => setFrameIndex((i) => (i + 1) % slideCount), 6000);
+    return () => window.clearInterval(id);
+  }, [slideCount]);
+  useEffect(() => {
+    if (frameIndex >= slideCount) setFrameIndex(0);
+  }, [slideCount, frameIndex]);
+  const sync = { frameIndex, frameCount: slideCount };
 
 
   const insights = useMemo(
