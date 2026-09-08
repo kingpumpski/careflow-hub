@@ -92,14 +92,23 @@ export default function Dashboard() {
 
       {/* Executive KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total Claims Submitted" value={thousands(kpis.grossSubmitted)} hint={`${kpis.claimsCount} claims recorded`} tone="primary" icon={Shield} onClick={() => navigate("/claims")} />
-        <KPICard title="Total Payments Received" value={thousands(kpis.paymentsReceived)} hint={`${kpis.collectionRate.toFixed(1)}% collection rate`} trend="up" tone="success" icon={CreditCard} onClick={() => navigate("/payments")} />
-        <KPICard title="Outstanding Balance" value={thousands(kpis.outstanding)} hint={`Net of ${cedis(kpis.withholdingTax)} withholding tax`} trend="down" tone="warning" icon={AlertTriangle} onClick={() => navigate("/outstanding")} />
-        <KPICard title="Rejected Amount" value={thousands(kpis.rejectedAmount)} hint={`${(claims || []).filter((c: any) => c.status === "rejected").length} rejected claims`} trend="down" tone="destructive" icon={Ban} onClick={() => navigate("/rejections")} />
-        <KPICard title="Rejection Rate" value={`${kpis.rejectionRate.toFixed(1)}%`} hint="Rejected / gross submitted" trend={kpis.rejectionRate < 10 ? "up" : "down"} tone={kpis.rejectionRate < 10 ? "accent" : "destructive"} icon={Percent} progress={kpis.rejectionRate} onClick={() => navigate("/rejections")} />
-        <KPICard title="Collection Rate" value={`${kpis.collectionRate.toFixed(1)}%`} hint="Payments / gross submitted" trend={kpis.collectionRate >= 70 ? "up" : "down"} tone="success" icon={Wallet} progress={kpis.collectionRate} onClick={() => navigate("/payments")} />
-        <KPICard title="Avg Settlement Period" value={`${kpis.avgSettlementDays.toFixed(0)} days`} hint={kpis.settledCount ? `${kpis.settledCount} settled claims` : "No settled claims yet"} trend={kpis.avgSettlementDays <= 60 ? "up" : "down"} tone="info" icon={Timer} onClick={() => navigate("/analytics")} />
-        <KPICard title="Pre-Authorizations" value={String((preauths || []).length)} hint={`${(preauths || []).filter((p: any) => p.status === "pending").length} awaiting approval`} tone="accent" icon={FileCheck} onClick={() => navigate("/pre-auth")} />
+        <KPICard title="Total Claims Submitted" value={thousands(kpis.grossSubmitted)} hint={`${kpis.claimsCount} claims recorded`} tone="primary" icon={Shield} onClick={() => navigate("/claims")}
+          frames={yearFrames((y) => ({ value: thousands(y.kpis.grossSubmitted), hint: `${y.kpis.claimsCount} claims in ${y.year}` }))} />
+        <KPICard title="Total Payments Received" value={thousands(kpis.paymentsReceived)} hint={`${kpis.collectionRate.toFixed(1)}% collection rate`} trend="up" tone="success" icon={CreditCard} onClick={() => navigate("/payments")}
+          frames={yearFrames((y) => ({ value: thousands(y.kpis.paymentsReceived), hint: `${y.kpis.collectionRate.toFixed(1)}% collected in ${y.year}` }))} />
+        <KPICard title="Outstanding Balance" value={thousands(kpis.outstanding)} hint={`Net of ${cedis(kpis.withholdingTax)} withholding tax`} trend="down" tone="warning" icon={AlertTriangle} onClick={() => navigate("/outstanding")}
+          frames={yearFrames((y) => ({ value: thousands(y.kpis.outstanding), hint: `Net of ${cedis(y.kpis.withholdingTax)} withholding tax` }))} />
+        <KPICard title="Rejected Amount" value={thousands(kpis.rejectedAmount)} hint={`${(claims || []).filter((c: any) => c.status === "rejected").length} rejected claims`} trend="down" tone="destructive" icon={Ban} onClick={() => navigate("/rejections")}
+          frames={yearFrames((y) => ({ value: thousands(y.kpis.rejectedAmount), hint: `${y.rejectedCount} rejected in ${y.year}` }))} />
+        <KPICard title="Rejection Rate" value={`${kpis.rejectionRate.toFixed(1)}%`} hint="Rejected / gross submitted" trend={kpis.rejectionRate < 10 ? "up" : "down"} tone={kpis.rejectionRate < 10 ? "accent" : "destructive"} icon={Percent} progress={kpis.rejectionRate} onClick={() => navigate("/rejections")}
+          frames={yearFrames((y) => ({ value: `${y.kpis.rejectionRate.toFixed(1)}%`, hint: `Rejection rate for ${y.year}`, progress: y.kpis.rejectionRate }))} />
+        <KPICard title="Collection Rate" value={`${kpis.collectionRate.toFixed(1)}%`} hint="Payments / gross submitted" trend={kpis.collectionRate >= 70 ? "up" : "down"} tone="success" icon={Wallet} progress={kpis.collectionRate} onClick={() => navigate("/payments")}
+          frames={yearFrames((y) => ({ value: `${y.kpis.collectionRate.toFixed(1)}%`, hint: `Collection rate for ${y.year}`, progress: y.kpis.collectionRate }))} />
+        <KPICard title="Avg Settlement Period" value={`${kpis.avgSettlementDays.toFixed(0)} days`} hint={kpis.settledCount ? `${kpis.settledCount} settled claims` : "No settled claims yet"} trend={kpis.avgSettlementDays <= 60 ? "up" : "down"} tone="info" icon={Timer} onClick={() => navigate("/analytics")}
+          frames={yearFrames((y) => ({ value: `${y.kpis.avgSettlementDays.toFixed(0)} days`, hint: y.kpis.settledCount ? `${y.kpis.settledCount} settled in ${y.year}` : `No settled claims in ${y.year}` }))} />
+        <KPICard title="Pre-Authorizations" value={String((preauths || []).length)} hint={`${(preauths || []).filter((p: any) => p.status === "pending").length} awaiting approval`} tone="accent" icon={FileCheck} onClick={() => navigate("/pre-auth")}
+          frames={yearFrames((y) => ({ value: String(y.preauthCount), hint: `Requests raised in ${y.year}` }))} />
+
       </div>
 
       {/* AI Insight Panel */}
