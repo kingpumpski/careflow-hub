@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,15 +9,18 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStoredFacilityId } from '@/features/preauth/services/preauthFacility.service';
 import { detectSettlementExceptions, type SettlementException, type SettlementExceptionStatus } from '@/features/settlements/domain/settlement-exception-register';
-import { useSupabaseInsert, useSupabaseQuery, useSupabaseUpdate } from '@/hooks/useSupabaseQuery';
+import { useSupabaseInsert, useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { createSettlementException, transitionSettlementException } from '@/modules/offline/settlement-exception-repository';
+import { getCareFlowDataMode } from '@/modules/offline/data-mode';
 
 export default function SettlementExceptions() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const facilityId = getStoredFacilityId();
+  const offline = getCareFlowDataMode() === 'offline';
   const { data: periods } = useSupabaseQuery('claims_settlement_periods');
   const { data: exceptions } = useSupabaseQuery('settlement_exceptions');
   const insertException = useSupabaseInsert('settlement_exceptions');
-  const updateException = useSupabaseUpdate('settlement_exceptions');
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const openExceptions = useMemo(() => (exceptions || []).filter((row: SettlementException) => row.status === 'open' || row.status === 'under_review'), [exceptions]);
@@ -33,10 +37,15 @@ export default function SettlementExceptions() {
         for (const item of detected) {
           const key = `${item.settlementPeriodId}:${item.type}`;
           if (existingKeys.has(key)) continue;
-          await insertException.mutateAsync({ facility_id: item.facilityId, settlement_period_id: item.settlementPeriodId, type: item.type, severity: item.severity, status: item.status, title: item.title, reason: item.reason, officer_notes: item.officerNotes, resolution: item.resolution, resolved_at: item.resolvedAt, resolved_by: item.resolvedBy });
+          if (offline) {
+            await createSettlementException({ ...item }, user.id);
+          } else {
+            await insertException.mutateAsync({ facility_id: item.facilityId, settlement_period_id: item.settlementPeriodId, type: item.type, severity: item.severity, status: item.status, title: item.title, reason: item.reason, officer_notes: item.officerNotes, resolution: item.resolution, resolved_at: item.resolvedAt, resolved_by: item.resolvedBy });
+          }
           existingKeys.add(key); created += 1;
         }
       }
+      await queryClient.invalidateQueries({ queryKey: ['settlement_exceptions'] });
       toast({ title: 'Exception scan completed', description: created ? `${created} new exception${created === 1 ? '' : 's'} recorded.` : 'No new exceptions were found.' });
     } catch (error: any) { toast({ title: 'Exception scan failed', description: error.message || 'Please try again.', variant: 'destructive' }); }
     finally { setBusy(false); }
@@ -47,9 +56,15 @@ export default function SettlementExceptions() {
     if ((nextStatus === 'resolved' || nextStatus === 'waived') && !notes[row.id]?.trim()) { toast({ title: 'Resolution required', description: 'Add a resolution note before closing an exception.', variant: 'destructive' }); return; }
     setBusy(true);
     try {
-      await updateException.mutateAsync({ id: row.id, status: nextStatus, officer_notes: notes[row.id] || row.officerNotes, resolution: nextStatus === 'resolved' || nextStatus === 'waived' ? notes[row.id] : row.resolution, resolved_at: nextStatus === 'resolved' || nextStatus === 'waived' ? new Date().toISOString() : row.resolvedAt, resolved_by: nextStatus === 'resolved' || nextStatus === 'waived' ? user.id : row.resolvedBy });
+      if (offline) {
+        await transitionSettlementException({ exception: row, nextStatus, actorId: user.id, officerNotes: notes[row.id] || row.officerNotes, resolution: nextStatus === 'resolved' || nextStatus === 'waived' ? notes[row.id] : row.resolution });
+      } else {
+        throw new Error('Exception lifecycle audit is currently available in offline operational mode.');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['settlement_exceptions'] });
+      await queryClient.invalidateQueries({ queryKey: ['settlement_exception_audit_events'] });
       setNotes((current) => ({ ...current, [row.id]: '' }));
-      toast({ title: 'Exception updated', description: `Exception moved to ${nextStatus.replaceAll('_', ' ')}.` });
+      toast({ title: 'Exception updated', description: `Exception moved to ${nextStatus.replaceAll('_', ' ')} and the action was audited.` });
     } catch (error: any) { toast({ title: 'Unable to update exception', description: error.message || 'Please try again.', variant: 'destructive' }); }
     finally { setBusy(false); }
   };
