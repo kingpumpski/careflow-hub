@@ -5,7 +5,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 
-type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods";
+type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
@@ -19,12 +19,14 @@ const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
   pre_authorizations: "preauthorizations",
   preauth_items: "preauth_items",
   claims_settlement_periods: "claims_settlement_periods",
+  settlement_exceptions: "settlement_exceptions",
+  settlement_exception_audit_events: "settlement_exception_audit_events",
 };
 const STALE_TIME_MS = 60_000;
 const GC_TIME_MS = 10 * 60_000;
 
 function scopeInsertValues(table: TableName, values: Record<string, any>) {
-  if (table !== "pre_authorizations" && table !== "claims_settlement_periods") return values;
+  if (table !== "pre_authorizations" && table !== "claims_settlement_periods" && table !== "settlement_exceptions" && table !== "settlement_exception_audit_events") return values;
   const facilityId = getStoredFacilityId();
   if (!facilityId) throw new Error("Facility context is required before creating a record.");
   if (values.facility_id && values.facility_id !== facilityId) throw new Error("The selected facility does not match the current context.");
@@ -70,31 +72,28 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
 function validateOfflineSettlementUpdate(existing: Record<string, any>, values: Record<string, any>) {
   const currentStatus = String(existing.settlement_status ?? "awaiting_payment");
   const nextStatus = String(values.settlement_status ?? currentStatus);
-  const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received")
-    || (currentStatus === "payment_advice_received" && nextStatus === "reconciled")
-    || (currentStatus === nextStatus);
+  const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received") || (currentStatus === "payment_advice_received" && nextStatus === "reconciled") || (currentStatus === nextStatus);
   if (!allowed) throw new Error(`Invalid settlement transition: ${currentStatus} → ${nextStatus}.`);
-
   if (currentStatus === "reconciled") {
     const protectedFields = ["insurance_company_id", "period_start", "period_end", "period_type", "total_claims_submitted", "withholding_tax_rate", "provisional_withholding_tax", "payment_received", "rejection_amount", "actual_withholding_tax", "payment_advice_reference", "payment_advice_date", "withholding_tax_variance", "settlement_status"];
-    if (protectedFields.some((field) => Object.prototype.hasOwnProperty.call(values, field))) {
-      throw new Error("A reconciled settlement is immutable and cannot be changed.");
-    }
+    if (protectedFields.some((field) => Object.prototype.hasOwnProperty.call(values, field))) throw new Error("A reconciled settlement is immutable and cannot be changed.");
   }
-
   if (nextStatus === "payment_advice_received") {
     const merged = { ...existing, ...values };
-    if (merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) {
-      throw new Error("Payment advice requires payment, rejection, actual WHT, advice reference, and advice date.");
-    }
+    if (merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Payment advice requires payment, rejection, actual WHT, advice reference, and advice date.");
   }
-
   if (nextStatus === "reconciled") {
     const merged = { ...existing, ...values };
-    if (!merged.confirmed_by || !merged.confirmed_at || merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) {
-      throw new Error("Settlement reconciliation requires complete payment advice and confirmation details.");
-    }
+    if (!merged.confirmed_by || !merged.confirmed_at || merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Settlement reconciliation requires complete payment advice and confirmation details.");
   }
+}
+
+function validateOfflineExceptionUpdate(existing: Record<string, any>, values: Record<string, any>) {
+  const current = String(existing.status ?? "open");
+  const next = String(values.status ?? current);
+  const allowed = (current === next) || (current === "open" && next === "under_review") || (current === "under_review" && (next === "resolved" || next === "waived"));
+  if (!allowed) throw new Error(`Invalid settlement exception transition: ${current} → ${next}.`);
+  if ((next === "resolved" || next === "waived") && (!String(values.resolution ?? existing.resolution ?? "").trim() || !values.resolved_by && !existing.resolved_by || !values.resolved_at && !existing.resolved_at)) throw new Error("Resolved or waived exceptions require resolution, responsible officer, and timestamp.");
 }
 
 export function useSupabaseInsert(table: TableName) {
@@ -148,6 +147,7 @@ export function useSupabaseUpdate(table: TableName) {
         const existing = await getOffline<Record<string, any>>(entity, id);
         if (!existing) throw new Error(`Offline record ${id} was not found.`);
         if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
+        if (table === "settlement_exceptions") validateOfflineExceptionUpdate(existing, values);
         const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
         await putOffline(entity, record);
         return record;
