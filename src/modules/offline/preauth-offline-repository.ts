@@ -116,18 +116,24 @@ export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: Pre
         reject(new Error("Offline pre-authorization draft was not found."));
         return;
       }
-      if (draft.status === "submitted") {
-        reject(new Error("This offline pre-authorization has already been finalized."));
-        return;
-      }
 
       const submissionsRequest = store.index("entity").getAll("preauthorization_submissions");
       submissionsRequest.onerror = () => reject(submissionsRequest.error ?? new Error("Unable to check offline handoff history."));
       submissionsRequest.onsuccess = () => {
         const existing = (submissionsRequest.result as OfflinePreAuthDraft[]).find((record) => record.preauth_id === preauthId && record.idempotency_key === idempotencyKey);
         if (existing) {
-          const version = { id: existing.version_id as string, version_number: Number(existing.version_number), snapshot: existing.snapshot as Record<string, unknown> };
-          resolve({ id: preauthId, requestNumber, versionNumber: version.version_number, snapshot: version.snapshot, submission: existing });
+          resolve({
+            id: preauthId,
+            requestNumber,
+            versionNumber: Number(existing.version_number),
+            snapshot: (existing.snapshot as Record<string, unknown>) ?? {},
+            submission: existing,
+          });
+          return;
+        }
+
+        if (draft.status === "submitted") {
+          reject(new Error("This offline pre-authorization has already been finalized with a different handoff key."));
           return;
         }
 
