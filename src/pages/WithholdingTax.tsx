@@ -37,7 +37,7 @@ export default function WithholdingTax() {
 
   const confirmActual = async (record: any) => {
     try {
-      await updateWHT.mutateAsync({ id: record.id, is_actual: !Boolean(record.is_actual) });
+      await updateWHT.mutateAsync({ id: record.id, is_actual: !record.is_actual });
       toast({ title: record.is_actual ? "WHT returned to provisional" : "WHT confirmed as actual", description: `${monthNames[record.month]} ${record.year} settlement state updated.` });
     } catch (err: any) {
       toast({ title: "Unable to update WHT", description: err.message, variant: "destructive" });
