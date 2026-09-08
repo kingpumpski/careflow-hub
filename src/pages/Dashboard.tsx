@@ -33,8 +33,13 @@ export default function Dashboard() {
   const [aiLoading, setAiLoading] = useState(false);
 
   const kpis = useMemo(() => computeExecutiveKpis(claims || [], payments || [], withholdingTax || []), [claims, payments, withholdingTax]);
+  const yearly = useMemo(
+    () => computeYearlyKpis(claims || [], payments || [], withholdingTax || [], preauths || []),
+    [claims, payments, withholdingTax, preauths],
+  );
   const trend = useMemo(() => buildTrendSeries(claims || [], payments || []), [claims, payments]);
   const ranked = useMemo(() => rankInsurers(insurers || [], claims || [], payments || []), [insurers, claims, payments]);
+
   const insights = useMemo(
     () => buildDashboardInsights(claims || [], payments || [], insurers || [], withholdingTax || []),
     [claims, payments, insurers, withholdingTax],
