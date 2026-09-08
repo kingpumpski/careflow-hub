@@ -5,7 +5,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 
-type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages";
+type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
@@ -18,19 +18,16 @@ const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
   preauth_catalog_items: "preauth_catalog_items",
   pre_authorizations: "preauthorizations",
   preauth_items: "preauth_items",
+  claims_settlement_periods: "claims_settlement_periods",
 };
 const STALE_TIME_MS = 60_000;
 const GC_TIME_MS = 10 * 60_000;
 
 function scopeInsertValues(table: TableName, values: Record<string, any>) {
-  if (table !== "pre_authorizations") return values;
+  if (table !== "pre_authorizations" && table !== "claims_settlement_periods") return values;
   const facilityId = getStoredFacilityId();
-  if (!facilityId) {
-    throw new Error("Facility context is required before creating a pre-authorization request.");
-  }
-  if (values.facility_id && values.facility_id !== facilityId) {
-    throw new Error("The selected facility does not match the current pre-authorization context.");
-  }
+  if (!facilityId) throw new Error("Facility context is required before creating a record.");
+  if (values.facility_id && values.facility_id !== facilityId) throw new Error("The selected facility does not match the current context.");
   return { ...values, facility_id: facilityId };
 }
 
@@ -38,46 +35,27 @@ async function listOfflineTable(table: TableName, options?: { orderBy?: string; 
   const entity = OFFLINE_ENTITY_BY_TABLE[table];
   if (!entity) return [];
   let rows = await listOffline<Record<string, any>>(entity);
-  if (options?.filters) {
-    rows = rows.filter((row) => Object.entries(options.filters!).every(([key, value]) => row[key] === value));
-  }
-  if (options?.orderBy) {
-    const key = options.orderBy;
-    rows.sort((a, b) => String(b[key] ?? "").localeCompare(String(a[key] ?? "")));
-  } else {
-    rows.sort((a, b) => String(b.created_at ?? b.updated_at ?? "").localeCompare(String(a.created_at ?? a.updated_at ?? "")));
-  }
+  if (options?.filters) rows = rows.filter((row) => Object.entries(options.filters!).every(([key, value]) => row[key] === value));
+  if (options?.orderBy) rows.sort((a, b) => String(b[options.orderBy!] ?? "").localeCompare(String(a[options.orderBy!] ?? "")));
+  else rows.sort((a, b) => String(b.created_at ?? b.updated_at ?? "").localeCompare(String(a.created_at ?? a.updated_at ?? "")));
   return rows;
 }
 
 export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any> }) {
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
-
   useEffect(() => {
     if (offline || !REALTIME_TABLES.includes(table)) return;
-    const channel = supabase
-      .channel(`realtime-${table}`)
-      .on("postgres_changes", { event: "*", schema: "public", table }, () => {
-        queryClient.invalidateQueries({ queryKey: [table] });
-      })
-      .subscribe();
+    const channel = supabase.channel(`realtime-${table}`).on("postgres_changes", { event: "*", schema: "public", table }, () => queryClient.invalidateQueries({ queryKey: [table] })).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [table, queryClient, offline]);
-
   return useQuery({
     queryKey: [table, options?.select, options?.orderBy, options?.filters, offline],
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = (supabase.from(table) as any).select(options?.select || "*");
-      if (options?.filters) {
-        Object.entries(options.filters).forEach(([key, value]) => {
-          query = query.eq(key, value);
-        });
-      }
-      query = options?.orderBy
-        ? query.order(options.orderBy, { ascending: false })
-        : query.order("created_at", { ascending: false });
+      if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
+      query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : query.order("created_at", { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
       return data;
@@ -96,14 +74,12 @@ export function useSupabaseInsert(table: TableName) {
       if (getCareFlowDataMode() === "offline") {
         const entity = OFFLINE_ENTITY_BY_TABLE[table];
         if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
-        const scopedValues = scopeInsertValues(table, values);
-        const record = { id: scopedValues.id || crypto.randomUUID(), ...scopedValues };
+        const record = { id: values.id || crypto.randomUUID(), ...scopeInsertValues(table, values) };
         const { putOffline } = await import("@/modules/offline/offline-store");
         await putOffline(entity, record);
         return record;
       }
-      const scopedValues = scopeInsertValues(table, values);
-      const { data, error } = await (supabase.from(table) as any).insert(scopedValues).select().single();
+      const { data, error } = await (supabase.from(table) as any).insert(scopeInsertValues(table, values)).select().single();
       if (error) throw error;
       return data;
     },
@@ -123,8 +99,7 @@ export function useSupabaseBulkInsert(table: TableName) {
         await putManyOffline(entity, scopedRows);
         return scopedRows;
       }
-      const scopedRows = rows.map((row) => scopeInsertValues(table, row));
-      const { data, error } = await (supabase.from(table) as any).insert(scopedRows).select();
+      const { data, error } = await (supabase.from(table) as any).insert(rows.map((row) => scopeInsertValues(table, row))).select();
       if (error) throw error;
       return data;
     },
