@@ -48,7 +48,7 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
     id,
     patient_id: reviewInput.patientId,
     insurance_company_id: reviewInput.insurerId,
-    doctor_id: null,
+    doctor_id: reviewInput.doctorId || null,
     procedure_id: reviewInput.procedureId,
     procedure_date: reviewInput.procedureDate,
     diagnosis: reviewInput.diagnosis || null,
@@ -64,7 +64,9 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
     document_format: reviewInput.format,
     document_currency: reviewInput.currency,
     duplicate_signature: signature,
+    clinical_notes: null,
     createdAt: timestamp,
+    updatedAt: timestamp,
   };
   const items = itemRows(id, reviewInput, timestamp);
 
@@ -91,7 +93,85 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
   });
 }
 
-export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: PreAuthReviewInput, recipientManifest: unknown, subject: string, messageBody: string): Promise<OfflinePreAuthFinalizeResult> {
+export async function updateOfflinePreAuthDraft(
+  preauthId: string,
+  reviewInput: PreAuthReviewInput,
+  doctorId?: string | null,
+  notes?: string | null,
+): Promise<OfflinePreAuthDraft> {
+  const signature = duplicateSignature(reviewInput);
+  const timestamp = now();
+
+  return runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
+    const draftRequest = store.get(preauthId);
+    draftRequest.onerror = () => reject(draftRequest.error ?? new Error("Unable to read offline pre-authorization draft."));
+    draftRequest.onsuccess = () => {
+      const draft = draftRequest.result as OfflinePreAuthDraft | undefined;
+      if (!draft || draft.entity !== "preauthorizations") { reject(new Error("Offline pre-authorization draft was not found.")); return; }
+      if (draft.status === "submitted") { reject(new Error("A frozen pre-authorization cannot be edited.")); return; }
+
+      const duplicateRequest = store.index("entity").getAll("preauthorizations");
+      duplicateRequest.onerror = () => reject(duplicateRequest.error ?? new Error("Unable to check offline duplicate requests."));
+      duplicateRequest.onsuccess = () => {
+        const duplicate = (duplicateRequest.result as OfflinePreAuthDraft[]).some((record) => record.id !== preauthId && record.duplicate_signature === signature && ["draft", "prepared"].includes(String(record.status ?? "draft")));
+        if (duplicate) { reject(new Error("A matching offline pre-authorization already exists.")); return; }
+
+        const updated: OfflinePreAuthDraft = {
+          ...draft,
+          patient_id: reviewInput.patientId,
+          insurance_company_id: reviewInput.insurerId,
+          doctor_id: doctorId ?? reviewInput.doctorId ?? null,
+          procedure_id: reviewInput.procedureId,
+          procedure_date: reviewInput.procedureDate,
+          diagnosis: reviewInput.diagnosis || null,
+          total_cost: reviewInput.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0),
+          provider_name: reviewInput.providerName,
+          provider_address: reviewInput.providerAddress,
+          provider_phone: reviewInput.providerPhone,
+          client_company_name: reviewInput.companyName || reviewInput.insurerName || null,
+          patient_phone: reviewInput.patientPhone || null,
+          document_format: reviewInput.format,
+          document_currency: reviewInput.currency,
+          duplicate_signature: signature,
+          clinical_notes: notes ?? draft.clinical_notes ?? null,
+          updatedAt: timestamp,
+        };
+        const itemIdsRequest = store.index("entity").getAll("preauth_items");
+        itemIdsRequest.onerror = () => reject(itemIdsRequest.error ?? new Error("Unable to read offline charge lines."));
+        itemIdsRequest.onsuccess = () => {
+          const oldItems = (itemIdsRequest.result as OfflinePreAuthDraft[]).filter((item) => item.preauth_id === preauthId);
+          let pendingDeletes = oldItems.length;
+          const saveItems = () => {
+            const items = itemRows(preauthId, reviewInput, timestamp).map((item) => ({ ...item, entity: "preauth_items" as const, updatedAt: timestamp }));
+            const values: OfflinePreAuthDraft[] = [updated, ...items.map((item) => ({ ...item, id: item.id }))];
+            let remaining = values.length;
+            values.forEach((value) => {
+              const request = store.put(value);
+              request.onerror = () => reject(request.error ?? new Error("Unable to update offline pre-authorization."));
+              request.onsuccess = () => { remaining -= 1; if (remaining === 0) resolve(updated); };
+            });
+          };
+          if (!pendingDeletes) { saveItems(); return; }
+          oldItems.forEach((item) => {
+            const request = store.delete(item.id);
+            request.onerror = () => reject(request.error ?? new Error("Unable to replace offline charge lines."));
+            request.onsuccess = () => { pendingDeletes -= 1; if (pendingDeletes === 0) saveItems(); };
+          });
+        };
+      };
+    };
+  });
+}
+
+export async function finalizeOfflinePreAuth(
+  preauthId: string,
+  reviewInput: PreAuthReviewInput,
+  doctorId: string | null | undefined,
+  notes: string | null | undefined,
+  recipientManifest: unknown,
+  subject: string,
+  messageBody: string,
+): Promise<OfflinePreAuthFinalizeResult> {
   const requestNumber = buildRequestNumber(preauthId);
   const snapshot = buildPreAuthDocumentPayload(reviewInput, requestNumber);
   const totalCost = reviewInput.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0);
@@ -124,7 +204,7 @@ export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: Pre
           const submissionId = crypto.randomUUID();
           const version = { id: versionId, entity: "preauthorization_versions" as const, preauth_id: preauthId, version_number: versionNumber, snapshot, total_cost: totalCost, createdAt: timestamp, updatedAt: timestamp };
           const submission = { id: submissionId, entity: "preauthorization_submissions" as const, preauth_id: preauthId, version_id: versionId, version_number: versionNumber, status: "prepared", recipient_manifest: recipientManifest, attachment_manifest: [{ type: "attachment", filename: `${requestNumber}-v${versionNumber}.pdf`, mimeType: "application/pdf", sizeBytes: null, storagePath: null }], subject, message_body: messageBody, idempotency_key: idempotencyKey, createdAt: timestamp, updatedAt: timestamp };
-          const updatedDraft = { ...draft, status: "submitted", current_state: "Email handoff prepared", request_number: requestNumber, document_revision: versionNumber, document_payload: snapshot, document_finalized_at: timestamp, updatedAt: timestamp };
+          const updatedDraft = { ...draft, doctor_id: doctorId ?? reviewInput.doctorId ?? draft.doctor_id ?? null, clinical_notes: notes ?? draft.clinical_notes ?? null, status: "submitted", current_state: "Email handoff prepared", request_number: requestNumber, document_revision: versionNumber, document_payload: snapshot, document_finalized_at: timestamp, updatedAt: timestamp };
           const audit = { id: crypto.randomUUID(), entity: "preauthorization_audit_events" as const, preauth_id: preauthId, version_id: versionId, submission_id: submissionId, event_type: "email_handoff_prepared", event_data: { versionNumber, recipientCount: Array.isArray(recipientManifest) ? recipientManifest.length : 0, attachmentCount: 1 }, createdAt: timestamp, updatedAt: timestamp };
           const values = [version, submission, updatedDraft, audit];
           let remaining = values.length;
