@@ -15,82 +15,32 @@ type IntakeResult = { transcript: string; records: IntakeRecord[]; warnings: str
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.md,.json,.doc,.docx,application/pdf,image/*,text/*";
-
-function localSpreadsheetText(buffer: ArrayBuffer): string {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  return workbook.SheetNames.map((name) => `SHEET: ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join("\n\n").slice(0, 100_000);
-}
+function localSpreadsheetText(buffer: ArrayBuffer): string { const workbook = XLSX.read(buffer, { type: "array", cellDates: true }); return workbook.SheetNames.map((name) => `SHEET: ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join("\n\n").slice(0, 100_000); }
 function localText(file: File, buffer: ArrayBuffer): string { return /\.xlsx?$|\.csv$/i.test(file.name) ? localSpreadsheetText(buffer) : new TextDecoder().decode(buffer).slice(0, 100_000); }
 function asNumber(value: unknown): number | null { if (typeof value === "number" && Number.isFinite(value)) return value; if (typeof value !== "string") return null; const parsed = Number(value.replace(/[^0-9.-]/g, "")); return Number.isFinite(parsed) ? parsed : null; }
 
 export default function DocumentIntake() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<IntakeResult | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [processing, setProcessing] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const mode = getCareFlowDataMode();
-  const insuranceInsert = useSupabaseBulkInsert("insurance_companies");
-  const claimInsert = useSupabaseBulkInsert("claims");
-  const paymentInsert = useSupabaseBulkInsert("payments");
-  const whtInsert = useSupabaseBulkInsert("withholding_tax");
-  const selectable = useMemo(() => result?.records ?? [], [result]);
-
+  const inputRef = useRef<HTMLInputElement>(null); const { toast } = useToast();
+  const [file, setFile] = useState<File | null>(null); const [result, setResult] = useState<IntakeResult | null>(null); const [selected, setSelected] = useState<Set<number>>(new Set()); const [processing, setProcessing] = useState(false); const [applying, setApplying] = useState(false);
+  const mode = getCareFlowDataMode(); const insuranceInsert = useSupabaseBulkInsert("insurance_companies"); const claimInsert = useSupabaseBulkInsert("claims"); const paymentInsert = useSupabaseBulkInsert("payments"); const whtInsert = useSupabaseBulkInsert("withholding_tax"); const selectable = useMemo(() => result?.records ?? [], [result]);
   const processFile = async (nextFile: File) => {
-    if (nextFile.size > MAX_FILE_BYTES) throw new Error("Files are limited to 8 MB for safe browser/edge processing.");
-    const buffer = await nextFile.arrayBuffer();
-    const isLocalText = /\.xlsx?$|\.csv$|\.txt$|\.md$|\.json$/i.test(nextFile.name) || nextFile.type.startsWith("text/");
-    if (isLocalText) {
-      const text = localText(nextFile, buffer);
-      const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "text/plain", text } });
-      if (error) throw error;
-      return data as IntakeResult;
-    }
-    const bytes = new Uint8Array(buffer); let binary = ""; const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    const dataUrl = `data:${nextFile.type || "application/octet-stream"};base64,${btoa(binary)}`;
-    const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "application/octet-stream", data_url: dataUrl } });
-    if (error) throw error;
-    return data as IntakeResult;
+    if (nextFile.size > MAX_FILE_BYTES) throw new Error("Files are limited to 8 MB for safe browser/edge processing."); const buffer = await nextFile.arrayBuffer(); const isLocalText = /\.xlsx?$|\.csv$|\.txt$|\.md$|\.json$/i.test(nextFile.name) || nextFile.type.startsWith("text/");
+    if (isLocalText) { const text = localText(nextFile, buffer); const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "text/plain", text } }); if (error) throw error; return data as IntakeResult; }
+    const bytes = new Uint8Array(buffer); let binary = ""; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk)); const dataUrl = `data:${nextFile.type || "application/octet-stream"};base64,${btoa(binary)}`;
+    const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "application/octet-stream", data_url: dataUrl } }); if (error) throw error; return data as IntakeResult;
   };
-
-  const handleFile = async (nextFile: File | undefined) => {
-    if (!nextFile) return;
-    setFile(nextFile); setResult(null); setSelected(new Set()); setProcessing(true);
-    try { const parsed = await processFile(nextFile); setResult(parsed); setSelected(new Set(parsed.records.map((_, index) => index))); toast({ title: "Document transcribed", description: `${parsed.records.length} structured record${parsed.records.length === 1 ? "" : "s"} detected.` }); }
-    catch (error: any) { toast({ title: "Transcription failed", description: error?.message || "The file could not be processed.", variant: "destructive" }); }
-    finally { setProcessing(false); }
-  };
-
+  const handleFile = async (nextFile: File | undefined) => { if (!nextFile) return; setFile(nextFile); setResult(null); setSelected(new Set()); setProcessing(true); try { const parsed = await processFile(nextFile); setResult(parsed); setSelected(new Set(parsed.records.map((_, index) => index))); toast({ title: "Document transcribed", description: `${parsed.records.length} structured record${parsed.records.length === 1 ? "" : "s"} detected.` }); } catch (error: any) { toast({ title: "Transcription failed", description: error?.message || "The file could not be processed.", variant: "destructive" }); } finally { setProcessing(false); } };
   const applyRecords = async () => {
-    if (!result) return;
-    const records = result.records.filter((_, index) => selected.has(index));
-    if (mode === "offline" && records.some((r) => r.entity !== "insurance_company")) {
-      toast({ title: "Online connection required", description: "Offline mode can safely commit master data such as insurance companies; detailed claims/payment records remain online-source data.", variant: "destructive" });
-      return;
-    }
-    setApplying(true);
+    if (!result) return; const records = result.records.filter((_, index) => selected.has(index)); if (mode === "offline" && records.some((r) => r.entity !== "insurance_company")) { toast({ title: "Online connection required", description: "Offline mode can safely commit master data such as insurance companies; detailed claims/payment records remain online-source data.", variant: "destructive" }); return; } setApplying(true);
     try {
       const insurers = records.filter((r) => r.entity === "insurance_company").map((r) => ({ company_name: String(r.data.company_name ?? "").trim(), is_active: r.data.is_active !== false })).filter((r) => r.company_name);
       const claims = records.filter((r) => r.entity === "claim").map((r) => ({ insurance_company_id: String(r.data.insurance_company_id ?? ""), claim_amount: asNumber(r.data.claim_amount), claim_month: asNumber(r.data.claim_month), claim_year: asNumber(r.data.claim_year), status: String(r.data.status ?? "submitted") })).filter((r) => r.insurance_company_id && r.claim_amount != null && r.claim_month != null && r.claim_year != null);
       const payments = records.filter((r) => r.entity === "payment").map((r) => ({ insurance_company_id: String(r.data.insurance_company_id ?? ""), amount_paid: asNumber(r.data.amount_paid), payment_date: String(r.data.payment_date ?? "") })).filter((r) => r.insurance_company_id && r.amount_paid != null && r.payment_date);
       const wht = records.filter((r) => r.entity === "withholding_tax").map((r) => ({ insurance_company_id: String(r.data.insurance_company_id ?? ""), tax_amount: asNumber(r.data.tax_amount) })).filter((r) => r.insurance_company_id && r.tax_amount != null);
-      const invalidCount = records.length - insurers.length - claims.length - payments.length - wht.length;
-      if (invalidCount > 0) throw new Error(`${invalidCount} selected record${invalidCount === 1 ? " is" : "s are"} missing required fields or valid entity data.`);
-      if (insurers.length) await insuranceInsert.mutateAsync(insurers);
-      if (claims.length) await claimInsert.mutateAsync(claims);
-      if (payments.length) await paymentInsert.mutateAsync(payments);
-      if (wht.length) await whtInsert.mutateAsync(wht);
+      const invalidCount = records.length - insurers.length - claims.length - payments.length - wht.length; if (invalidCount > 0) throw new Error(`${invalidCount} selected record${invalidCount === 1 ? " is" : "s are"} missing required fields or valid entity data.`);
+      if (insurers.length) await insuranceInsert.mutateAsync(insurers); if (claims.length) await claimInsert.mutateAsync(claims); if (payments.length) await paymentInsert.mutateAsync(payments); if (wht.length) await whtInsert.mutateAsync(wht);
       toast({ title: "Records applied", description: `${records.length} approved record${records.length === 1 ? "" : "s"} sent through the existing data layer.` });
-    } catch (error: any) { toast({ title: "Database update blocked", description: error?.message || "Review the extracted fields and try again.", variant: "destructive" }); }
-    finally { setApplying(false); }
+    } catch (error: any) { toast({ title: "Database update blocked", description: error?.message || "Review the extracted fields and try again.", variant: "destructive" }); } finally { setApplying(false); }
   };
-
-  return <div className="space-y-6">
-    <div className="page-header"><h1 className="page-title">Document Data Intake</h1><p className="page-description">Transcribe structured information from spreadsheets, PDFs, images and text documents, review it, then commit approved records through CareFlow's existing data boundary.</p></div>
-    <div className="surface-card p-5 space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><FileUp className="w-5 h-5" /></div><div><p className="font-semibold">Upload source document</p><p className="text-xs text-muted-foreground">PDF, image, Excel, CSV, JSON, TXT and common document formats · max 8 MB</p></div></div><Button onClick={() => inputRef.current?.click()} disabled={processing} className="gap-2"><FileUp className="w-4 h-4" />Choose file</Button></div><input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => void handleFile(e.target.files?.[0])} />{file && <div className="flex items-center gap-2 text-sm"><FileText className="w-4 h-4 text-muted-foreground" /><span className="font-medium truncate">{file.name}</span><Badge variant="outline">{(file.size / 1024 / 1024).toFixed(2)} MB</Badge>{processing && <Loader2 className="w-4 h-4 animate-spin text-primary" />}</div>}</div>
-    {result && <><div className="surface-card p-5 space-y-4"><div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /><h2 className="font-semibold">Transcription & extraction</h2></div><p className="text-xs text-muted-foreground mt-1">Nothing is written to the database until you approve the selected records.</p></div><Button onClick={applyRecords} disabled={applying || !selected.size} className="gap-2"><Database className="w-4 h-4" />{applying ? "Applying..." : `Apply ${selected.size}`}</Button></div><div className="rounded-lg bg-muted/50 p-4 text-sm whitespace-pre-wrap max-h-64 overflow-auto">{result.transcript || "No transcript returned."}</div>{result.warnings.length > 0 && <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm space-y-1">{result.warnings.map((warning) => <p key={warning} className="flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0 text-warning" />{warning}</p>)}</div>}</div><div className="surface-card overflow-hidden"><div className="p-4 border-b flex items-center justify-between"><div><Label>Structured records</Label><p className="text-xs text-muted-foreground mt-1">Select only records that match the source document and your intended update.</p></div><Badge variant="outline">{selectable.length} detected</Badge></div><div className="divide-y">{selectable.map((record, index) => <label key={`${record.entity}-${index}`} className="flex gap-3 p-4 hover:bg-muted/40 cursor-pointer"><input type="checkbox" checked={selected.has(index)} onChange={(e) => setSelected((current) => { const next = new Set(current); e.target.checked ? next.add(index) : next.delete(index); return next; })} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{record.entity}</Badge>{record.confidence != null && <span className="text-xs text-muted-foreground">{Math.round(record.confidence * 100)}% confidence</span>}{record.source && <span className="text-xs text-muted-foreground">{record.source}</span>}</div><pre className="mt-2 text-xs whitespace-pre-wrap font-mono bg-muted/40 rounded p-3 overflow-auto">{JSON.stringify(record.data, null, 2)}</pre></div><CheckCircle2 className="w-4 h-4 text-success shrink-0" /></label>)}</div></div></>}
-  </div>;
+  return <div className="space-y-6"><div className="page-header"><h1 className="page-title">Document Data Intake</h1><p className="page-description">Transcribe structured information from spreadsheets, PDFs, images and text documents, review it, then commit approved records through CareFlow's existing data boundary.</p></div><div className="surface-card p-5 space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><FileUp className="w-5 h-5" /></div><div><p className="font-semibold">Upload source document</p><p className="text-xs text-muted-foreground">PDF, image, Excel, CSV, JSON, TXT and common document formats · max 8 MB</p></div></div><Button onClick={() => inputRef.current?.click()} disabled={processing} className="gap-2"><FileUp className="w-4 h-4" />Choose file</Button></div><input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => void handleFile(e.target.files?.[0])} />{file && <div className="flex items-center gap-2 text-sm"><FileText className="w-4 h-4 text-muted-foreground" /><span className="font-medium truncate">{file.name}</span><Badge variant="outline">{(file.size / 1024 / 1024).toFixed(2)} MB</Badge>{processing && <Loader2 className="w-4 h-4 animate-spin text-primary" />}</div>}</div>{result && <><div className="surface-card p-5 space-y-4"><div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /><h2 className="font-semibold">Transcription & extraction</h2></div><p className="text-xs text-muted-foreground mt-1">Nothing is written to the database until you approve the selected records.</p></div><Button onClick={applyRecords} disabled={applying || !selected.size} className="gap-2"><Database className="w-4 h-4" />{applying ? "Applying..." : `Apply ${selected.size}`}</Button></div><div className="rounded-lg bg-muted/50 p-4 text-sm whitespace-pre-wrap max-h-64 overflow-auto">{result.transcript || "No transcript returned."}</div>{result.warnings.length > 0 && <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm space-y-1">{result.warnings.map((warning) => <p key={warning} className="flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0 text-warning" />{warning}</p>)}</div>}</div><div className="surface-card overflow-hidden"><div className="p-4 border-b flex items-center justify-between"><div><Label>Structured records</Label><p className="text-xs text-muted-foreground mt-1">Select only records that match the source document and your intended update.</p></div><Badge variant="outline">{selectable.length} detected</Badge></div><div className="divide-y">{selectable.map((record, index) => <label key={`${record.entity}-${index}`} className="flex gap-3 p-4 hover:bg-muted/40 cursor-pointer"><input type="checkbox" checked={selected.has(index)} onChange={(e) => setSelected((current) => { const next = new Set(current); if (e.target.checked) next.add(index); else next.delete(index); return next; })} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{record.entity}</Badge>{record.confidence != null && <span className="text-xs text-muted-foreground">{Math.round(record.confidence * 100)}% confidence</span>}{record.source && <span className="text-xs text-muted-foreground">{record.source}</span>}</div><pre className="mt-2 text-xs whitespace-pre-wrap font-mono bg-muted/40 rounded p-3 overflow-auto">{JSON.stringify(record.data, null, 2)}</pre></div><CheckCircle2 className="w-4 h-4 text-success shrink-0" /></label>)}</div></div></>}</div>;
 }
