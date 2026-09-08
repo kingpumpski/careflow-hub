@@ -9,3 +9,6 @@ verify_jwt = true
 
 [functions.admin-user-action]
 verify_jwt = true
+
+[functions.document-transcribe]
+verify_jwt = true
