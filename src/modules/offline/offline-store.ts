@@ -12,13 +12,15 @@ export type OfflineEntity =
   | "preauthorization_versions"
   | "preauthorization_submissions"
   | "preauthorization_audit_events"
-  | "claims_settlement_periods";
+  | "claims_settlement_periods"
+  | "settlement_exceptions"
+  | "settlement_exception_audit_events";
 
 export type OfflineRecord = Record<string, unknown> & { id: string };
 type StoredRecord = OfflineRecord & { storageKey: string; entity: OfflineEntity };
 
 const DB_NAME = "careflow-internal";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "records";
 const META_STORE = "metadata";
 
