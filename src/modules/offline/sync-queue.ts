@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
+import { putManyOffline, type OfflineEntity } from "./offline-store";
 
 export type SyncOperationType = "insert" | "update" | "delete";
 export type SyncOperationStatus = "pending" | "failed" | "blocked";
@@ -32,6 +34,20 @@ const DB_VERSION = 2;
 const STORE_NAME = "operations";
 const MAX_RETRY_DELAY_MS = 15 * 60_000;
 const MAX_AUTOMATIC_ATTEMPTS = 8;
+
+const OFFLINE_PULL_TABLES: Array<{ table: string; entity: OfflineEntity }> = [
+  { table: "insurance_companies", entity: "insurance_companies" },
+  { table: "doctors", entity: "doctors" },
+  { table: "procedures", entity: "procedures" },
+  { table: "diagnosis_codes", entity: "diagnosis_codes" },
+  { table: "preauth_catalog_items", entity: "preauth_catalog_items" },
+  { table: "patients", entity: "patients" },
+  { table: "pre_authorizations", entity: "preauthorizations" },
+  { table: "preauth_items", entity: "preauth_items" },
+  { table: "claims_settlement_periods", entity: "claims_settlement_periods" },
+  { table: "settlement_exceptions", entity: "settlement_exceptions" },
+  { table: "settlement_exception_audit_event", entity: "settlement_exception_audit_events" },
+];
 
 function openSyncDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -161,6 +177,42 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
   if (error) throw error;
 }
 
+async function hasPendingLocalChange(table: string, recordId: string): Promise<boolean> {
+  const operations = await listSyncOperations();
+  return operations.some((operation) => operation.table === table && operation.recordId === recordId && operation.status !== "blocked");
+}
+
+function scopePulledRows(table: string, rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const facilityId = getStoredFacilityId();
+  if (!facilityId) return rows;
+  if (!rows.some((row) => Object.prototype.hasOwnProperty.call(row, "facility_id"))) return rows;
+  return rows.filter((row) => row.facility_id === facilityId);
+}
+
+export async function pullSupabaseDataToOffline(): Promise<{ tables: number; records: number; skipped: number }> {
+  const operations = await listSyncOperations();
+  let tables = 0;
+  let records = 0;
+  let skipped = 0;
+  for (const mapping of OFFLINE_PULL_TABLES) {
+    const { data, error } = await (supabase.from(mapping.table) as any).select("*");
+    if (error) throw error;
+    const rows = scopePulledRows(mapping.table, (data ?? []) as Record<string, unknown>[]).filter((row) => typeof row.id === "string");
+    const safeRows: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const hasLocalChange = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
+      if (hasLocalChange || await hasPendingLocalChange(mapping.table, String(row.id))) { skipped += 1; continue; }
+      safeRows.push(row);
+    }
+    if (safeRows.length) {
+      await putManyOffline(mapping.entity, safeRows as Array<Record<string, unknown> & { id: string }>);
+      records += safeRows.length;
+    }
+    tables += 1;
+  }
+  return { tables, records, skipped };
+}
+
 export async function syncPendingOperations(): Promise<{ synced: number; pending: number; failed: number; blocked: number }> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     const summary = await getSyncQueueSummary();
@@ -185,6 +237,7 @@ export async function syncPendingOperations(): Promise<{ synced: number; pending
       failed += 1;
     }
   }
+  try { await pullSupabaseDataToOffline(); } catch { /* remote hydration is best-effort; queued mutations remain durable */ }
   const summary = await getSyncQueueSummary();
   return { synced, pending: summary.pending, failed, blocked: summary.blocked };
 }
