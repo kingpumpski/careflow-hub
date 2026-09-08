@@ -50,6 +50,13 @@ Role mutations are intentionally routed through `admin-user-action`, which valid
 - Authorization must never rely on editable `user_metadata` claims.
 - The `preauth.approve` permission does **not** authorize insurer approval. CareFlow Hub's current workflow ends when the authorization-request PDF and email package are prepared for final human review/send.
 
+## Dependency security baseline
+
+- Dependency remediation is performed without `npm audit fix --force`.
+- Direct security-sensitive updates include patched React Router, Vite, PostCSS, and the official SheetJS CE 0.20.3 tarball.
+- The committed lockfile is regenerated from the declared manifest and must pass `npm ci`, lint, unit tests, and production build before the dependency change is considered complete.
+- High and critical npm audit findings are merge blockers; lower-severity findings are reviewed separately rather than bypassed with forced major upgrades.
+
 ## Edge Function boundary
 
 ### `admin-user-action`
