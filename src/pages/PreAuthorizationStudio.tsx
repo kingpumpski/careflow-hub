@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { useSupabaseBulkInsert, useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
@@ -28,6 +28,7 @@ export default function PreAuthorizationStudio() {
   const { data: tariffs } = useSupabaseQuery("preauth_insurer_tariffs");
   const { data: settings } = useSupabaseQuery("system_settings");
   const insertPreauth = useSupabaseInsert("pre_authorizations");
+  const insertPreAuthItems = useSupabaseBulkInsert("preauth_items");
 
   const [patientId, setPatientId] = useState("");
   const [insurerId, setInsurerId] = useState("");
@@ -167,10 +168,7 @@ export default function PreAuthorizationStudio() {
       const created = await insertPreauth.mutateAsync(payload);
       createdId = created.id as string;
       const rows = items.filter((item) => item.description.trim()).map((item) => ({ preauth_id: createdId, description: item.description.trim(), quantity: Math.max(0, Number(item.quantity) || 0), unit_price: Math.max(0, Number(item.unitPrice) || 0), amount: itemAmount(item), category: item.category }));
-      if (rows.length) {
-        const { error } = await (supabase.from("preauth_items") as any).insert(rows);
-        if (error) throw error;
-      }
+      if (rows.length) await insertPreAuthItems.mutateAsync(rows);
       setSavedId(createdId);
       toast({ title: "Draft saved", description: `Request ${buildRequestNumber(createdId)} is ready for review.` });
       return createdId;
