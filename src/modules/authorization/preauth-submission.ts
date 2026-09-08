@@ -1,4 +1,5 @@
-import { buildPreAuthDocumentPayload, type PreAuthFrozenSnapshot, type PreAuthReviewInput } from "./preauth-review";
+import { buildPreAuthDocumentPayload, type PreAuthReviewInput } from "./preauth-review";
+import type { PreAuthFrozenSnapshot } from "./preauth-integrity";
 
 export interface PreAuthRecipient {
   type: "to" | "cc";
