@@ -6,54 +6,86 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const ANON = Deno.env.get("SUPABASE_ANON_KEY");
+    const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !ANON || !SERVICE) return json({ error: "Server configuration unavailable" }, 500);
 
     const auth = req.headers.get("Authorization");
-    if (!auth) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!auth?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
 
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: auth } } });
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const admin = createClient(SUPABASE_URL, SERVICE);
+    const admin = createClient(SUPABASE_URL, SERVICE, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-    // Check caller is superuser/admin
-    const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", user.id);
-    const allowed = (roles || []).some((r: any) => r.role === "superuser" || r.role === "admin");
-    if (!allowed) return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const { data: roles, error: roleError } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+    if (roleError) return json({ error: "Unable to verify privileges" }, 500);
 
-    const body = await req.json();
-    const { action, target_user_id, email, new_password } = body || {};
+    const isSuperuser = (roles || []).some((role: { role?: string | null }) => role.role === "superuser");
+    if (!isSuperuser) return json({ error: "Forbidden" }, 403);
+
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || typeof body.action !== "string") return json({ error: "Invalid request" }, 400);
+
+    const action = body.action;
+    const targetUserId = body.target_user_id;
+    const email = body.email;
+    const newPassword = body.new_password;
 
     if (action === "delete_user") {
-      if (!target_user_id) throw new Error("target_user_id required");
-      const { error } = await admin.auth.admin.deleteUser(target_user_id);
+      if (!isUuid(targetUserId)) return json({ error: "Valid target_user_id required" }, 400);
+      if (targetUserId === user.id) return json({ error: "A superuser cannot delete their own account from this action." }, 400);
+      const { error } = await admin.auth.admin.deleteUser(targetUserId);
       if (error) throw error;
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ ok: true });
     }
 
     if (action === "reset_password") {
-      if (!email) throw new Error("email required");
-      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
+      if (typeof email !== "string" || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+        return json({ error: "Valid email required" }, 400);
+      }
+      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email: email.trim() });
       if (error) throw error;
-      return new Response(JSON.stringify({ ok: true, action_link: data?.properties?.action_link }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (!data?.properties?.action_link) throw new Error("Unable to create recovery link");
+      return json({ ok: true, action_link: data.properties.action_link });
     }
 
     if (action === "set_password") {
-      if (!target_user_id || !new_password) throw new Error("target_user_id and new_password required");
-      const { error } = await admin.auth.admin.updateUserById(target_user_id, { password: new_password });
+      if (!isUuid(targetUserId) || typeof newPassword !== "string") {
+        return json({ error: "Valid target_user_id and new_password required" }, 400);
+      }
+      if (newPassword.length < 12 || newPassword.length > 128) {
+        return json({ error: "Password must be between 12 and 128 characters." }, 400);
+      }
+      const { error } = await admin.auth.admin.updateUserById(targetUserId, { password: newPassword });
       if (error) throw error;
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ ok: true });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return json({ error: "Unknown action" }, 400);
+  } catch (cause: unknown) {
+    console.error("admin-user-action failed", cause);
+    return json({ error: "The requested administrative action could not be completed." }, 500);
   }
 });
