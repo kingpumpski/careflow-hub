@@ -1,0 +1,10 @@
+{
+  "name": "CareFlow Hub",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "CareFlow development server",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}
