@@ -14,6 +14,10 @@ describe("analytics period semantics", () => {
     expect(resolvePeriodKey({ month: 6, year: 2026, tax_amount: 500 })).toBe("2026-06");
   });
 
+  it("does not invent a period for an undated row", () => {
+    expect(resolvePeriodKey({ tax_amount: 500 })).toBeNull();
+  });
+
   it("returns chronological latest real periods without mixing years", () => {
     const rows = [
       { claim_year: 2025, claim_month: 1 },
