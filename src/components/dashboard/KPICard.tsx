@@ -22,6 +22,10 @@ export interface KPICardProps {
   frames?: KPIFrame[];
   /** Milliseconds each slide stays visible. */
   interval?: number;
+  /** Externally-driven slide index so multiple cards stay in sync. */
+  frameIndex?: number;
+  /** Total slides across the shared cycle (for badge/dots rendering when synced). */
+  frameCount?: number;
 }
 
 const toneRing: Record<NonNullable<KPICardProps["tone"]>, string> = {
