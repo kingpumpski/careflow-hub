@@ -131,9 +131,10 @@ export function useSupabaseUpdate(table: TableName) {
         const existing = await getOffline<Record<string, any>>(entity, id);
         if (!existing) throw new Error(`Offline record ${id} was not found.`);
         if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
+        const baseVersion = existing.updated_at ?? existing.updatedAt;
         const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
         await putOffline(entity, record);
-        await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record });
+        await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record, ...(baseVersion != null ? { baseVersion } : {}) });
         return record;
       }
       const { data, error } = await (supabase.from(table) as any).update(values).eq("id", id).select().single();
@@ -151,9 +152,12 @@ export function useSupabaseDelete(table: TableName) {
       if (getCareFlowDataMode() === "offline") {
         const entity = OFFLINE_ENTITY_BY_TABLE[table];
         if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
-        const { deleteOffline } = await import("@/modules/offline/offline-store");
+        const { getOffline, deleteOffline } = await import("@/modules/offline/offline-store");
+        const existing = await getOffline<Record<string, any>>(entity, id);
+        if (!existing) throw new Error(`Offline record ${id} was not found.`);
+        const baseVersion = existing.updated_at ?? existing.updatedAt;
         await deleteOffline(entity, id);
-        await enqueueSyncOperation({ table, type: "delete", recordId: id });
+        await enqueueSyncOperation({ table, type: "delete", recordId: id, ...(baseVersion != null ? { baseVersion } : {}) });
         return;
       }
       const { error } = await (supabase.from(table) as any).delete().eq("id", id);
