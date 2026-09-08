@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
 import { FileUp, FileText, Sparkles, Database, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +11,17 @@ import { useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 type IntakeEntity = "insurance_company" | "claim" | "payment" | "withholding_tax";
 type IntakeRecord = { entity: IntakeEntity; data: Record<string, unknown>; confidence?: number; source?: string };
 type IntakeResult = { transcript: string; records: IntakeRecord[]; warnings: string[] };
-
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.md,.json,.doc,.docx,application/pdf,image/*,text/*";
-function localSpreadsheetText(buffer: ArrayBuffer): string { const workbook = XLSX.read(buffer, { type: "array", cellDates: true }); return workbook.SheetNames.map((name) => `SHEET: ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join("\n\n").slice(0, 100_000); }
-function localText(file: File, buffer: ArrayBuffer): string { return /\.xlsx?$|\.csv$/i.test(file.name) ? localSpreadsheetText(buffer) : new TextDecoder().decode(buffer).slice(0, 100_000); }
+
+async function localSpreadsheetText(buffer: ArrayBuffer): Promise<string> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  return workbook.SheetNames.map((name) => `SHEET: ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join("\n\n").slice(0, 100_000);
+}
+async function localText(file: File, buffer: ArrayBuffer): Promise<string> {
+  return /\.xlsx?$|\.csv$/i.test(file.name) ? localSpreadsheetText(buffer) : new TextDecoder().decode(buffer).slice(0, 100_000);
+}
 function asNumber(value: unknown): number | null { if (typeof value === "number" && Number.isFinite(value)) return value; if (typeof value !== "string") return null; const parsed = Number(value.replace(/[^0-9.-]/g, "")); return Number.isFinite(parsed) ? parsed : null; }
 
 export default function DocumentIntake() {
@@ -24,8 +29,9 @@ export default function DocumentIntake() {
   const [file, setFile] = useState<File | null>(null); const [result, setResult] = useState<IntakeResult | null>(null); const [selected, setSelected] = useState<Set<number>>(new Set()); const [processing, setProcessing] = useState(false); const [applying, setApplying] = useState(false);
   const mode = getCareFlowDataMode(); const insuranceInsert = useSupabaseBulkInsert("insurance_companies"); const claimInsert = useSupabaseBulkInsert("claims"); const paymentInsert = useSupabaseBulkInsert("payments"); const whtInsert = useSupabaseBulkInsert("withholding_tax"); const selectable = useMemo(() => result?.records ?? [], [result]);
   const processFile = async (nextFile: File) => {
-    if (nextFile.size > MAX_FILE_BYTES) throw new Error("Files are limited to 8 MB for safe browser/edge processing."); const buffer = await nextFile.arrayBuffer(); const isLocalText = /\.xlsx?$|\.csv$|\.txt$|\.md$|\.json$/i.test(nextFile.name) || nextFile.type.startsWith("text/");
-    if (isLocalText) { const text = localText(nextFile, buffer); const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "text/plain", text } }); if (error) throw error; return data as IntakeResult; }
+    if (nextFile.size > MAX_FILE_BYTES) throw new Error("Files are limited to 8 MB for safe browser/edge processing.");
+    const buffer = await nextFile.arrayBuffer(); const isLocalText = /\.xlsx?$|\.csv$|\.txt$|\.md$|\.json$/i.test(nextFile.name) || nextFile.type.startsWith("text/");
+    if (isLocalText) { const text = await localText(nextFile, buffer); const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "text/plain", text } }); if (error) throw error; return data as IntakeResult; }
     const bytes = new Uint8Array(buffer); let binary = ""; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk)); const dataUrl = `data:${nextFile.type || "application/octet-stream"};base64,${btoa(binary)}`;
     const { data, error } = await supabase.functions.invoke("document-transcribe", { body: { file_name: nextFile.name, mime_type: nextFile.type || "application/octet-stream", data_url: dataUrl } }); if (error) throw error; return data as IntakeResult;
   };
