@@ -1,5 +1,7 @@
 import { buildRequestNumber } from "@/modules/authorization/preauth-studio";
 import { buildPreAuthDocumentPayload, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
+import { enqueueSyncOperation } from "./sync-queue";
 import { listOffline, runOfflineTransaction, getOfflineStorageKey } from "./offline-store";
 
 export type OfflinePreAuthDraft = Record<string, unknown> & { id: string };
@@ -38,6 +40,36 @@ const stored = (entity: "preauthorizations" | "preauth_items" | "preauthorizatio
   storageKey: getOfflineStorageKey(entity, record.id),
 });
 
+async function queueMutation(table: string, type: "insert" | "update" | "delete", recordId: string, payload?: Record<string, unknown>, idempotencyKey?: string, actorId?: string | null) {
+  await enqueueSyncOperation({
+    table,
+    type,
+    recordId,
+    facilityId: getStoredFacilityId() ?? undefined,
+    actorId: actorId ?? undefined,
+    idempotencyKey,
+    payload,
+  });
+}
+
+async function queuePreAuthRows(
+  draft: OfflinePreAuthDraft,
+  items: OfflinePreAuthDraft[],
+  operation: "insert" | "update",
+  actorId?: string | null,
+  idempotencyPrefix?: string,
+) {
+  const facilityId = getStoredFacilityId();
+  const draftPayload = Object.fromEntries(Object.entries(draft).filter(([key]) => !["entity", "storageKey"].includes(key)));
+  if (facilityId && !draftPayload.facility_id) draftPayload.facility_id = facilityId;
+  await queueMutation("pre_authorizations", operation, draft.id, draftPayload, idempotencyPrefix ? `${idempotencyPrefix}:preauth` : undefined, actorId);
+  for (const item of items) {
+    const payload = Object.fromEntries(Object.entries(item).filter(([key]) => !["entity", "storageKey"].includes(key)));
+    if (facilityId && !payload.facility_id) payload.facility_id = facilityId;
+    await queueMutation("preauth_items", "insert", item.id, payload, idempotencyPrefix ? `${idempotencyPrefix}:item:${item.id}` : undefined, actorId);
+  }
+}
+
 export async function findOfflinePreAuthDuplicates(signature: string, excludeId?: string) {
   const records = await listOffline<OfflinePreAuthDraft>("preauthorizations");
   return records.filter((record) => record.duplicate_signature === signature && record.id !== excludeId && ["draft", "prepared"].includes(String(record.status ?? "draft")));
@@ -75,7 +107,7 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
   };
   const items = itemRows(id, reviewInput, timestamp);
 
-  return runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
+  const result = await runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
     const existingRequest = store.index("entity").getAll("preauthorizations");
     existingRequest.onerror = () => reject(existingRequest.error ?? new Error("Unable to check offline duplicate requests."));
     existingRequest.onsuccess = () => {
@@ -91,13 +123,17 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
       });
     };
   });
+
+  await queuePreAuthRows(result, items.map((item) => ({ ...item, id: item.id, updatedAt: timestamp })), "insert", createdBy, `preauth:${result.id}:create`);
+  return result;
 }
 
 export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: PreAuthReviewInput, doctorId?: string | null, notes?: string | null): Promise<OfflinePreAuthDraft> {
   const signature = duplicateSignature(reviewInput);
   const timestamp = now();
+  let previousItemIds: string[] = [];
 
-  return runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
+  const result = await runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
     const draftRequest = store.get(getOfflineStorageKey("preauthorizations", preauthId));
     draftRequest.onerror = () => reject(draftRequest.error ?? new Error("Unable to read offline pre-authorization draft."));
     draftRequest.onsuccess = () => {
@@ -135,6 +171,7 @@ export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: 
         itemIdsRequest.onerror = () => reject(itemIdsRequest.error ?? new Error("Unable to read offline charge lines."));
         itemIdsRequest.onsuccess = () => {
           const oldItems = (itemIdsRequest.result as OfflinePreAuthDraft[]).filter((item) => item.preauth_id === preauthId);
+          previousItemIds = oldItems.map((item) => item.id);
           let pendingDeletes = oldItems.length;
           const saveItems = () => {
             const items = itemRows(preauthId, reviewInput, timestamp);
@@ -156,6 +193,14 @@ export async function updateOfflinePreAuthDraft(preauthId: string, reviewInput: 
       };
     };
   });
+
+  const currentItems = await listOffline<OfflinePreAuthDraft>("preauth_items");
+  const newItems = currentItems.filter((item) => item.preauth_id === preauthId);
+  await queuePreAuthRows(result, newItems, "update", undefined, `preauth:${preauthId}:update:${timestamp}`);
+  for (const itemId of previousItemIds.filter((id) => !newItems.some((item) => item.id === id))) {
+    await queueMutation("preauth_items", "delete", itemId, undefined, `preauth:${preauthId}:delete:${itemId}:${timestamp}`);
+  }
+  return result;
 }
 
 export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: PreAuthReviewInput, doctorId: string | null | undefined, notes: string | null | undefined, recipientManifest: unknown, subject: string, messageBody: string): Promise<OfflinePreAuthFinalizeResult> {
@@ -164,7 +209,7 @@ export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: Pre
   const totalCost = reviewInput.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0);
   const idempotencyKey = `${preauthId}:freeze:${requestNumber}`;
 
-  return runOfflineTransaction<OfflinePreAuthFinalizeResult>("readwrite", (store, resolve, reject) => {
+  const result = await runOfflineTransaction<OfflinePreAuthFinalizeResult>("readwrite", (store, resolve, reject) => {
     const draftRequest = store.get(getOfflineStorageKey("preauthorizations", preauthId));
     draftRequest.onerror = () => reject(draftRequest.error ?? new Error("Unable to read offline pre-authorization."));
     draftRequest.onsuccess = () => {
@@ -204,4 +249,25 @@ export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: Pre
       };
     };
   });
+
+  await enqueueSyncOperation({
+    table: "pre_authorizations",
+    type: "rpc",
+    recordId: preauthId,
+    rpcName: "finalize_preauthorization_handoff",
+    rpcArgs: {
+      p_preauth_id: preauthId,
+      p_snapshot: snapshot,
+      p_total_cost: totalCost,
+      p_recipient_manifest: recipientManifest,
+      p_attachment_manifest: result.submission.attachment_manifest ?? [],
+      p_subject: subject,
+      p_message_body: messageBody,
+      p_idempotency_key: idempotencyKey,
+    },
+    facilityId: getStoredFacilityId() ?? undefined,
+    idempotencyKey,
+  });
+
+  return result;
 }

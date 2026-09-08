@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { putManyOffline, type OfflineEntity } from "./offline-store";
 
-export type SyncOperationType = "insert" | "update" | "delete";
+export type SyncOperationType = "insert" | "update" | "delete" | "rpc";
 export type SyncOperationStatus = "pending" | "failed" | "blocked";
 
 export interface SyncOperation {
@@ -10,6 +10,8 @@ export interface SyncOperation {
   table: string;
   type: SyncOperationType;
   recordId: string;
+  rpcName?: string;
+  rpcArgs?: Record<string, unknown>;
   facilityId?: string;
   actorId?: string;
   idempotencyKey?: string;
@@ -26,7 +28,7 @@ export interface SyncOperation {
 export interface SyncQueueSummary { pending: number; failed: number; blocked: number; }
 
 const DB_NAME = "careflow-sync-queue";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "operations";
 const MAX_RETRY_DELAY_MS = 15 * 60_000;
 const MAX_AUTOMATIC_ATTEMPTS = 8;
@@ -137,6 +139,13 @@ async function recordSyncFailure(operation: SyncOperation, error: unknown): Prom
 }
 
 async function applyOperation(operation: SyncOperation): Promise<void> {
+  if (operation.type === "rpc") {
+    if (!operation.rpcName) throw new Error(`Sync operation ${operation.id} has no RPC name.`);
+    const { error } = await supabase.rpc(operation.rpcName, operation.rpcArgs ?? {});
+    if (error) throw error;
+    return;
+  }
+
   const query = (supabase.from(operation.table) as any);
   const payload = operation.payload ? { ...operation.payload } : undefined;
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
@@ -164,7 +173,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
       .filter((row) => typeof row.id === "string")
       .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
     const safeRows = rows.filter((row) => {
-      const changed = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
+      const changed = operations.some((operation) => operation.recordId === row.id && operation.status !== "blocked");
       if (changed) skipped += 1;
       return !changed;
     });
