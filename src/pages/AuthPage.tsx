@@ -99,14 +99,16 @@ export default function AuthPage() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Use at least 12 characters"
                   required
-                  minLength={6}
+                  minLength={12}
+                  maxLength={128}
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
                   {showPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
                 </button>
               </div>
+              {!isLogin && <p className="text-xs text-muted-foreground mt-1">Password must be 12–128 characters.</p>}
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
@@ -127,13 +129,7 @@ export default function AuthPage() {
             </span>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full gap-2"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-          >
+          <Button type="button" variant="outline" className="w-full gap-2" onClick={handleGoogleSignIn} disabled={loading}>
             <Chrome className="w-4 h-4" />
             Continue with Google
           </Button>
