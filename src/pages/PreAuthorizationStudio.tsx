@@ -9,10 +9,10 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
-import { buildPreAuthEmail, buildPreAuthDocumentPayload, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
+import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
 import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
-import { validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
+import { buildPreAuthDocumentPayload, validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
 import { buildPreAuthRecipientManifest, buildPreAuthSubmissionPackageFromSnapshot, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
 
 const blankItem = (): PreAuthStudioItem => ({ id: crypto.randomUUID(), category: "procedure", description: "", quantity: 1, unitPrice: 0 });
@@ -175,9 +175,7 @@ export default function PreAuthorizationStudio() {
       toast({ title: "Draft saved", description: `Request ${buildRequestNumber(createdId)} is ready for review.` });
       return createdId;
     } catch (error: any) {
-      if (createdId) {
-        await (supabase.from("pre_authorizations") as any).delete().eq("id", createdId);
-      }
+      if (createdId) await (supabase.from("pre_authorizations") as any).delete().eq("id", createdId);
       toast({ title: "Unable to save draft", description: error.message || "Please try again.", variant: "destructive" });
       return null;
     } finally { setSaving(false); }
@@ -240,9 +238,7 @@ export default function PreAuthorizationStudio() {
         additionalEmails: selectedInsurer?.additional_emails,
         ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
       });
-      if (!recipients.some((recipient) => recipient.type === "to")) {
-        throw new Error("The insurer does not have a valid email address for the authorization request.");
-      }
+      if (!recipients.some((recipient) => recipient.type === "to")) throw new Error("The insurer does not have a valid email address for the authorization request.");
 
       const { data: finalized, error: finalizeError } = await (supabase.rpc as any)("finalize_preauthorization_handoff", {
         p_preauth_id: id,
