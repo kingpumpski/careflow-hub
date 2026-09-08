@@ -1,224 +1,106 @@
--- Harden privileged Pre-Authorization RPCs and child-item tenancy boundaries.
--- SECURITY DEFINER functions must re-check the facility boundary because their owner
--- context can bypass table RLS. Child charge rows inherit access from their parent request.
+-- Pre-Authorization lifecycle boundary hardening.
+-- The authoritative workflow is document preparation + officer email-client handoff.
+-- Legacy insurer-submission execution RPCs are deliberately not recreated.
 
-ALTER TABLE public.preauth_items ENABLE ROW LEVEL SECURITY;
+-- Frozen revisions must carry their parent facility explicitly so RLS can scope them
+-- without trusting joins from arbitrary caller input.
+ALTER TABLE public.preauthorization_versions
+  ADD COLUMN IF NOT EXISTS facility_id uuid REFERENCES public.facilities(id) ON DELETE RESTRICT;
 
-DROP POLICY IF EXISTS "Authenticated read preauth_items" ON public.preauth_items;
-DROP POLICY IF EXISTS "Authenticated insert preauth_items" ON public.preauth_items;
-DROP POLICY IF EXISTS "Authenticated update preauth_items" ON public.preauth_items;
-DROP POLICY IF EXISTS "Authenticated delete preauth_items" ON public.preauth_items;
-DROP POLICY IF EXISTS preauth_items_select_facility ON public.preauth_items;
-DROP POLICY IF EXISTS preauth_items_insert_facility ON public.preauth_items;
-DROP POLICY IF EXISTS preauth_items_update_facility ON public.preauth_items;
-DROP POLICY IF EXISTS preauth_items_delete_facility ON public.preauth_items;
+UPDATE public.preauthorization_versions v
+SET facility_id = p.facility_id
+FROM public.pre_authorizations p
+WHERE v.preauth_id = p.id
+  AND v.facility_id IS NULL;
 
-CREATE POLICY preauth_items_select_facility ON public.preauth_items
-  FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1
-      FROM public.pre_authorizations p
-      WHERE p.id = preauth_items.preauth_id
-        AND p.facility_id IS NOT NULL
-        AND public.user_has_facility_access(p.facility_id)
-    )
-  );
+CREATE INDEX IF NOT EXISTS idx_preauthorization_versions_facility
+  ON public.preauthorization_versions(facility_id, preauth_id, version_number DESC);
 
-CREATE POLICY preauth_items_insert_facility ON public.preauth_items
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1
-      FROM public.pre_authorizations p
-      WHERE p.id = preauth_items.preauth_id
-        AND p.facility_id IS NOT NULL
-        AND public.user_has_facility_access(p.facility_id)
-    )
-  );
+-- The authoritative handoff records are always prepared-only. They do not mean
+-- that an insurer has received or delivered the request.
+ALTER TABLE public.preauthorization_submissions
+  DROP CONSTRAINT IF EXISTS preauthorization_submissions_status_check;
+ALTER TABLE public.preauthorization_submissions
+  ADD CONSTRAINT preauthorization_submissions_status_check
+  CHECK (status = 'prepared');
 
-CREATE POLICY preauth_items_update_facility ON public.preauth_items
-  FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1
-      FROM public.pre_authorizations p
-      WHERE p.id = preauth_items.preauth_id
-        AND p.facility_id IS NOT NULL
-        AND public.user_has_facility_access(p.facility_id)
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1
-      FROM public.pre_authorizations p
-      WHERE p.id = preauth_items.preauth_id
-        AND p.facility_id IS NOT NULL
-        AND public.user_has_facility_access(p.facility_id)
-    )
-  );
+-- Remove historical execution RPCs if they still exist. They must not be exposed
+-- as a second submission path beside the document-first handoff workflow.
+DROP FUNCTION IF EXISTS public.submit_preauthorization(UUID,TEXT,TEXT,TEXT);
+DROP FUNCTION IF EXISTS public.process_preauth_submission(UUID);
+DROP FUNCTION IF EXISTS public.complete_preauth_submission(UUID,TEXT,TEXT);
+DROP FUNCTION IF EXISTS public.fail_preauth_submission(UUID,TEXT,TEXT);
 
-CREATE POLICY preauth_items_delete_facility ON public.preauth_items
-  FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1
-      FROM public.pre_authorizations p
-      WHERE p.id = preauth_items.preauth_id
-        AND p.facility_id IS NOT NULL
-        AND public.user_has_facility_access(p.facility_id)
-    )
-  );
-
--- Do not allow unauthenticated callers to reach charge rows.
-REVOKE ALL ON public.preauth_items FROM anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.preauth_items TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.preauth_snapshot(p_id UUID)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_header JSONB;
-  v_items JSONB;
-  v_facility UUID;
+-- Legacy execution register is retained only for historical compatibility.
+DO $$
 BEGIN
-  IF (select auth.uid()) IS NULL THEN
-    RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
+  IF to_regclass('public.preauth_submissions') IS NOT NULL THEN
+    REVOKE ALL ON public.preauth_submissions FROM anon;
+    REVOKE INSERT, UPDATE, DELETE ON public.preauth_submissions FROM authenticated;
   END IF;
+END $$;
 
-  SELECT p.facility_id, to_jsonb(p) - 'created_by'
-    INTO v_facility, v_header
-    FROM public.pre_authorizations p
-   WHERE p.id = p_id;
+-- Revoke obsolete version helpers that used the historical schema shape. The
+-- authoritative client workflow below uses one atomic handoff function instead.
+DROP FUNCTION IF EXISTS public.create_preauth_version(UUID,TEXT);
+DROP FUNCTION IF EXISTS public.preauth_snapshot(UUID);
 
-  IF v_header IS NULL THEN
-    RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING ERRCODE = 'P0002';
-  END IF;
-
-  IF v_facility IS NULL OR NOT public.user_has_facility_access(v_facility) THEN
-    RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
-  END IF;
-
-  SELECT coalesce(jsonb_agg(to_jsonb(i) ORDER BY i.id), '[]'::jsonb)
-    INTO v_items
-    FROM public.preauth_items i
-   WHERE i.preauth_id = p_id;
-
-  RETURN jsonb_build_object('request', v_header, 'items', v_items);
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.create_preauth_version(
-  p_preauth_id UUID,
-  p_action TEXT DEFAULT 'created'
+CREATE OR REPLACE FUNCTION public.finalize_preauthorization_handoff(
+  p_preauth_id uuid,
+  p_snapshot jsonb,
+  p_total_cost numeric,
+  p_recipient_manifest jsonb,
+  p_attachment_manifest jsonb,
+  p_subject text,
+  p_message_body text,
+  p_idempotency_key text
 )
-RETURNS public.preauthorization_versions
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_version INTEGER;
-  v_snapshot JSONB;
-  v_row public.preauthorization_versions;
-  v_facility UUID;
-  v_action TEXT;
-BEGIN
-  IF (select auth.uid()) IS NULL THEN
-    RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
-  END IF;
-
-  SELECT facility_id INTO v_facility
-    FROM public.pre_authorizations
-   WHERE id = p_preauth_id;
-
-  IF v_facility IS NULL THEN
-    RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING ERRCODE = 'P0002';
-  END IF;
-  IF NOT public.user_has_facility_access(v_facility) THEN
-    RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
-  END IF;
-
-  v_action := nullif(trim(coalesce(p_action, '')), '');
-  IF v_action IS NULL THEN v_action := 'amended'; END IF;
-  IF length(v_action) > 100 THEN
-    RAISE EXCEPTION 'INVALID_VERSION_ACTION';
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(
-    hashtextextended('preauth-version:' || p_preauth_id::text, 0)
-  );
-
-  SELECT coalesce(max(version_number), 0) + 1
-    INTO v_version
-    FROM public.preauthorization_versions
-   WHERE preauth_id = p_preauth_id;
-
-  v_snapshot := public.preauth_snapshot(p_preauth_id);
-
-  INSERT INTO public.preauthorization_versions(
-    preauth_id, version_number, action, snapshot, fingerprint, created_by, facility_id
-  )
-  VALUES(
-    p_preauth_id,
-    v_version,
-    v_action,
-    v_snapshot,
-    (v_snapshot->'request'->>'dedup_fingerprint'),
-    (select auth.uid()),
-    v_facility
-  )
-  RETURNING * INTO v_row;
-
-  RETURN v_row;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.submit_preauthorization(
-  p_preauth_id UUID,
-  p_channel TEXT,
-  p_idempotency_key TEXT,
-  p_recipient TEXT DEFAULT NULL
-)
-RETURNS public.preauth_submissions
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
   v_p public.pre_authorizations;
-  v_version INTEGER;
-  v_row public.preauth_submissions;
-  v_facility UUID;
-  v_channel TEXT;
-  v_key TEXT;
-  v_recipient TEXT;
+  v_facility uuid;
+  v_version_number integer;
+  v_version_id uuid;
+  v_submission_id uuid;
+  v_actor uuid;
+  v_key text;
+  v_subject text;
+  v_body text;
 BEGIN
-  IF (select auth.uid()) IS NULL THEN
+  v_actor := (select auth.uid());
+  IF v_actor IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
   END IF;
 
-  v_channel := lower(nullif(trim(coalesce(p_channel, '')), ''));
-  v_key := nullif(trim(coalesce(p_idempotency_key, '')), '');
-  v_recipient := nullif(trim(coalesce(p_recipient, '')), '');
+  IF p_preauth_id IS NULL OR p_snapshot IS NULL OR jsonb_typeof(p_snapshot) <> 'object' THEN
+    RAISE EXCEPTION 'INVALID_HANDOFF_PAYLOAD' USING ERRCODE = '22023';
+  END IF;
+  IF p_total_cost IS NULL OR p_total_cost < 0 THEN
+    RAISE EXCEPTION 'INVALID_TOTAL_COST' USING ERRCODE = '22023';
+  END IF;
+  IF jsonb_typeof(coalesce(p_recipient_manifest, '[]'::jsonb)) <> 'array'
+     OR jsonb_typeof(coalesce(p_attachment_manifest, '[]'::jsonb)) <> 'array' THEN
+    RAISE EXCEPTION 'INVALID_MANIFEST' USING ERRCODE = '22023';
+  END IF;
 
-  IF v_channel IS NULL OR v_channel NOT IN ('email', 'portal', 'api') THEN
-    RAISE EXCEPTION 'INVALID_SUBMISSION_CHANNEL';
-  END IF;
+  v_key := nullif(btrim(coalesce(p_idempotency_key, '')), '');
   IF v_key IS NULL OR length(v_key) > 200 THEN
-    RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY';
+    RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY' USING ERRCODE = '22023';
   END IF;
-  IF v_recipient IS NOT NULL AND length(v_recipient) > 320 THEN
-    RAISE EXCEPTION 'INVALID_RECIPIENT';
+  v_subject := nullif(btrim(coalesce(p_subject, '')), '');
+  v_body := coalesce(p_message_body, '');
+  IF v_subject IS NULL OR length(v_subject) > 500 OR length(v_body) > 50000 THEN
+    RAISE EXCEPTION 'INVALID_EMAIL_CONTENT' USING ERRCODE = '22023';
   END IF;
 
   SELECT * INTO v_p
-    FROM public.pre_authorizations
-   WHERE id = p_preauth_id
-   FOR UPDATE;
+  FROM public.pre_authorizations
+  WHERE id = p_preauth_id
+  FOR UPDATE;
 
   IF v_p.id IS NULL THEN
     RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING ERRCODE = 'P0002';
@@ -229,62 +111,104 @@ BEGIN
     RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
   END IF;
 
+  -- One revision can be finalized at a time for a request.
   PERFORM pg_advisory_xact_lock(
-    hashtextextended('preauth-submit:' || p_preauth_id::text || ':' || v_key, 0)
+    hashtextextended('preauth-handoff:' || p_preauth_id::text, 0)
   );
 
-  SELECT coalesce(max(version_number), 0)
-    INTO v_version
-    FROM public.preauthorization_versions
-   WHERE preauth_id = p_preauth_id;
+  -- Retry-safe handoff: the same request revision/key returns the existing record.
+  SELECT s.id, s.version_id
+    INTO v_submission_id, v_version_id
+  FROM public.preauthorization_submissions s
+  WHERE s.preauth_id = p_preauth_id
+    AND s.idempotency_key = v_key
+  LIMIT 1;
 
-  IF v_version = 0 THEN
-    PERFORM public.create_preauth_version(p_preauth_id, 'created');
-    SELECT max(version_number)
-      INTO v_version
-      FROM public.preauthorization_versions
-     WHERE preauth_id = p_preauth_id;
+  IF v_submission_id IS NOT NULL THEN
+    SELECT v.version_number INTO v_version_number
+    FROM public.preauthorization_versions v
+    WHERE v.id = v_version_id;
+
+    RETURN jsonb_build_object(
+      'version_id', v_version_id,
+      'version_number', v_version_number,
+      'submission_id', v_submission_id,
+      'idempotent', true
+    );
   END IF;
 
-  INSERT INTO public.preauth_submissions(
-    preauth_id, version_number, channel, idempotency_key, recipient, submitted_by, facility_id
-  )
-  VALUES(
-    p_preauth_id, v_version, v_channel, v_key, v_recipient, (select auth.uid()), v_facility
-  )
-  ON CONFLICT (preauth_id, idempotency_key) DO NOTHING
-  RETURNING * INTO v_row;
+  SELECT coalesce(max(version_number), 0) + 1
+    INTO v_version_number
+  FROM public.preauthorization_versions
+  WHERE preauth_id = p_preauth_id;
 
-  IF v_row.id IS NULL THEN
-    SELECT * INTO v_row
-      FROM public.preauth_submissions
-     WHERE preauth_id = p_preauth_id
-       AND idempotency_key = v_key;
-  END IF;
+  INSERT INTO public.preauthorization_versions (
+    preauth_id,
+    version_number,
+    snapshot,
+    total_cost,
+    created_by,
+    facility_id
+  )
+  VALUES (
+    p_preauth_id,
+    v_version_number,
+    p_snapshot,
+    round(p_total_cost, 2),
+    v_actor,
+    v_facility
+  )
+  RETURNING id INTO v_version_id;
 
-  -- Critical fix: update only the requested pre-authorization, never every row.
+  INSERT INTO public.preauthorization_submissions (
+    preauth_id,
+    version_id,
+    idempotency_key,
+    submission_channel,
+    status,
+    recipient_manifest,
+    attachment_manifest,
+    subject,
+    message_body,
+    submitted_by,
+    prepared_at,
+    facility_id
+  )
+  VALUES (
+    p_preauth_id,
+    v_version_id,
+    v_key,
+    'email',
+    'prepared',
+    p_recipient_manifest,
+    p_attachment_manifest,
+    v_subject,
+    v_body,
+    v_actor,
+    now(),
+    v_facility
+  )
+  RETURNING id INTO v_submission_id;
+
   UPDATE public.pre_authorizations
-     SET status = CASE
-       WHEN lower(coalesce(status, '')) IN ('pending', 'draft', 'review', 'ready')
-       THEN 'submitted'
-       ELSE status
-     END
-   WHERE public.pre_authorizations.id = p_preauth_id;
+  SET document_revision = v_version_number,
+      document_payload = p_snapshot,
+      document_finalized_at = now(),
+      status = 'submitted',
+      current_state = 'Email handoff prepared'
+  WHERE id = p_preauth_id;
 
-  RETURN v_row;
+  RETURN jsonb_build_object(
+    'version_id', v_version_id,
+    'version_number', v_version_number,
+    'submission_id', v_submission_id,
+    'idempotent', false
+  );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.preauth_snapshot(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.create_preauth_version(UUID, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.submit_preauthorization(UUID, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.preauth_snapshot(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.create_preauth_version(UUID, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.submit_preauthorization(UUID, TEXT, TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMERIC,JSONB,JSONB,TEXT,TEXT,TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMERIC,JSONB,JSONB,TEXT,TEXT,TEXT) TO authenticated;
 
-COMMENT ON FUNCTION public.preauth_snapshot(UUID) IS
-  'Returns a facility-authorized immutable-style snapshot; SECURITY DEFINER re-checks tenancy explicitly.';
-COMMENT ON FUNCTION public.create_preauth_version(UUID, TEXT) IS
-  'Creates a facility-authorized immutable pre-authorization revision under an advisory lock.';
-COMMENT ON FUNCTION public.submit_preauthorization(UUID, TEXT, TEXT, TEXT) IS
-  'Creates an idempotent facility-scoped submission record and updates only the requested pre-authorization.';
+COMMENT ON FUNCTION public.finalize_preauthorization_handoff(UUID,JSONB,NUMERIC,JSONB,JSONB,TEXT,TEXT,TEXT) IS
+  'Atomically freezes a facility-scoped pre-authorization revision and records a prepared email-client handoff. It does not send or deliver email.';
