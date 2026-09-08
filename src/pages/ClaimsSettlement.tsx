@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { calculateProvisionalWithholdingTax, calculateWithholdingTaxVariance, canReconcileSettlement } from "@/features/settlements/domain/settlement";
 import SettlementExceptionRegister from "@/components/settlements/SettlementExceptionRegister";
+import SettlementManagementReport from "@/components/settlements/SettlementManagementReport";
 
 const emptyForm = { insurerId: "", periodStart: "", periodEnd: "", periodType: "month" as "month" | "quarter" | "custom", totalClaimsSubmitted: "", withholdingTaxRate: "5", paymentReceived: "", rejectionAmount: "", actualWithholdingTax: "", paymentAdviceReference: "", paymentAdviceDate: "" };
 type SettlementRow = Record<string, any>;
@@ -73,9 +74,10 @@ export default function ClaimsSettlement() {
   const selectedAdvicePeriod = (periods || []).find((row: SettlementRow) => row.id === adviceId);
   return <div className="space-y-6">
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><h1 className="page-title">Claims Settlement Tracking</h1><p className="page-description">Record period-level totals from the external claims platform and reconcile confirmed payment advice. Detailed claims and advice documents remain outside CareFlow.</p></div><Badge variant="secondary">EXTERNAL SOURCE OF TRUTH</Badge></div>
+    <SettlementManagementReport periods={periods || []} />
     <section className="stat-card space-y-4"><div className="flex items-center gap-2"><PlusCircle className="h-5 w-5" /><h2 className="font-semibold">New settlement period</h2></div><div className="grid gap-4 md:grid-cols-3">
       <div><Label>Insurance company</Label><select className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.insurerId} onChange={(e) => update("insurerId", e.target.value)}><option value="">Select insurer…</option>{(insurers || []).map((row: any) => <option key={row.id} value={row.id}>{row.company_name}</option>)}</select></div>
-      <div><Label>Period type</Label><select className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.periodType} onChange={(e) => update("periodType", e.target.value)}><option value="month">Month</option><option value="quarter">Quarter</option><option value="custom">Custom</option></select></div>
+      <div><Label>Period type</Label><select className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-0 text-sm" value={form.periodType} onChange={(e) => update("periodType", e.target.value)}><option value="month">Month</option><option value="quarter">Quarter</option><option value="custom">Custom</option></select></div>
       <div><Label>WHT rate (%)</Label><Input type="number" min="0" max="100" step="0.01" value={form.withholdingTaxRate} onChange={(e) => update("withholdingTaxRate", e.target.value)} /></div>
       <div><Label>Period start</Label><Input type="date" value={form.periodStart} onChange={(e) => update("periodStart", e.target.value)} /></div><div><Label>Period end</Label><Input type="date" value={form.periodEnd} onChange={(e) => update("periodEnd", e.target.value)} /></div><div><Label>Total claims submitted</Label><Input type="number" min="0" step="0.01" value={form.totalClaimsSubmitted} onChange={(e) => update("totalClaimsSubmitted", e.target.value)} /></div>
     </div><div className="rounded-md border bg-muted/30 p-3 text-sm"><span className="font-medium">Provisional WHT estimate:</span> {provisional.toFixed(2)} <span className="text-muted-foreground">— estimate only; actual WHT is entered from payment advice.</span></div><Button disabled={busy} onClick={() => void createPeriod()}>Record period</Button></section>
