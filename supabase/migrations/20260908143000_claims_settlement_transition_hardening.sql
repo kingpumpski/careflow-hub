@@ -8,6 +8,11 @@ AS $$
 BEGIN
   IF OLD.settlement_status = 'reconciled' THEN
     IF NEW.settlement_status <> OLD.settlement_status
+       OR NEW.facility_id <> OLD.facility_id
+       OR NEW.insurance_company_id <> OLD.insurance_company_id
+       OR NEW.period_start <> OLD.period_start
+       OR NEW.period_end <> OLD.period_end
+       OR NEW.period_type <> OLD.period_type
        OR NEW.total_claims_submitted <> OLD.total_claims_submitted
        OR NEW.withholding_tax_rate <> OLD.withholding_tax_rate
        OR NEW.payment_received IS DISTINCT FROM OLD.payment_received
@@ -15,6 +20,8 @@ BEGIN
        OR NEW.actual_withholding_tax IS DISTINCT FROM OLD.actual_withholding_tax
        OR NEW.payment_advice_reference IS DISTINCT FROM OLD.payment_advice_reference
        OR NEW.payment_advice_date IS DISTINCT FROM OLD.payment_advice_date
+       OR NEW.confirmed_by IS DISTINCT FROM OLD.confirmed_by
+       OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at
     THEN
       RAISE EXCEPTION 'Reconciled settlement periods are immutable';
     END IF;
