@@ -34,7 +34,7 @@ describe("pre-authorization frozen revision integrity", () => {
     const edited = input();
     edited.items[0].unitPrice = 5000;
 
-    expect(() => assertPreAuthSnapshotMatchesReviewInput(snapshot, edited)).toThrow(/does not match the frozen revision/);
+    expect(() => assertPreAuthSnapshotMatchesReviewInput(snapshot, edited)).toThrow(/no longer matches the frozen revision/);
   });
 
   it("reconstructs renderer rows without UI identifiers", () => {
