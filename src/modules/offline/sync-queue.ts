@@ -23,11 +23,7 @@ export interface SyncOperation {
   lastErrorCode?: string;
 }
 
-export interface SyncQueueSummary {
-  pending: number;
-  failed: number;
-  blocked: number;
-}
+export interface SyncQueueSummary { pending: number; failed: number; blocked: number; }
 
 const DB_NAME = "careflow-sync-queue";
 const DB_VERSION = 2;
@@ -46,7 +42,7 @@ const OFFLINE_PULL_TABLES: Array<{ table: string; entity: OfflineEntity }> = [
   { table: "preauth_items", entity: "preauth_items" },
   { table: "claims_settlement_periods", entity: "claims_settlement_periods" },
   { table: "settlement_exceptions", entity: "settlement_exceptions" },
-  { table: "settlement_exception_audit_event", entity: "settlement_exception_audit_events" },
+  { table: "settlement_exception_audit_events", entity: "settlement_exception_audit_events" },
 ];
 
 function openSyncDb(): Promise<IDBDatabase> {
@@ -72,14 +68,7 @@ function openSyncDb(): Promise<IDBDatabase> {
 }
 
 export async function enqueueSyncOperation(operation: Omit<SyncOperation, "id" | "createdAt" | "attempts" | "nextAttemptAt" | "status">): Promise<SyncOperation> {
-  const value: SyncOperation = {
-    ...operation,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    attempts: 0,
-    nextAttemptAt: new Date().toISOString(),
-    status: "pending",
-  };
+  const value: SyncOperation = { ...operation, id: crypto.randomUUID(), createdAt: new Date().toISOString(), attempts: 0, nextAttemptAt: new Date().toISOString(), status: "pending" };
   const db = await openSyncDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
@@ -102,14 +91,7 @@ export async function listSyncOperations(): Promise<SyncOperation[]> {
   return values;
 }
 
-function normalizeOperation(value: SyncOperation): SyncOperation {
-  return {
-    ...value,
-    nextAttemptAt: value.nextAttemptAt ?? value.createdAt,
-    status: value.status ?? "pending",
-    attempts: value.attempts ?? 0,
-  };
-}
+function normalizeOperation(value: SyncOperation): SyncOperation { return { ...value, nextAttemptAt: value.nextAttemptAt ?? value.createdAt, status: value.status ?? "pending", attempts: value.attempts ?? 0 }; }
 
 async function writeOperation(operation: SyncOperation): Promise<void> {
   const db = await openSyncDb();
@@ -151,15 +133,7 @@ async function recordSyncFailure(operation: SyncOperation, error: unknown): Prom
   const classified = classifySyncError(error);
   const attempts = operation.attempts + 1;
   const blocked = classified.blocked || attempts >= MAX_AUTOMATIC_ATTEMPTS;
-  const nextAttemptAt = new Date(Date.now() + retryDelay(attempts)).toISOString();
-  await writeOperation({
-    ...operation,
-    attempts,
-    status: blocked ? "blocked" : "failed",
-    nextAttemptAt,
-    lastError: String((error as { message?: string })?.message ?? error),
-    lastErrorCode: classified.code,
-  });
+  await writeOperation({ ...operation, attempts, status: blocked ? "blocked" : "failed", nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString(), lastError: String((error as { message?: string })?.message ?? error), lastErrorCode: classified.code });
 }
 
 async function applyOperation(operation: SyncOperation): Promise<void> {
@@ -177,18 +151,6 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
   if (error) throw error;
 }
 
-async function hasPendingLocalChange(table: string, recordId: string): Promise<boolean> {
-  const operations = await listSyncOperations();
-  return operations.some((operation) => operation.table === table && operation.recordId === recordId && operation.status !== "blocked");
-}
-
-function scopePulledRows(table: string, rows: Record<string, unknown>[]): Record<string, unknown>[] {
-  const facilityId = getStoredFacilityId();
-  if (!facilityId) return rows;
-  if (!rows.some((row) => Object.prototype.hasOwnProperty.call(row, "facility_id"))) return rows;
-  return rows.filter((row) => row.facility_id === facilityId);
-}
-
 export async function pullSupabaseDataToOffline(): Promise<{ tables: number; records: number; skipped: number }> {
   const operations = await listSyncOperations();
   let tables = 0;
@@ -197,13 +159,15 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
   for (const mapping of OFFLINE_PULL_TABLES) {
     const { data, error } = await (supabase.from(mapping.table) as any).select("*");
     if (error) throw error;
-    const rows = scopePulledRows(mapping.table, (data ?? []) as Record<string, unknown>[]).filter((row) => typeof row.id === "string");
-    const safeRows: Record<string, unknown>[] = [];
-    for (const row of rows) {
-      const hasLocalChange = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
-      if (hasLocalChange || await hasPendingLocalChange(mapping.table, String(row.id))) { skipped += 1; continue; }
-      safeRows.push(row);
-    }
+    const facilityId = getStoredFacilityId();
+    const rows = ((data ?? []) as Record<string, unknown>[])
+      .filter((row) => typeof row.id === "string")
+      .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
+    const safeRows = rows.filter((row) => {
+      const changed = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
+      if (changed) skipped += 1;
+      return !changed;
+    });
     if (safeRows.length) {
       await putManyOffline(mapping.entity, safeRows as Array<Record<string, unknown> & { id: string }>);
       records += safeRows.length;
@@ -237,7 +201,7 @@ export async function syncPendingOperations(): Promise<{ synced: number; pending
       failed += 1;
     }
   }
-  try { await pullSupabaseDataToOffline(); } catch { /* remote hydration is best-effort; queued mutations remain durable */ }
+  try { await pullSupabaseDataToOffline(); } catch { /* best-effort hydration; durable mutations remain queued */ }
   const summary = await getSyncQueueSummary();
   return { synced, pending: summary.pending, failed, blocked: summary.blocked };
 }
@@ -249,8 +213,5 @@ export async function getPendingSyncCount(): Promise<number> {
 
 export async function getSyncQueueSummary(): Promise<SyncQueueSummary> {
   const operations = await listSyncOperations();
-  return operations.reduce<SyncQueueSummary>((summary, operation) => {
-    summary[operation.status] += 1;
-    return summary;
-  }, { pending: 0, failed: 0, blocked: 0 });
+  return operations.reduce<SyncQueueSummary>((summary, operation) => { summary[operation.status] += 1; return summary; }, { pending: 0, failed: 0, blocked: 0 });
 }
