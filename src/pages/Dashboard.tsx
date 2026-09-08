@@ -13,7 +13,7 @@ import ChartCard from "@/components/dashboard/ChartCard";
 import InsightCard, { AIInsightBadge } from "@/components/dashboard/InsightCard";
 import { Button } from "@/components/ui/button";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
-import { buildDashboardInsights, buildTrendSeries, computeExecutiveKpis, rankInsurers } from "@/modules/analytics";
+import { buildDashboardInsights, buildTrendSeries, computeExecutiveKpis, computeYearlyKpis, rankInsurers, type YearlyKpis } from "@/modules/analytics";
 import { managementRecommendations } from "@/modules/ai/services/insights";
 import { useToast } from "@/hooks/use-toast";
 
