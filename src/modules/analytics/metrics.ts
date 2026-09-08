@@ -59,7 +59,55 @@ export function computeExecutiveKpis(
   };
 }
 
+/** Best-effort year for any claims/payments/tax row. */
+export function rowYear(row: any): number | null {
+  const explicit = Number(row?.claim_year);
+  if (explicit) return explicit;
+  const raw = row?.submitted_at || row?.payment_date || row?.created_at || row?.paid_at;
+  if (!raw) return null;
+  const y = new Date(raw).getFullYear();
+  return Number.isFinite(y) ? y : null;
+}
+
+export interface YearlyKpis {
+  year: number;
+  kpis: ExecutiveKpis;
+  preauthCount: number;
+  rejectedCount: number;
+}
+
+/** Per-year KPI slices (newest first) so cards can cycle through yearly figures. */
+export function computeYearlyKpis(
+  claims: any[] = [],
+  payments: any[] = [],
+  withholdingTax: any[] = [],
+  preauths: any[] = [],
+): YearlyKpis[] {
+  const years = new Set<number>();
+  [claims, payments, withholdingTax].forEach((rows) =>
+    rows.forEach((r) => {
+      const y = rowYear(r);
+      if (y) years.add(y);
+    }),
+  );
+
+  return [...years]
+    .sort((a, b) => b - a)
+    .map((year) => {
+      const yc = claims.filter((c) => rowYear(c) === year);
+      const yp = payments.filter((p) => rowYear(p) === year);
+      const yt = withholdingTax.filter((t) => rowYear(t) === year);
+      return {
+        year,
+        kpis: computeExecutiveKpis(yc, yp, yt),
+        preauthCount: preauths.filter((p) => rowYear(p) === year).length,
+        rejectedCount: yc.filter((c) => c.status === "rejected").length,
+      };
+    });
+}
+
 export const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 
 export interface TrendPoint {
   month: string;

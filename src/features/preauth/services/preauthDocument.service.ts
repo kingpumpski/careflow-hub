@@ -32,8 +32,9 @@ export async function registerPreAuthDocument(input: PreAuthDocumentRegistration
 export async function listPreAuthDocuments(preauthId: string) {
   if (!preauthId) throw new Error("Pre-authorization ID is required");
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("preauth_documents")
+
     .select(
       "id,preauth_id,version_number,document_type,format,storage_provider,storage_path,content_sha256,status,generated_by,created_at,metadata",
     )

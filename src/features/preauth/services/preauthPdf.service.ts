@@ -36,7 +36,7 @@ export interface PreAuthSnapshot {
 
 export async function getPreAuthVersionSnapshot(preauthId: string, versionNumber: number): Promise<PreAuthSnapshot> {
   if (!preauthId || !Number.isInteger(versionNumber) || versionNumber < 1) throw new Error("A valid pre-authorization version is required.");
-  const { data, error } = await (supabase.from("preauthorization_versions") as any)
+  const { data, error } = await ((supabase as any).from("preauthorization_versions"))
     .select("snapshot")
     .eq("preauth_id", preauthId)
     .eq("version_number", versionNumber)
