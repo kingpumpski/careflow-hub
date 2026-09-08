@@ -37,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
   ] },
   { label: "Analytics", icon: TrendingUp, children: [
     { label: "Performance Analytics", path: "/analytics", permission: "analytics.read" },
+    { label: "Advanced Analytics", path: "/advanced-analytics", permission: "analytics.read" },
     { label: "Revenue & Trends", path: "/preauth-analytics", permission: "analytics.read" },
     { label: "Provider Performance", path: "/provider-performance", permission: "analytics.read" },
     { label: "Insurer Scorecard", path: "/insurer-scorecard", permission: "analytics.read" },
