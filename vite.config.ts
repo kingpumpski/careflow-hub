@@ -22,4 +22,24 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          if (id.includes("jspdf") || id.includes("html2canvas")) return "document-export";
+          if (id.includes("xlsx")) return "spreadsheet";
+          if (id.includes("react") || id.includes("scheduler")) return "react-vendor";
+          if (id.includes("@radix-ui") || id.includes("lucide-react")) return "ui-vendor";
+          if (id.includes("@tanstack")) return "query-vendor";
+
+          return "vendor";
+        },
+      },
+    },
+    chunkSizeWarningLimit: 450,
+  },
 }));
