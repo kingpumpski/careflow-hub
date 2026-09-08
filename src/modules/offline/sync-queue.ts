@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
-import { putManyOffline, type OfflineEntity } from "./offline-store";
+import { putManyOffline, putOffline, type OfflineEntity } from "./offline-store";
 
 export type SyncOperationType = "insert" | "update" | "delete" | "rpc";
 export type SyncOperationStatus = "pending" | "failed" | "blocked";
@@ -46,6 +46,10 @@ const OFFLINE_PULL_TABLES: Array<{ table: string; entity: OfflineEntity }> = [
   { table: "settlement_exceptions", entity: "settlement_exceptions" },
   { table: "settlement_exception_audit_events", entity: "settlement_exception_audit_events" },
 ];
+
+function entityForTable(table: string): OfflineEntity | undefined {
+  return OFFLINE_PULL_TABLES.find((mapping) => mapping.table === table)?.entity;
+}
 
 function openSyncDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -119,13 +123,14 @@ async function removeSyncOperation(id: string): Promise<void> {
   db.close();
 }
 
-function classifySyncError(error: unknown): { code: string; blocked: boolean } {
+function classifySyncError(error: unknown): { code: string; blocked: boolean; conflict: boolean } {
   const message = String((error as { message?: string })?.message ?? error);
   const code = String((error as { code?: string })?.code ?? "");
   const status = Number((error as { status?: number })?.status ?? 0);
   const lower = message.toLowerCase();
-  const blocked = status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key") || lower.includes("sync_conflict:");
-  return { code: code || String(status || "SYNC_ERROR"), blocked };
+  const conflict = lower.includes("sync_conflict:");
+  const blocked = conflict || status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key");
+  return { code: code || (conflict ? "SYNC_CONFLICT" : String(status || "SYNC_ERROR")), blocked, conflict };
 }
 
 function retryDelay(attempts: number): number {
@@ -133,10 +138,18 @@ function retryDelay(attempts: number): number {
   return exponential + Math.floor(Math.random() * 1_000);
 }
 
+async function restoreConflictedDelete(operation: SyncOperation): Promise<void> {
+  if (operation.type !== "delete" || !operation.payload || typeof operation.payload.id !== "string") return;
+  const entity = entityForTable(operation.table);
+  if (!entity) return;
+  await putOffline(entity, operation.payload as Record<string, unknown> & { id: string });
+}
+
 async function recordSyncFailure(operation: SyncOperation, error: unknown): Promise<void> {
   const classified = classifySyncError(error);
   const attempts = operation.attempts + 1;
   const blocked = classified.blocked || attempts >= MAX_AUTOMATIC_ATTEMPTS;
+  if (classified.conflict) await restoreConflictedDelete(operation);
   await writeOperation({ ...operation, attempts, status: blocked ? "blocked" : "failed", nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString(), lastError: String((error as { message?: string })?.message ?? error), lastErrorCode: classified.code });
 }
 
@@ -252,4 +265,9 @@ export async function getPendingSyncCount(): Promise<number> {
 export async function getSyncQueueSummary(): Promise<SyncQueueSummary> {
   const operations = await listSyncOperations();
   return operations.reduce<SyncQueueSummary>((summary, operation) => { summary[operation.status] += 1; return summary; }, { pending: 0, failed: 0, blocked: 0 });
+}
+
+export async function getSyncConflicts(): Promise<SyncOperation[]> {
+  const operations = await listSyncOperations();
+  return operations.filter((operation) => operation.status === "blocked" && operation.lastErrorCode === "SYNC_CONFLICT");
 }
