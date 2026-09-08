@@ -1,6 +1,6 @@
 import { buildRequestNumber } from "@/modules/authorization/preauth-studio";
 import { buildPreAuthDocumentPayload, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
-import { listOffline, putManyOffline, putOffline } from "./offline-store";
+import { listOffline, runOfflineTransaction } from "./offline-store";
 
 export type OfflinePreAuthDraft = Record<string, unknown> & { id: string };
 
@@ -22,6 +22,19 @@ function duplicateSignature(input: PreAuthReviewInput): string {
   return [input.patientId, input.membershipNumber.trim().toUpperCase(), input.procedureId, input.procedureDate, input.insurerId].join("|");
 }
 
+function itemRows(preauthId: string, input: PreAuthReviewInput, timestamp: string) {
+  return input.items.filter((item) => item.description.trim()).map((item) => ({
+    id: item.id,
+    preauth_id: preauthId,
+    description: item.description.trim(),
+    quantity: Math.max(0, Number(item.quantity) || 0),
+    unit_price: Math.max(0, Number(item.unitPrice) || 0),
+    amount: Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0),
+    category: item.category,
+    createdAt: timestamp,
+  }));
+}
+
 export async function findOfflinePreAuthDuplicates(signature: string, excludeId?: string) {
   const records = await listOffline<OfflinePreAuthDraft>("preauthorizations");
   return records.filter((record) => record.duplicate_signature === signature && record.id !== excludeId && ["draft", "prepared"].includes(String(record.status ?? "draft")));
@@ -34,7 +47,6 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
 
   const id = makeDraftId();
   const signature = duplicateSignature(reviewInput);
-  if ((await findOfflinePreAuthDuplicates(signature)).length) throw new Error("A matching offline pre-authorization already exists.");
   const timestamp = now();
   const draft: OfflinePreAuthDraft = {
     id,
@@ -58,45 +70,133 @@ export async function createOfflinePreAuthDraft(reviewInput: PreAuthReviewInput,
     duplicate_signature: signature,
     createdAt: timestamp,
   };
-  const items = reviewInput.items.filter((item) => item.description.trim()).map((item) => ({
-    id: item.id,
-    preauth_id: id,
-    description: item.description.trim(),
-    quantity: Math.max(0, Number(item.quantity) || 0),
-    unit_price: Math.max(0, Number(item.unitPrice) || 0),
-    amount: Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0),
-    category: item.category,
-    createdAt: timestamp,
-  }));
-  await putOffline("preauthorizations", draft);
-  if (items.length) await putManyOffline("preauth_items", items);
-  return draft;
+  const items = itemRows(id, reviewInput, timestamp);
+
+  return runOfflineTransaction<OfflinePreAuthDraft>("readwrite", (store, resolve, reject) => {
+    const existingRequest = store.index("entity").getAll("preauthorizations");
+    existingRequest.onerror = () => reject(existingRequest.error ?? new Error("Unable to check offline duplicate requests."));
+    existingRequest.onsuccess = () => {
+      const duplicate = (existingRequest.result as OfflinePreAuthDraft[]).some((record) => record.duplicate_signature === signature && ["draft", "prepared"].includes(String(record.status ?? "draft")));
+      if (duplicate) {
+        reject(new Error("A matching offline pre-authorization already exists."));
+        return;
+      }
+
+      const values = [draft, ...items.map((item) => ({ ...item, entity: "preauth_items" as const, updatedAt: timestamp }))].map((record) => ({
+        ...record,
+        entity: record.entity ?? "preauthorizations",
+        updatedAt: record.updatedAt ?? timestamp,
+        createdAt: record.createdAt ?? timestamp,
+      }));
+      let remaining = values.length;
+      values.forEach((value) => {
+        const request = store.put(value);
+        request.onerror = () => reject(request.error ?? new Error("Unable to save offline pre-authorization."));
+        request.onsuccess = () => {
+          remaining -= 1;
+          if (remaining === 0) resolve(draft);
+        };
+      });
+    };
+  });
 }
 
 export async function finalizeOfflinePreAuth(preauthId: string, reviewInput: PreAuthReviewInput, recipientManifest: unknown, subject: string, messageBody: string): Promise<OfflinePreAuthFinalizeResult> {
-  const drafts = await listOffline<OfflinePreAuthDraft>("preauthorizations");
-  const draft = drafts.find((record) => record.id === preauthId);
-  if (!draft) throw new Error("Offline pre-authorization draft was not found.");
-  if (draft.status === "submitted") throw new Error("This offline pre-authorization has already been finalized.");
-
   const requestNumber = buildRequestNumber(preauthId);
   const snapshot = buildPreAuthDocumentPayload(reviewInput, requestNumber);
-  const existingVersions = await listOffline<OfflinePreAuthDraft>("preauthorization_versions");
-  const versionNumber = existingVersions.filter((record) => record.preauth_id === preauthId).reduce((max, record) => Math.max(max, Number(record.version_number) || 0), 0) + 1;
-  const timestamp = now();
-  const version = {
-    id: crypto.randomUUID(), preauth_id: preauthId, version_number: versionNumber, snapshot,
-    total_cost: reviewInput.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0), createdAt: timestamp,
-  };
-  const submission = {
-    id: crypto.randomUUID(), preauth_id: preauthId, version_id: version.id, version_number: versionNumber,
-    status: "prepared", recipient_manifest: recipientManifest,
-    attachment_manifest: [{ type: "attachment", filename: `${requestNumber}-v${versionNumber}.pdf`, mimeType: "application/pdf", sizeBytes: null, storagePath: null }],
-    subject, message_body: messageBody, idempotency_key: `${preauthId}:freeze:${requestNumber}`, createdAt: timestamp,
-  };
-  await putOffline("preauthorization_versions", version);
-  await putOffline("preauthorization_submissions", submission);
-  await putOffline("preauthorizations", { ...draft, status: "submitted", current_state: "Email handoff prepared", request_number: requestNumber, document_revision: versionNumber, document_payload: snapshot, document_finalized_at: timestamp });
-  await putOffline("preauthorization_audit_events", { id: crypto.randomUUID(), preauth_id: preauthId, event_type: "handoff_prepared", version_number: versionNumber, createdAt: timestamp });
-  return { id: preauthId, requestNumber, versionNumber, snapshot, submission };
+  const totalCost = reviewInput.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0);
+  const idempotencyKey = `${preauthId}:freeze:${requestNumber}`;
+
+  return runOfflineTransaction<OfflinePreAuthFinalizeResult>("readwrite", (store, resolve, reject) => {
+    const draftRequest = store.get(preauthId);
+    draftRequest.onerror = () => reject(draftRequest.error ?? new Error("Unable to read offline pre-authorization."));
+    draftRequest.onsuccess = () => {
+      const draft = draftRequest.result as OfflinePreAuthDraft | undefined;
+      if (!draft || draft.entity !== "preauthorizations") {
+        reject(new Error("Offline pre-authorization draft was not found."));
+        return;
+      }
+      if (draft.status === "submitted") {
+        reject(new Error("This offline pre-authorization has already been finalized."));
+        return;
+      }
+
+      const submissionsRequest = store.index("entity").getAll("preauthorization_submissions");
+      submissionsRequest.onerror = () => reject(submissionsRequest.error ?? new Error("Unable to check offline handoff history."));
+      submissionsRequest.onsuccess = () => {
+        const existing = (submissionsRequest.result as OfflinePreAuthDraft[]).find((record) => record.preauth_id === preauthId && record.idempotency_key === idempotencyKey);
+        if (existing) {
+          const version = { id: existing.version_id as string, version_number: Number(existing.version_number), snapshot: existing.snapshot as Record<string, unknown> };
+          resolve({ id: preauthId, requestNumber, versionNumber: version.version_number, snapshot: version.snapshot, submission: existing });
+          return;
+        }
+
+        const versionsRequest = store.index("entity").getAll("preauthorization_versions");
+        versionsRequest.onerror = () => reject(versionsRequest.error ?? new Error("Unable to read offline revisions."));
+        versionsRequest.onsuccess = () => {
+          const versions = versionsRequest.result as OfflinePreAuthDraft[];
+          const versionNumber = versions.filter((record) => record.preauth_id === preauthId).reduce((max, record) => Math.max(max, Number(record.version_number) || 0), 0) + 1;
+          const timestamp = now();
+          const versionId = crypto.randomUUID();
+          const submissionId = crypto.randomUUID();
+          const version = {
+            id: versionId,
+            entity: "preauthorization_versions" as const,
+            preauth_id: preauthId,
+            version_number: versionNumber,
+            snapshot,
+            total_cost: totalCost,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          const submission = {
+            id: submissionId,
+            entity: "preauthorization_submissions" as const,
+            preauth_id: preauthId,
+            version_id: versionId,
+            version_number: versionNumber,
+            status: "prepared",
+            recipient_manifest: recipientManifest,
+            attachment_manifest: [{ type: "attachment", filename: `${requestNumber}-v${versionNumber}.pdf`, mimeType: "application/pdf", sizeBytes: null, storagePath: null }],
+            subject,
+            message_body: messageBody,
+            idempotency_key: idempotencyKey,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          const updatedDraft = {
+            ...draft,
+            status: "submitted",
+            current_state: "Email handoff prepared",
+            request_number: requestNumber,
+            document_revision: versionNumber,
+            document_payload: snapshot,
+            document_finalized_at: timestamp,
+            updatedAt: timestamp,
+          };
+          const audit = {
+            id: crypto.randomUUID(),
+            entity: "preauthorization_audit_events" as const,
+            preauth_id: preauthId,
+            version_id: versionId,
+            submission_id: submissionId,
+            event_type: "email_handoff_prepared",
+            event_data: { versionNumber, recipientCount: Array.isArray(recipientManifest) ? recipientManifest.length : 0, attachmentCount: 1 },
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          const values = [version, submission, updatedDraft, audit];
+          let remaining = values.length;
+          values.forEach((value) => {
+            const request = store.put(value);
+            request.onerror = () => reject(request.error ?? new Error("Unable to finalize offline pre-authorization."));
+            request.onsuccess = () => {
+              remaining -= 1;
+              if (remaining === 0) resolve({ id: preauthId, requestNumber, versionNumber, snapshot, submission });
+            };
+          });
+        };
+      };
+    };
+  });
 }
