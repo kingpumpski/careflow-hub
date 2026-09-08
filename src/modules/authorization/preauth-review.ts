@@ -15,6 +15,11 @@ export interface PreAuthReviewInput {
   companyName?: string | null;
   insurerEmail?: string | null;
   providerEmail?: string | null;
+  providerName?: string | null;
+  providerAddress?: string | null;
+  providerPhone?: string | null;
+  providerLogoUrl?: string | null;
+  issuedDate?: string | null;
   currency: string;
   format: "ghana" | "international";
   items: PreAuthStudioItem[];
@@ -101,6 +106,7 @@ export function buildPreAuthDocumentPayload(input: PreAuthReviewInput, requestNu
   return {
     schemaVersion: 1,
     requestNumber: requestNumber || null,
+    issuedDate: input.issuedDate?.trim() || null,
     patient: {
       id: input.patientId,
       name: input.patientName.trim(),
@@ -112,6 +118,13 @@ export function buildPreAuthDocumentPayload(input: PreAuthReviewInput, requestNu
       id: input.insurerId,
       name: input.insurerName.trim(),
       email: input.insurerEmail?.trim() || null,
+    },
+    provider: {
+      name: input.providerName?.trim() || null,
+      address: input.providerAddress?.trim() || null,
+      phone: input.providerPhone?.trim() || null,
+      email: input.providerEmail?.trim() || null,
+      logoUrl: input.providerLogoUrl?.trim() || null,
     },
     clinical: {
       procedureId: input.procedureId,
