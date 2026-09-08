@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { isOfflineMode } from "@/modules/offline/data-mode";
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +25,28 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const OFFLINE_USER_ID = "offline-careflow-user";
+const OFFLINE_USER_EMAIL = "offline@careflow.local";
+
+function createOfflineUser(): User {
+  return {
+    id: OFFLINE_USER_ID,
+    aud: "authenticated",
+    role: "authenticated",
+    email: OFFLINE_USER_EMAIL,
+    email_confirmed_at: new Date(0).toISOString(),
+    phone: "",
+    confirmed_at: new Date(0).toISOString(),
+    last_sign_in_at: new Date().toISOString(),
+    app_metadata: { provider: "offline", providers: ["offline"] },
+    user_metadata: { full_name: "CareFlow Offline Officer" },
+    identities: [],
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date().toISOString(),
+    is_anonymous: false,
+  } as User;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -33,15 +56,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<{ full_name: string; email: string } | null>(null);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    if (isOfflineMode()) {
+      const offlineUser = createOfflineUser();
+      setUser(offlineUser);
+      setSession(null);
+      setUserRole("admin");
+      setProfile({ full_name: "CareFlow Offline Officer", email: OFFLINE_USER_EMAIL });
+      setRoleLoading(false);
+      setLoading(false);
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
 
-      if (session?.user) {
-        // Fire and forget - don't await inside callback
-        fetchUserRole(session.user.id);
-        fetchProfile(session.user.id);
+      if (nextSession?.user) {
+        fetchUserRole(nextSession.user.id);
+        fetchProfile(nextSession.user.id);
       } else {
         setUserRole(null);
         setProfile(null);
@@ -49,13 +82,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(({ data: { session: nextSession } }) => {
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
-      if (session?.user) {
-        fetchUserRole(session.user.id);
-        fetchProfile(session.user.id);
+      if (nextSession?.user) {
+        fetchUserRole(nextSession.user.id);
+        fetchProfile(nextSession.user.id);
       } else {
         setRoleLoading(false);
       }
@@ -86,6 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (isOfflineMode()) {
+      setUser(null);
+      return;
+    }
     await supabase.auth.signOut();
   };
 
