@@ -67,6 +67,36 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
   });
 }
 
+function validateOfflineSettlementUpdate(existing: Record<string, any>, values: Record<string, any>) {
+  const currentStatus = String(existing.settlement_status ?? "awaiting_payment");
+  const nextStatus = String(values.settlement_status ?? currentStatus);
+  const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received")
+    || (currentStatus === "payment_advice_received" && nextStatus === "reconciled")
+    || (currentStatus === nextStatus);
+  if (!allowed) throw new Error(`Invalid settlement transition: ${currentStatus} → ${nextStatus}.`);
+
+  if (currentStatus === "reconciled") {
+    const protectedFields = ["insurance_company_id", "period_start", "period_end", "period_type", "total_claims_submitted", "withholding_tax_rate", "provisional_withholding_tax", "payment_received", "rejection_amount", "actual_withholding_tax", "payment_advice_reference", "payment_advice_date", "withholding_tax_variance", "settlement_status"];
+    if (protectedFields.some((field) => Object.prototype.hasOwnProperty.call(values, field))) {
+      throw new Error("A reconciled settlement is immutable and cannot be changed.");
+    }
+  }
+
+  if (nextStatus === "payment_advice_received") {
+    const merged = { ...existing, ...values };
+    if (merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) {
+      throw new Error("Payment advice requires payment, rejection, actual WHT, advice reference, and advice date.");
+    }
+  }
+
+  if (nextStatus === "reconciled") {
+    const merged = { ...existing, ...values };
+    if (!merged.confirmed_by || !merged.confirmed_at || merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) {
+      throw new Error("Settlement reconciliation requires complete payment advice and confirmation details.");
+    }
+  }
+}
+
 export function useSupabaseInsert(table: TableName) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -117,6 +147,7 @@ export function useSupabaseUpdate(table: TableName) {
         const { getOffline, putOffline } = await import("@/modules/offline/offline-store");
         const existing = await getOffline<Record<string, any>>(entity, id);
         if (!existing) throw new Error(`Offline record ${id} was not found.`);
+        if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
         const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
         await putOffline(entity, record);
         return record;
