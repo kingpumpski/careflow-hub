@@ -67,6 +67,8 @@ DECLARE
   v_key text;
   v_subject text;
   v_body text;
+  v_manifest jsonb;
+  v_snapshot_total numeric;
 BEGIN
   v_actor := (select auth.uid());
   IF v_actor IS NULL THEN
@@ -108,6 +110,24 @@ BEGIN
     RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
   END IF;
 
+  IF nullif(btrim(coalesce(p_snapshot->>'requestNumber', '')), '') IS DISTINCT FROM nullif(btrim(v_p.request_number), '') THEN
+    RAISE EXCEPTION 'REQUEST_NUMBER_MISMATCH' USING ERRCODE = '23514';
+  END IF;
+
+  v_snapshot_total := nullif(p_snapshot #>> '{document,total}', '')::numeric;
+  IF v_snapshot_total IS NULL OR round(v_snapshot_total, 2) <> round(p_total_cost, 2) THEN
+    RAISE EXCEPTION 'SNAPSHOT_TOTAL_MISMATCH' USING ERRCODE = '23514';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(coalesce(p_recipient_manifest, '[]'::jsonb)) recipient
+    WHERE recipient->>'type' = 'to'
+      AND length(btrim(coalesce(recipient->>'email', ''))) > 3
+  ) THEN
+    RAISE EXCEPTION 'INSURER_RECIPIENT_REQUIRED' USING ERRCODE = '22023';
+  END IF;
+
   PERFORM pg_advisory_xact_lock(hashtextextended('preauth-handoff:' || p_preauth_id::text, 0));
 
   SELECT s.id, s.version_id
@@ -135,6 +155,17 @@ BEGIN
   FROM public.preauthorization_versions
   WHERE preauth_id = p_preauth_id;
 
+  v_manifest := coalesce(p_attachment_manifest, '[]'::jsonb);
+  IF jsonb_array_length(v_manifest) = 0 THEN
+    v_manifest := jsonb_build_array(jsonb_build_object(
+      'type', 'pdf',
+      'name', coalesce(nullif(v_p.request_number, ''), 'preauth') || '-v' || v_version_number || '.pdf',
+      'mimeType', 'application/pdf',
+      'sizeBytes', null,
+      'storagePath', null
+    ));
+  END IF;
+
   INSERT INTO public.preauthorization_versions (
     preauth_id, version_number, snapshot, total_cost, created_by, facility_id
   )
@@ -150,7 +181,7 @@ BEGIN
   )
   VALUES (
     p_preauth_id, v_version_id, v_key, 'email', 'prepared',
-    p_recipient_manifest, p_attachment_manifest, v_subject, v_body,
+    p_recipient_manifest, v_manifest, v_subject, v_body,
     v_actor, now(), v_facility
   )
   RETURNING id INTO v_submission_id;
@@ -167,6 +198,7 @@ BEGIN
     'version_id', v_version_id,
     'version_number', v_version_number,
     'submission_id', v_submission_id,
+    'attachment_manifest', v_manifest,
     'idempotent', false
   );
 END;
