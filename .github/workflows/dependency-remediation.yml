@@ -8,13 +8,19 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: dependency-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   remediate:
-    if: github.event.head_commit.message != 'security: regenerate npm dependency lockfile'
+    if: ${{ !contains(github.event.head_commit.message, 'security: regenerate npm dependency lockfile') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -23,15 +29,14 @@ jobs:
           cache: npm
 
       - name: Regenerate lockfile from declared dependency policy
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --allow-remote=root
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Apply compatible npm audit remediations
         run: npm audit fix --package-lock-only --ignore-scripts --no-fund
 
-      - name: Verify audit is clean
+      - name: Verify dependency audit
         run: |
-          set -o pipefail
-          npm audit --json > audit-after.json || true
+          npm audit --json > audit-after.json || audit_status=$?
           node - <<'NODE'
           const fs = require('fs');
           const report = JSON.parse(fs.readFileSync('audit-after.json', 'utf8'));
@@ -42,9 +47,12 @@ jobs:
             process.exit(1);
           }
           NODE
+          if [ "${audit_status:-0}" -ne 0 ]; then
+            echo 'npm audit returned a non-zero status because lower-severity advisories may remain; high/critical are the merge gate.'
+          fi
 
       - name: Install exact lockfile
-        run: npm ci --ignore-scripts --no-audit --no-fund --allow-remote=root
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
@@ -55,7 +63,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Commit regenerated lockfile
+      - name: Commit regenerated dependency lockfile
         run: |
           if git diff --quiet -- package-lock.json package.json; then
             echo 'No dependency manifest changes remain.'
@@ -64,5 +72,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package-lock.json package.json
-          git commit -m 'security: regenerate npm dependency lockfile'
+          git commit -m 'security: regenerate npm dependency lockfile [skip ci]'
           git push
