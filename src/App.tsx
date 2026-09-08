@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppShell from "@/components/layout/AppShell";
+import { CareFlowRuntime } from "@/components/CareFlowRuntime";
 import "./App.css";
 
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
@@ -45,23 +46,8 @@ const DuplicateAudit = lazy(() => import("@/pages/DuplicateAudit"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient();
-
-function RouteFallback() {
-  return <div className="min-h-screen flex items-center justify-center bg-background"><div className="text-center space-y-3"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" /><p className="text-sm text-muted-foreground">Loading...</p></div></div>;
-}
-
-function ProtectedRoutes() {
-  const { user, loading } = useAuth();
-  if (loading) return <RouteFallback />;
-  if (!user) return <Navigate to="/auth" replace />;
-  return <Suspense fallback={<RouteFallback />}><Routes><Route element={<AppShell />}>
-    <Route path="/" element={<Dashboard />} /><Route path="/pre-auth" element={<PreAuthorization />} /><Route path="/pre-auth/studio" element={<PreAuthorizationStudioRoute />} />
-    <Route path="/claims" element={<Claims />} /><Route path="/claims/settlements" element={<ClaimsSettlement />} /><Route path="/payments" element={<Payments />} /><Route path="/outstanding" element={<Outstanding />} /><Route path="/rejections" element={<Rejections />} /><Route path="/withholding-tax" element={<WithholdingTax />} />
-    <Route path="/reports" element={<Reports />} /><Route path="/schedule" element={<ScheduleGenerator />} /><Route path="/clients" element={<Clients />} /><Route path="/doctors" element={<Doctors />} /><Route path="/procedures" element={<Procedures />} /><Route path="/templates" element={<ProcedureTemplates />} /><Route path="/catalog" element={<CatalogItems />} /><Route path="/insurance" element={<InsuranceCompanies />} /><Route path="/users" element={<UsersPage />} /><Route path="/ledger" element={<Ledger />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/audit-trail" element={<AuditTrail />} /><Route path="/provider-performance" element={<ProviderPerformance />} /><Route path="/fraud-alerts" element={<FraudAlerts />} /><Route path="/analytics" element={<Analytics />} /><Route path="/insurer-scorecard" element={<InsurerScorecard />} /><Route path="/service-lines" element={<ServiceLines />} /><Route path="/notifications" element={<Notifications />} /><Route path="/preauth-analytics" element={<PreAuthAnalytics />} /><Route path="/diagnosis-codes" element={<DiagnosisCodes />} /><Route path="/chat" element={<Chat />} /><Route path="/profile" element={<Profile />} /><Route path="/insurance-import" element={<InsuranceBulkImport />} /><Route path="/duplicate-audit" element={<DuplicateAudit />} />
-  </Route><Route path="*" element={<NotFound />} /></Routes></Suspense>;
-}
-
+function RouteFallback() { return <div className="min-h-screen flex items-center justify-center bg-background"><div className="text-center space-y-3"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" /><p className="text-sm text-muted-foreground">Loading...</p></div></div>; }
+function ProtectedRoutes() { const { user, loading } = useAuth(); if (loading) return <RouteFallback />; if (!user) return <Navigate to="/auth" replace />; return <Suspense fallback={<RouteFallback />}><Routes><Route element={<AppShell />}><Route path="/" element={<Dashboard />} /><Route path="/pre-auth" element={<PreAuthorization />} /><Route path="/pre-auth/studio" element={<PreAuthorizationStudioRoute />} /><Route path="/claims" element={<Claims />} /><Route path="/claims/settlements" element={<ClaimsSettlement />} /><Route path="/payments" element={<Payments />} /><Route path="/outstanding" element={<Outstanding />} /><Route path="/rejections" element={<Rejections />} /><Route path="/withholding-tax" element={<WithholdingTax />} /><Route path="/reports" element={<Reports />} /><Route path="/schedule" element={<ScheduleGenerator />} /><Route path="/clients" element={<Clients />} /><Route path="/doctors" element={<Doctors />} /><Route path="/procedures" element={<Procedures />} /><Route path="/templates" element={<ProcedureTemplates />} /><Route path="/catalog" element={<CatalogItems />} /><Route path="/insurance" element={<InsuranceCompanies />} /><Route path="/users" element={<UsersPage />} /><Route path="/ledger" element={<Ledger />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/audit-trail" element={<AuditTrail />} /><Route path="/provider-performance" element={<ProviderPerformance />} /><Route path="/fraud-alerts" element={<FraudAlerts />} /><Route path="/analytics" element={<Analytics />} /><Route path="/insurer-scorecard" element={<InsurerScorecard />} /><Route path="/service-lines" element={<ServiceLines />} /><Route path="/notifications" element={<Notifications />} /><Route path="/preauth-analytics" element={<PreAuthAnalytics />} /><Route path="/diagnosis-codes" element={<DiagnosisCodes />} /><Route path="/chat" element={<Chat />} /><Route path="/profile" element={<Profile />} /><Route path="/insurance-import" element={<InsuranceBulkImport />} /><Route path="/duplicate-audit" element={<DuplicateAudit />} /></Route><Route path="*" element={<NotFound />} /></Routes></Suspense>; }
 function AuthRoute() { const { user, loading } = useAuth(); if (loading) return <RouteFallback />; if (user) return <Navigate to="/" replace />; return <Suspense fallback={<RouteFallback />}><AuthPage /></Suspense>; }
-
-const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter><AuthProvider><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
+const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter><AuthProvider><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
 export default App;
