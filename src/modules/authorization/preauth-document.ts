@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { frozenSnapshotItems, type PreAuthFrozenSnapshot } from "./preauth-integrity";
 import { formatProcedureDate, itemAmount, totalItems, type PreAuthDocumentFormat, type PreAuthStudioItem } from "./preauth-studio";
 
 export interface PreAuthPdfData {
@@ -29,6 +30,27 @@ function drawField(doc: jsPDF, label: string, value: string, x: number, y: numbe
 function addPatientBlock(doc: jsPDF, data: PreAuthPdfData, y: number) { const width = doc.internal.pageSize.getWidth() - 32; const half = (width - 4) / 2; drawField(doc, "NAME:", data.patientName, 16, y, half); drawField(doc, "COMPANY:", data.companyName || "—", 20 + half, y, half); drawField(doc, "MEMBERSHIP #:", data.membershipNumber, 16, y + 9, half); drawField(doc, "PATIENT TEL:", data.patientPhone || "—", 20 + half, y + 9, half); drawField(doc, "PROVIDER:", data.providerName, 16, y + 18, half); drawField(doc, "DOCTOR:", data.doctorName || "—", 20 + half, y + 18, half); drawField(doc, "PROCEDURE:", data.procedureName, 16, y + 27, half); drawField(doc, "DATE:", formatProcedureDate(data.procedureDate), 20 + half, y + 27, half); drawField(doc, "DIAGNOSIS:", data.diagnosis || "—", 16, y + 36, width); return y + 47; }
 function sectionRows(items: PreAuthStudioItem[], category: PreAuthStudioItem["category"], currency: string) { return items.filter((item) => item.category === category).map((item) => [item.description, String(item.quantity), money(item.unitPrice, currency), money(itemAmount(item), currency)]); }
 
+export function preAuthPdfDataFromSnapshot(snapshot: PreAuthFrozenSnapshot): PreAuthPdfData {
+  return {
+    requestNumber: snapshot.requestNumber || undefined,
+    issuedDate: snapshot.issuedDate || undefined,
+    patientName: snapshot.patient.name,
+    membershipNumber: snapshot.patient.membershipNumber,
+    patientPhone: snapshot.patient.phone || undefined,
+    companyName: snapshot.patient.companyName || snapshot.insurer.name || undefined,
+    providerName: snapshot.provider.name || "MEDICAL FACILITY",
+    providerAddress: snapshot.provider.address || undefined,
+    providerPhone: snapshot.provider.phone || undefined,
+    doctorName: snapshot.clinical.doctorName || undefined,
+    procedureName: snapshot.clinical.procedureName,
+    procedureDate: snapshot.clinical.procedureDate,
+    diagnosis: snapshot.clinical.diagnosis || undefined,
+    currency: snapshot.document.currency,
+    format: snapshot.document.format,
+    logoUrl: snapshot.provider.logoUrl || undefined,
+  };
+}
+
 export async function buildPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudioItem[]) {
   const format = data.format || "ghana"; const currency = data.currency || (format === "ghana" ? "GH¢" : "USD"); const doc = new jsPDF({ unit: "mm", format: "a4" }); const width = doc.internal.pageSize.getWidth(); const height = doc.internal.pageSize.getHeight(); const accent = rgb(); const logo = await imageData(data.logoUrl);
   if (logo) { try { doc.addImage(logo.data, logo.format as any, 16, 12, 18, 18); } catch { /* optional logo */ } }
@@ -43,5 +65,8 @@ export async function buildPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudio
   return doc;
 }
 
+export async function buildPreAuthPdfFromSnapshot(snapshot: PreAuthFrozenSnapshot) { return buildPreAuthPdf(preAuthPdfDataFromSnapshot(snapshot), frozenSnapshotItems(snapshot)); }
 export async function downloadPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudioItem[]) { const doc = await buildPreAuthPdf(data, items); const safe = (data.patientName || "request").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase(); doc.save(`${data.requestNumber || "preauth"}-${safe}.pdf`); }
+export async function downloadPreAuthPdfFromSnapshot(snapshot: PreAuthFrozenSnapshot) { const data = preAuthPdfDataFromSnapshot(snapshot); const doc = await buildPreAuthPdfFromSnapshot(snapshot); const safe = (data.patientName || "request").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase(); doc.save(`${data.requestNumber || "preauth"}-${safe}.pdf`); }
 export async function preAuthPdfDataUri(data: PreAuthPdfData, items: PreAuthStudioItem[]) { const doc = await buildPreAuthPdf(data, items); return doc.output("datauristring"); }
+export async function preAuthPdfDataUriFromSnapshot(snapshot: PreAuthFrozenSnapshot) { const doc = await buildPreAuthPdfFromSnapshot(snapshot); return doc.output("datauristring"); }
