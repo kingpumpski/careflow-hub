@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getDocument } from "npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
 
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "").split(",").map((v) => v.trim()).filter(Boolean);
 const isAllowedOrigin = (origin: string | null) => !origin || allowedOrigins.includes(origin) || /^https?:\/\/localhost:\d+$/.test(origin) || /^https:\/\/[-a-z0-9]+\.app\.github\.dev$/.test(origin);
@@ -13,6 +14,34 @@ function extractJson(value: string): Record<string, unknown> {
   const match = cleaned.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("AI did not return structured JSON");
   return JSON.parse(match[0]);
+}
+
+function decodeDataUrl(dataUrl: string): Uint8Array {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) throw new Error("Invalid document payload");
+  const metadata = dataUrl.slice(0, comma);
+  if (!/;base64$/i.test(metadata)) throw new Error("Only base64 document payloads are supported");
+  const binary = atob(dataUrl.slice(comma + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function extractPdfText(bytes: Uint8Array): Promise<string> {
+  const loadingTask = getDocument({ data: bytes, disableWorker: true, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 });
+  const pdf = await loadingTask.promise;
+  const pages: string[] = [];
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages && pages.join("\n").length < 100_000; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items.map((item: { str?: string }) => item.str ?? "").join(" ").trim();
+      if (text) pages.push(`PAGE ${pageNumber}\n${text}`);
+    }
+  } finally {
+    await pdf.destroy();
+  }
+  return pages.join("\n\n").slice(0, 100_000);
 }
 
 Deno.serve(async (req) => {
@@ -38,11 +67,25 @@ Deno.serve(async (req) => {
     if (!text && !dataUrl) return json(req, { error: "No document content supplied." }, 400);
     if (dataUrl && dataUrl.length > 11_000_000) return json(req, { error: "Document payload is too large. Please use a file below 8 MB." }, 413);
 
+    let sourceText = text;
+    let imageDataUrl: string | null = null;
+    if (dataUrl) {
+      if (mimeType.toLowerCase() === "application/pdf" || /^\.pdf$/i.test(fileName.slice(-4))) {
+        const bytes = decodeDataUrl(dataUrl);
+        sourceText = await extractPdfText(bytes);
+        if (!sourceText.trim()) return json(req, { error: "The PDF contains no extractable text. Please use a text-based PDF or provide a clear page image." }, 422);
+      } else if (mimeType.startsWith("image/")) {
+        imageDataUrl = dataUrl;
+      } else {
+        return json(req, { error: "This document format requires text extraction before AI transcription. Use PDF, image, spreadsheet, CSV, JSON or text input." }, 415);
+      }
+    }
+
     const instructions = `You are CareFlow Hub's document intake engine. Read the supplied operational document and return ONLY valid JSON with this shape: {"transcript":"plain-language transcription/summary of factual source content","records":[{"entity":"insurance_company|claim|payment|withholding_tax","data":{},"confidence":0.0,"source":"optional source location"}],"warnings":["..."]}. Never invent values. Preserve source numbers exactly where possible. Only create a record when the document provides enough evidence. For claims use data fields insurance_company_id only when a real UUID is present, claim_amount, claim_month, claim_year, status. For payments use insurance_company_id, amount_paid, payment_date. For withholding_tax use insurance_company_id and tax_amount. For insurance_company use company_name and optional is_active. If the source names an insurer but gives no UUID, put the insurer name in data.insurance_company_name instead and add a warning that human mapping is required. Do not create patient diagnoses, clinical conclusions, credentials, secrets, or fabricated identifiers. Confidence must be between 0 and 1.`;
 
-    const userContent: unknown = dataUrl
-      ? [{ type: "text", text: `${instructions}\nFile: ${fileName}\nMIME type: ${mimeType}` }, { type: "image_url", image_url: { url: dataUrl } }]
-      : `${instructions}\nFile: ${fileName}\nMIME type: ${mimeType}\n\nSOURCE CONTENT:\n${text}`;
+    const userContent: unknown = imageDataUrl
+      ? [{ type: "text", text: `${instructions}\nFile: ${fileName}\nMIME type: ${mimeType}` }, { type: "image_url", image_url: { url: imageDataUrl } }]
+      : `${instructions}\nFile: ${fileName}\nMIME type: ${mimeType}\n\nSOURCE CONTENT:\n${sourceText ?? ""}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
