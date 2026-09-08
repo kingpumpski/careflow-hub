@@ -31,6 +31,34 @@ function toReviewInput(payload: Record<string, unknown>, items: StudioItem[]): P
   return { patientId: String(payload.patient_id ?? ""), patientName: String(payload.patient_name ?? payload.client_name ?? "Patient"), membershipNumber: String(payload.membership_number ?? ""), insurerId: String(payload.insurance_company_id ?? ""), insurerName: String(payload.insurer_name ?? payload.client_company_name ?? ""), procedureId: String(payload.procedure_id ?? ""), procedureName: String(payload.procedure_name ?? "Procedure"), procedureDate: String(payload.procedure_date ?? ""), diagnosis: String(payload.diagnosis ?? ""), doctorId: payload.doctor_id ? String(payload.doctor_id) : undefined, doctorName: String(payload.doctor_name ?? ""), patientPhone: String(payload.patient_phone ?? ""), companyName: String(payload.client_company_name ?? ""), insurerEmail: String(payload.insurer_email ?? ""), providerEmail: String(payload.provider_email ?? ""), providerName: String(payload.provider_name ?? ""), providerAddress: String(payload.provider_address ?? ""), providerPhone: String(payload.provider_phone ?? ""), providerLogoUrl: payload.provider_logo_url ? String(payload.provider_logo_url) : undefined, issuedDate: String(payload.issued_date ?? new Date().toLocaleDateString("en-GB")), currency: String(payload.document_currency ?? "GH¢"), format: (payload.document_format === "international" ? "international" : "ghana"), items: items.map((item, index) => ({ id: `${payload.id ?? "draft"}-${index}`, category: item.description ? "procedure" : "other", description: item.description, quantity: item.quantity, unitPrice: item.unit_price })), };
 }
 
+export async function getPreAuthorizationRevision(preauthId: string): Promise<string | null> {
+  if (!preauthId) throw new Error("Pre-authorization ID is required.");
+  if (getCareFlowDataMode() === "offline") {
+    const rows = await listOffline<Record<string, any>>("pre_authorizations");
+    const row = rows.find((item) => String(item.id) === preauthId);
+    return row?.updated_at ?? row?.updatedAt ?? null;
+  }
+  const { data, error } = await (supabase.from("pre_authorizations") as any).select("updated_at").eq("id", preauthId).maybeSingle();
+  if (error) throw error;
+  return data?.updated_at ?? null;
+}
+
+export function hasPreAuthorizationRevisionChanged(capturedRevision: string | null | undefined, currentRevision: string | null | undefined): boolean {
+  if (!capturedRevision || !currentRevision) return false;
+  return capturedRevision !== currentRevision;
+}
+
+export async function assertPreAuthorizationRevision(preauthId: string, capturedRevision: string | null | undefined): Promise<string | null> {
+  if (!capturedRevision) return null;
+  const currentRevision = await getPreAuthorizationRevision(preauthId);
+  if (hasPreAuthorizationRevisionChanged(capturedRevision, currentRevision)) {
+    const error = new Error("PREAUTH_REVISION_CONFLICT");
+    (error as Error & { code?: string }).code = "PREAUTH_REVISION_CONFLICT";
+    throw error;
+  }
+  return currentRevision;
+}
+
 export async function createPreAuthorizationAtomic(payload: Record<string, unknown>, items: StudioItem[], saveClientSuggestion: boolean) {
   if (getCareFlowDataMode() === "offline") return createOfflinePreAuthDraft(toReviewInput(withFacility(payload), items), String(payload.created_by ?? "") || null);
   const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", { p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_save_client_suggestion: saveClientSuggestion });
@@ -47,6 +75,7 @@ export async function updatePreAuthorizationAtomic(preauthId: string, payload: R
 
 export function getPreAuthorizationErrorMessage(error: unknown): string {
   const message = String((error as { message?: string })?.message || error || "");
+  if (message.includes("PREAUTH_REVISION_CONFLICT")) return "This pre-authorization was changed elsewhere while you were editing it. Your changes are still on screen. Review the current server version before saving again.";
   if (message.includes("DUPLICATE_PREAUTH")) return "A matching pre-authorization already exists. Review the existing request before creating another one.";
   if (message.includes("TOTAL_COST_MISMATCH")) return "The submitted total does not match the charge lines. Recheck the quantities and unit charges.";
   if (message.includes("PREAUTH_ITEMS_REQUIRED")) return "Add at least one valid service or charge line.";
