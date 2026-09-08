@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import PreAuthorizationStudio from "@/pages/PreAuthorizationStudio";
+import OfflinePreAuthorizationStudio from "@/pages/OfflinePreAuthorizationStudio";
+import { isOfflineMode } from "@/modules/offline/data-mode";
 import {
   getStoredFacilityId,
   listMyPreAuthFacilities,
@@ -9,12 +11,17 @@ import {
 } from "@/features/preauth/services/preauthFacility.service";
 
 export default function PreAuthorizationStudioRoute() {
+  const offline = isOfflineMode();
   const [memberships, setMemberships] = useState<FacilityMembership[]>([]);
   const [facilityId, setFacilityId] = useState(getStoredFacilityId() || "");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!offline);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (offline) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     void listMyPreAuthFacilities()
       .then((rows) => {
@@ -42,13 +49,14 @@ export default function PreAuthorizationStudioRoute() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [offline]);
 
   const selectedMembership = useMemo(
     () => memberships.find((membership) => membership.facility_id === facilityId),
     [memberships, facilityId],
   );
 
+  if (offline) return <OfflinePreAuthorizationStudio />;
   if (loading) return <div className="stat-card">Loading facility access…</div>;
   if (error) return <div className="stat-card text-destructive">{error}</div>;
   if (!memberships.length) {
