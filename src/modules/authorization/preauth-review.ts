@@ -10,6 +10,7 @@ export interface PreAuthReviewInput {
   procedureName: string;
   procedureDate: string;
   diagnosis?: string | null;
+  doctorId?: string | null;
   doctorName?: string | null;
   patientPhone?: string | null;
   companyName?: string | null;
