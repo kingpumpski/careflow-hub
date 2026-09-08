@@ -157,7 +157,7 @@ export function useSupabaseDelete(table: TableName) {
         if (!existing) throw new Error(`Offline record ${id} was not found.`);
         const baseVersion = existing.updated_at ?? existing.updatedAt;
         await deleteOffline(entity, id);
-        await enqueueSyncOperation({ table, type: "delete", recordId: id, ...(baseVersion != null ? { baseVersion } : {}) });
+        await enqueueSyncOperation({ table, type: "delete", recordId: id, payload: existing, ...(baseVersion != null ? { baseVersion } : {}) });
         return;
       }
       const { error } = await (supabase.from(table) as any).delete().eq("id", id);
