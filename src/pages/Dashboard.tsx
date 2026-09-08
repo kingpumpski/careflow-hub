@@ -40,6 +40,11 @@ export default function Dashboard() {
   const trend = useMemo(() => buildTrendSeries(claims || [], payments || []), [claims, payments]);
   const ranked = useMemo(() => rankInsurers(insurers || [], claims || [], payments || []), [insurers, claims, payments]);
 
+  /** Turns the per-year slices into the cycling frames a KPI card shows after its all-time figure. */
+  const yearFrames = (build: (y: YearlyKpis) => { value: string; hint?: string; progress?: number }) =>
+    yearly.slice(0, 5).map((y) => ({ label: String(y.year), ...build(y) }));
+
+
   const insights = useMemo(
     () => buildDashboardInsights(claims || [], payments || [], insurers || [], withholdingTax || []),
     [claims, payments, insurers, withholdingTax],
