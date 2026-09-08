@@ -1,158 +1,20 @@
 import { useMemo } from "react";
 
-type OHLCPoint = {
-  label: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  submitted: number;
-  paid: number;
-  withholdingTax: number;
-};
-
-type WaterfallPoint = { label: string; value: number; kind: "start" | "positive" | "negative" | "end" };
-type ParetoPoint = { label: string; value: number; cumulative: number };
-type HeatmapPoint = { label: string; values: number[] };
-type FunnelPoint = { label: string; value: number };
-
-const money = (value: number) => `GH¢ ${Math.round(value).toLocaleString()}`;
-
-function EmptyState({ label }: { label: string }) {
-  return <div className="h-64 flex items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">{label}</div>;
-}
-
-export function ClaimsExposureCandlestick({ data }: { data: OHLCPoint[] }) {
-  const max = Math.max(...data.flatMap((d) => [d.high, d.open, d.close, d.low]), 1);
-  if (!data.length) return <EmptyState label="No monthly claims exposure data available yet" />;
-
-  return (
-    <div className="space-y-3">
-      <div className="h-72 flex items-end gap-1 sm:gap-2 overflow-x-auto px-2 pb-2">
-        {data.map((d) => {
-          const scale = (v: number) => Math.max(2, (v / max) * 220);
-          const bodyTop = Math.max(d.open, d.close);
-          const bodyBottom = Math.min(d.open, d.close);
-          const bodyHeight = Math.max(5, scale(bodyTop - bodyBottom));
-          const isImproving = d.close <= d.open;
-          return (
-            <div key={d.label} className="min-w-8 sm:min-w-10 flex-1 h-full flex flex-col items-center justify-end group">
-              <div className="relative w-full h-60 flex items-end justify-center">
-                <div className="absolute bottom-0 h-[220px] w-px bg-border" />
-                <div className="absolute w-0.5 rounded-full bg-foreground/60" style={{ height: `${Math.max(4, scale(d.high - d.low))}px`, bottom: `${scale(d.low)}px` }} />
-                <div
-                  className={`absolute w-4 sm:w-5 rounded-sm border ${isImproving ? "bg-success/30 border-success" : "bg-destructive/30 border-destructive"}`}
-                  style={{ height: `${bodyHeight}px`, bottom: `${scale(bodyBottom)}px` }}
-                />
-              </div>
-              <span className="text-[10px] text-muted-foreground mt-1">{d.label}</span>
-              <div className="hidden group-hover:block absolute z-10 rounded-lg border bg-card p-2 text-[10px] shadow-lg -translate-y-2">
-                <div className="font-semibold mb-1">{d.label}</div>
-                <div>Open: {money(d.open)}</div><div>High: {money(d.high)}</div>
-                <div>Low: {money(d.low)}</div><div>Close: {money(d.close)}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span>Open = prior closing outstanding</span><span>High = exposure after submissions</span>
-        <span>Low = post-settlement exposure</span><span>Close = period-end outstanding</span>
-      </div>
-    </div>
-  );
-}
-
-export function ClaimsWaterfall({ data }: { data: WaterfallPoint[] }) {
-  if (!data.length) return <EmptyState label="No reconciliation data available yet" />;
-  const max = Math.max(...data.map((d) => Math.abs(d.value)), 1);
-  const running = data.reduce<number[]>((acc, d, i) => {
-    const previous = i === 0 ? 0 : acc[i - 1];
-    acc.push(d.kind === "start" || d.kind === "end" ? d.value : previous + d.value);
-    return acc;
-  }, []);
-
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[640px] h-72 flex items-end gap-3 px-3 pb-8">
-        {data.map((d, i) => {
-          const value = d.kind === "start" || d.kind === "end" ? d.value : d.value;
-          const height = Math.max(6, (Math.abs(value) / max) * 190);
-          const positive = d.kind === "positive";
-          return (
-            <div key={`${d.label}-${i}`} className="flex-1 min-w-16 h-full flex flex-col items-center justify-end gap-2">
-              <span className="text-[10px] font-medium text-center max-w-20 truncate">{money(value)}</span>
-              <div className={`w-full max-w-16 rounded-t-md transition-transform hover:-translate-y-1 ${d.kind === "negative" ? "bg-destructive/70" : d.kind === "positive" ? "bg-success/70" : "bg-primary/70"}`} style={{ height }} title={`${d.label}: ${money(value)}`} />
-              <span className="text-[10px] text-muted-foreground text-center leading-tight">{d.label}</span>
-              {i < data.length - 1 && <span className="hidden" aria-hidden="true">{positive ? running[i] : ""}</span>}
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted-foreground px-3">Positive bars increase the receivable exposure; negative bars reduce it through rejection, payment, or withholding-tax settlement.</p>
-    </div>
-  );
-}
-
-export function ClaimsPareto({ data }: { data: ParetoPoint[] }) {
-  if (!data.length) return <EmptyState label="No rejection concentration data available yet" />;
-  const max = Math.max(...data.map((d) => d.value), 1);
-  return (
-    <div className="space-y-3">
-      <div className="h-64 flex items-end gap-1 sm:gap-2 border-b px-2">
-        {data.map((d) => (
-          <div key={d.label} className="flex-1 min-w-6 h-full flex flex-col justify-end items-center group">
-            <div className="w-full max-w-10 rounded-t bg-destructive/70 hover:bg-destructive transition-colors" style={{ height: `${Math.max(2, (d.value / max) * 190)}px` }} title={`${d.label}: ${money(d.value)}`} />
-            <span className="text-[9px] text-muted-foreground mt-1 truncate max-w-full">{d.label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between text-xs text-muted-foreground"><span>Highest rejection concentration</span><span>{data.at(-1)?.cumulative.toFixed(0)}% cumulative</span></div>
-      <div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(data.at(-1)?.cumulative ?? 0, 100)}%` }} /></div>
-      <p className="text-xs text-muted-foreground">Bars rank rejection value from highest to lowest. The cumulative indicator shows how much of total rejection value is represented by the displayed categories.</p>
-    </div>
-  );
-}
-
-export function ClaimsHeatmap({ data }: { data: HeatmapPoint[] }) {
-  const max = useMemo(() => Math.max(...data.flatMap((d) => d.values), 1), [data]);
-  if (!data.length) return <EmptyState label="No operational activity data available yet" />;
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[620px] space-y-2">
-        <div className="grid grid-cols-[120px_repeat(12,minmax(30px,1fr))] gap-1 text-[9px] text-muted-foreground">
-          <span />
-          {Array.from({ length: 12 }, (_, i) => <span key={i} className="text-center">{i + 1}</span>)}
-          {data.map((row) => (
-            <div key={row.label} className="contents">
-              <span className="truncate self-center pr-2">{row.label}</span>
-              {row.values.map((value, i) => (
-                <span key={`${row.label}-${i}`} className="aspect-square rounded-sm border border-background" title={`${row.label}, month ${i + 1}: ${value}`} style={{ opacity: 0.15 + (value / max) * 0.85, background: "hsl(var(--primary))" }} />
-              ))}
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground"><span>Low activity</span><span>High activity</span></div>
-      </div>
-    </div>
-  );
-}
-
-export function ClaimsFunnel({ data }: { data: FunnelPoint[] }) {
-  if (!data.length) return <EmptyState label="No lifecycle funnel data available yet" />;
-  const max = Math.max(...data.map((d) => d.value), 1);
-  return (
-    <div className="space-y-3 py-2">
-      {data.map((d, i) => {
-        const width = Math.max(18, (d.value / max) * 100);
-        const conversion = i === 0 ? 100 : (d.value / Math.max(data[i - 1].value, 1)) * 100;
-        return (
-          <div key={d.label} className="space-y-1">
-            <div className="flex items-center justify-between text-xs"><span className="font-medium">{d.label}</span><span className="text-muted-foreground">{d.value.toLocaleString()} · {conversion.toFixed(1)}% from prior stage</span></div>
-            <div className="h-9 rounded-md bg-muted overflow-hidden"><div className="h-full rounded-md bg-primary/80 transition-all duration-500" style={{ width: `${width}%` }} /></div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+type OHLCPoint={label:string;open:number;high:number;low:number;close:number;submitted:number;paid:number;withholdingTax:number};
+type WaterfallPoint={label:string;value:number;kind:"start"|"positive"|"negative"|"end"};
+type ParetoPoint={label:string;value:number;cumulative:number};
+type HeatmapPoint={label:string;values:number[]};
+type FunnelPoint={label:string;value:number};
+type ControlPoint={label:string;value:number};
+type BoxStats={label:string;min:number;q1:number;median:number;q3:number;max:number;count:number};
+type RadarRow={label:string;denial:number;collection:number;speed:number;volume:number};
+const money=(v:number)=>`GH¢ ${Math.round(v).toLocaleString()}`;
+function EmptyState({label}:{label:string}){return <div className="h-64 flex items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">{label}</div>}
+export function ClaimsExposureCandlestick({data}:{data:OHLCPoint[]}){const max=Math.max(...data.flatMap(d=>[d.high,d.open,d.close,d.low]),1);if(!data.length)return <EmptyState label="No monthly claims exposure data available yet"/>;return <div className="space-y-3"><div className="h-72 flex items-end gap-1 sm:gap-2 overflow-x-auto px-2 pb-2">{data.map(d=>{const scale=(v:number)=>Math.max(2,(v/max)*220),top=Math.max(d.open,d.close),bottom=Math.min(d.open,d.close),body=Math.max(5,scale(top-bottom));return <div key={d.label} className="min-w-8 sm:min-w-10 flex-1 h-full flex flex-col items-center justify-end group"><div className="relative w-full h-60 flex items-end justify-center"><div className="absolute bottom-0 h-[220px] w-px bg-border"/><div className="absolute w-0.5 rounded-full bg-foreground/60" style={{height:`${Math.max(4,scale(d.high-d.low))}px`,bottom:`${scale(d.low)}px`}}/><div className={`absolute w-4 sm:w-5 rounded-sm border ${d.close<=d.open?"bg-success/30 border-success":"bg-destructive/30 border-destructive"}`} style={{height:`${body}px`,bottom:`${scale(bottom)}px`}}/></div><span className="text-[10px] text-muted-foreground mt-1">{d.label}</span><div className="hidden group-hover:block absolute z-10 rounded-lg border bg-card p-2 text-[10px] shadow-lg -translate-y-2"><b>{d.label}</b><div>Open: {money(d.open)}</div><div>High: {money(d.high)}</div><div>Low: {money(d.low)}</div><div>Close: {money(d.close)}</div></div></div>})}</div><div className="flex flex-wrap gap-4 text-xs text-muted-foreground"><span>Open = prior closing outstanding</span><span>High = exposure after submissions</span><span>Low = post-settlement exposure</span><span>Close = period-end outstanding</span></div></div>}
+export function ClaimsWaterfall({data}:{data:WaterfallPoint[]}){if(!data.length)return <EmptyState label="No reconciliation data available yet"/>;const max=Math.max(...data.map(d=>Math.abs(d.value)),1);return <div className="overflow-x-auto"><div className="min-w-[640px] h-72 flex items-end gap-3 px-3 pb-8">{data.map((d,i)=><div key={`${d.label}-${i}`} className="flex-1 min-w-16 h-full flex flex-col items-center justify-end gap-2"><span className="text-[10px] font-medium">{money(d.value)}</span><div className={`w-full max-w-16 rounded-t-md transition-transform hover:-translate-y-1 ${d.kind==="negative"?"bg-destructive/70":d.kind==="positive"?"bg-success/70":"bg-primary/70"}`} style={{height:`${Math.max(6,(Math.abs(d.value)/max)*190)}px`}}/><span className="text-[10px] text-muted-foreground text-center">{d.label}</span></div>)}</div><p className="text-xs text-muted-foreground px-3">Gross submitted value reconciled through rejection, payment and withholding tax.</p></div>}
+export function ClaimsPareto({data}:{data:ParetoPoint[]}){if(!data.length)return <EmptyState label="No rejection concentration data available yet"/>;const max=Math.max(...data.map(d=>d.value),1);return <div className="space-y-3"><div className="h-64 flex items-end gap-1 sm:gap-2 border-b px-2">{data.map(d=><div key={d.label} className="flex-1 min-w-6 h-full flex flex-col justify-end items-center"><div className="w-full max-w-10 rounded-t bg-destructive/70" style={{height:`${Math.max(2,(d.value/max)*190)}px`}} title={`${d.label}: ${money(d.value)}`}/><span className="text-[9px] text-muted-foreground mt-1 truncate max-w-full">{d.label}</span></div>)}</div><div className="flex justify-between text-xs text-muted-foreground"><span>Highest rejection concentration</span><span>{data.at(-1)?.cumulative.toFixed(0)}% cumulative</span></div></div>}
+export function ClaimsHeatmap({data}:{data:HeatmapPoint[]}){const max=useMemo(()=>Math.max(...data.flatMap(d=>d.values),1),[data]);if(!data.length)return <EmptyState label="No operational activity data available yet"/>;return <div className="overflow-x-auto"><div className="min-w-[620px]"><div className="grid grid-cols-[120px_repeat(12,minmax(30px,1fr))] gap-1 text-[9px] text-muted-foreground"><span/>{Array.from({length:12},(_,i)=><span key={i} className="text-center">{i+1}</span>)}{data.map(row=><div key={row.label} className="contents"><span className="truncate self-center pr-2">{row.label}</span>{row.values.map((v,i)=><span key={`${row.label}-${i}`} className="aspect-square rounded-sm border border-background" title={`${row.label}, month ${i+1}: ${v}`} style={{opacity:.15+(v/max)*.85,background:"hsl(var(--primary))"}}/>)}</div>)}</div></div></div>}
+export function ClaimsFunnel({data}:{data:FunnelPoint[]}){if(!data.length)return <EmptyState label="No lifecycle funnel data available yet"/>;const max=Math.max(...data.map(d=>d.value),1);return <div className="space-y-3 py-2">{data.map((d,i)=>{const conversion=i===0?100:d.value/Math.max(data[i-1].value,1)*100;return <div key={d.label}><div className="flex justify-between text-xs"><span className="font-medium">{d.label}</span><span className="text-muted-foreground">{d.value.toLocaleString()} · {conversion.toFixed(1)}%</span></div><div className="h-9 rounded-md bg-muted overflow-hidden"><div className="h-full rounded-md bg-primary/80 transition-all" style={{width:`${Math.max(18,d.value/max*100)}%`}}/></div></div>})}</div>}
+export function SettlementControlChart({data}:{data:ControlPoint[]}){if(!data.length)return <EmptyState label="No settlement velocity data available yet"/>;const mean=data.reduce((s,d)=>s+d.value,0)/data.length,sd=Math.sqrt(data.reduce((s,d)=>s+(d.value-mean)**2,0)/data.length),ucl=mean+3*sd,lcl=Math.max(0,mean-3*sd),max=Math.max(ucl,...data.map(d=>d.value),1),x=(i:number)=>8+i/Math.max(data.length-1,1)*84,y=(v:number)=>92-v/max*78,points=data.map((d,i)=>`${x(i)},${y(d.value)}`).join(" ");return <div className="space-y-2"><svg viewBox="0 0 100 100" className="w-full h-64" role="img" aria-label="Settlement velocity statistical process control chart"><line x1="8" x2="92" y1={y(mean)} y2={y(mean)} stroke="currentColor" strokeDasharray="2 2" opacity=".65"/><line x1="8" x2="92" y1={y(ucl)} y2={y(ucl)} stroke="currentColor" strokeDasharray="1 2" opacity=".4"/><line x1="8" x2="92" y1={y(lcl)} y2={y(lcl)} stroke="currentColor" strokeDasharray="1 2" opacity=".4"/><polyline fill="none" stroke="currentColor" strokeWidth="1.2" points={points}/>{data.map((d,i)=><circle key={`${d.label}-${i}`} cx={x(i)} cy={y(d.value)} r="1.6" fill="currentColor"><title>{`${d.label}: ${d.value.toFixed(1)} days`}</title></circle>)}<text x="92" y={y(ucl)-2} textAnchor="end" fontSize="3">UCL {ucl.toFixed(1)}</text><text x="92" y={y(mean)-2} textAnchor="end" fontSize="3">Mean {mean.toFixed(1)}</text><text x="92" y={y(lcl)-2} textAnchor="end" fontSize="3">LCL {lcl.toFixed(1)}</text></svg><div className="flex flex-wrap gap-4 text-xs text-muted-foreground"><span>Mean {mean.toFixed(1)} days</span><span>±3σ control limits</span><span>{data.filter(d=>d.value>ucl||d.value<lcl).length} exceptions</span></div></div>}
+export function SettlementBoxPlot({data}:{data:BoxStats[]}){if(!data.length)return <EmptyState label="No settlement distribution data available yet"/>;const max=Math.max(...data.map(d=>d.max),1),scale=(v:number)=>Math.max(2,v/max*210);return <div className="space-y-4 overflow-x-auto"><div className="min-w-[560px] h-64 flex items-end gap-3 px-4">{data.map(d=><div key={d.label} className="flex-1 min-w-16 h-full flex flex-col items-center justify-end"><div className="relative h-56 w-full flex justify-center"><div className="absolute w-px bg-foreground/50" style={{height:`${scale(d.max-d.min)}px`,bottom:`${scale(d.min)}px`}}/><div className="absolute w-8 border rounded-md bg-primary/20" style={{height:`${Math.max(8,scale(d.q3-d.q1))}px`,bottom:`${scale(d.q1)}px`}}/><div className="absolute w-8 border-t-2 border-foreground" style={{bottom:`${scale(d.median)}px`}}/></div><span className="text-[10px] text-muted-foreground">{d.label}</span></div>)}</div><p className="text-xs text-muted-foreground">Box = Q1–Q3, center line = median, whiskers = observed range.</p></div>}
+export function InsurerPerformanceRadar({data}:{data:RadarRow[]}){if(!data.length)return <EmptyState label="No insurer performance data available yet"/>;const top=data.slice(0,6),cx=50,cy=50,r=35,metrics=["denial","collection","speed","volume"] as const,angles=metrics.map((_,i)=>-Math.PI/2+i*2*Math.PI/metrics.length),pts=(row:RadarRow)=>metrics.map((m,i)=>{const v=Math.max(0,Math.min(100,row[m]));return `${cx+Math.cos(angles[i])*r*v/100},${cy+Math.sin(angles[i])*r*v/100}`}).join(" ");return <div className="space-y-3"><div className="flex flex-wrap gap-2 justify-center">{top.map(rw=><span key={rw.label} className="text-[10px] px-2 py-1 rounded-full border">{rw.label}</span>)}</div><svg viewBox="0 0 100 100" className="w-full h-64" role="img" aria-label="Normalized insurer performance radar chart"><polygon points={metrics.map((_,i)=>`${cx+Math.cos(angles[i])*r},${cy+Math.sin(angles[i])*r}`).join(" ")} fill="none" stroke="currentColor" opacity=".25"/>{top.map(rw=><polygon key={rw.label} points={pts(rw)} fill="currentColor" fillOpacity=".08" stroke="currentColor" strokeWidth=".7"/>)}{metrics.map((m,i)=><text key={m} x={cx+Math.cos(angles[i])*(r+10)} y={cy+Math.sin(angles[i])*(r+10)} textAnchor="middle" fontSize="3.5">{m}</text>)}</svg><p className="text-xs text-muted-foreground">Normalized comparison: lower denial is better; collection, speed and volume are scaled for executive review.</p></div>}
