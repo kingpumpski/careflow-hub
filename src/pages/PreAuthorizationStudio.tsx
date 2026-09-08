@@ -9,11 +9,11 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
-import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
+import { buildPreAuthEmail, buildPreAuthDocumentPayload, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
 import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
 import { validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
-import { buildPreAuthSubmissionPackage, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
+import { buildPreAuthRecipientManifest, buildPreAuthSubmissionPackageFromSnapshot, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
 
 const blankItem = (): PreAuthStudioItem => ({ id: crypto.randomUUID(), category: "procedure", description: "", quantity: 1, unitPrice: 0 });
 
@@ -154,6 +154,7 @@ export default function PreAuthorizationStudio() {
       return null;
     }
     setSaving(true);
+    let createdId: string | null = null;
     try {
       const payload = {
         patient_id: patientId, insurance_company_id: insurerId, doctor_id: doctorId || null, procedure_id: procedureId,
@@ -164,16 +165,19 @@ export default function PreAuthorizationStudio() {
         document_format: format, document_currency: currency, duplicate_signature: duplicateSignature,
       };
       const created = await insertPreauth.mutateAsync(payload);
-      const id = created.id as string;
-      const rows = items.filter((item) => item.description.trim()).map((item) => ({ preauth_id: id, description: item.description.trim(), quantity: Math.max(0, Number(item.quantity) || 0), unit_price: Math.max(0, Number(item.unitPrice) || 0), amount: itemAmount(item), category: item.category }));
+      createdId = created.id as string;
+      const rows = items.filter((item) => item.description.trim()).map((item) => ({ preauth_id: createdId, description: item.description.trim(), quantity: Math.max(0, Number(item.quantity) || 0), unit_price: Math.max(0, Number(item.unitPrice) || 0), amount: itemAmount(item), category: item.category }));
       if (rows.length) {
         const { error } = await (supabase.from("preauth_items") as any).insert(rows);
         if (error) throw error;
       }
-      setSavedId(id);
-      toast({ title: "Draft saved", description: `Request ${buildRequestNumber(id)} is ready for review.` });
-      return id;
+      setSavedId(createdId);
+      toast({ title: "Draft saved", description: `Request ${buildRequestNumber(createdId)} is ready for review.` });
+      return createdId;
     } catch (error: any) {
+      if (createdId) {
+        await (supabase.from("pre_authorizations") as any).delete().eq("id", createdId);
+      }
       toast({ title: "Unable to save draft", description: error.message || "Please try again.", variant: "destructive" });
       return null;
     } finally { setSaving(false); }
@@ -226,19 +230,40 @@ export default function PreAuthorizationStudio() {
 
     setSubmitting(true);
     try {
-      const { data: latest } = await (supabase.from("preauthorization_versions") as any)
-        .select("version_number")
-        .eq("preauth_id", id)
-        .order("version_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const versionNumber = Number(latest?.version_number || 0) + 1;
       const finalRequestNumber = buildRequestNumber(id);
-      const submissionPackage = buildPreAuthSubmissionPackage({
+      const frozenSnapshot = buildPreAuthDocumentPayload(reviewInput, finalRequestNumber);
+      assertPreAuthSnapshotMatchesReviewInput(frozenSnapshot, reviewInput);
+
+      const recipients = buildPreAuthRecipientManifest({
+        insurerEmail: selectedInsurer?.email,
+        insurerName: selectedInsurer?.company_name,
+        additionalEmails: selectedInsurer?.additional_emails,
+        ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
+      });
+      if (!recipients.some((recipient) => recipient.type === "to")) {
+        throw new Error("The insurer does not have a valid email address for the authorization request.");
+      }
+
+      const { data: finalized, error: finalizeError } = await (supabase.rpc as any)("finalize_preauthorization_handoff", {
+        p_preauth_id: id,
+        p_snapshot: frozenSnapshot,
+        p_total_cost: review.total,
+        p_recipient_manifest: recipients,
+        p_attachment_manifest: [],
+        p_subject: email.subject,
+        p_message_body: email.body,
+        p_idempotency_key: `${id}:freeze:${finalRequestNumber}`,
+      });
+      if (finalizeError) throw finalizeError;
+
+      const versionNumber = Number(finalized?.version_number);
+      if (!Number.isInteger(versionNumber) || versionNumber < 1) throw new Error("The server did not return a valid frozen revision number.");
+
+      const submissionPackage = buildPreAuthSubmissionPackageFromSnapshot({
         preauthId: id,
         versionNumber,
         requestNumber: finalRequestNumber,
-        reviewInput,
+        snapshot: frozenSnapshot,
         subject: email.subject,
         messageBody: email.body,
         insurerEmail: selectedInsurer?.email,
@@ -246,55 +271,18 @@ export default function PreAuthorizationStudio() {
         additionalEmails: selectedInsurer?.additional_emails,
         ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
       });
-      if (!submissionPackage.recipients.some((recipient) => recipient.type === "to")) {
-        throw new Error("The insurer does not have a valid email address for the authorization request.");
-      }
-      assertPreAuthSnapshotMatchesReviewInput(submissionPackage.snapshot, reviewInput);
 
-      const { data: version, error: versionError } = await (supabase.from("preauthorization_versions") as any)
-        .insert({ preauth_id: id, version_number: versionNumber, snapshot: submissionPackage.snapshot, total_cost: review.total, created_by: user?.id || null })
-        .select("id")
-        .single();
-      if (versionError) throw versionError;
+      await downloadPreAuthPdfFromSnapshot(frozenSnapshot);
 
-      await downloadPreAuthPdfFromSnapshot(submissionPackage.snapshot);
-
-      const now = new Date().toISOString();
-      const { data: submission, error: submissionError } = await (supabase.from("preauthorization_submissions") as any)
-        .insert({
-          preauth_id: id,
-          version_id: version.id,
-          idempotency_key: submissionPackage.idempotencyKey,
-          submission_channel: "email",
-          status: "prepared",
-          recipient_manifest: submissionPackage.recipients,
-          attachment_manifest: submissionPackage.attachments,
-          subject: submissionPackage.subject,
-          message_body: submissionPackage.messageBody,
-          submitted_by: user?.id || null,
-          prepared_at: now,
-        })
-        .select("id")
-        .single();
-      if (submissionError) throw submissionError;
-
-      const { error: parentError } = await (supabase.from("pre_authorizations") as any).update({
-        document_revision: versionNumber,
-        document_payload: submissionPackage.snapshot,
-        document_finalized_at: now,
-        status: "prepared",
-        current_state: "Email handoff prepared",
-      }).eq("id", id);
-      if (parentError) throw parentError;
-
-      await (supabase.from("preauthorization_audit_events") as any).insert({
+      const { error: auditError } = await (supabase.from("preauthorization_audit_events") as any).insert({
         preauth_id: id,
-        version_id: version.id,
-        submission_id: submission.id,
+        version_id: finalized.version_id,
+        submission_id: finalized.submission_id,
         event_type: "email_handoff_prepared",
         event_data: { versionNumber, recipientCount: submissionPackage.recipients.length, attachmentCount: submissionPackage.attachments.length },
         actor_id: user?.id || null,
       });
+      if (auditError) console.warn("Pre-authorization audit event could not be recorded", auditError);
 
       setSavedId(id);
       setReviewOpen(false);
@@ -322,7 +310,7 @@ export default function PreAuthorizationStudio() {
               <div><Label>Patient / Client *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={patientId} onChange={(e) => setPatientId(e.target.value)}><option value="">Select patient</option>{(patients || []).map((p: any) => <option key={p.id} value={p.id}>{p.patient_name} {p.membership_number ? `— ${p.membership_number}` : ""}</option>)}</select></div>
               <div><Label>Insurance partner *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={insurerId} onChange={(e) => setInsurerId(e.target.value)}><option value="">Select insurer</option>{(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}</select></div>
               <div><Label>Doctor / Surgeon</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 py-2 text-sm" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">Select provider</option>{(doctors || []).map((d: any) => <option key={d.id} value={d.id}>{d.doctor_name}</option>)}</select></div>
-              <div><Label>Procedure *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Select procedure</option>{(procedures || []).map((p: any) => <option key={p.id} value={p.id}>{p.procedure_name}</option>)}</select></div>
+              <div><Label>Procedure *</Label><select className="mt-1 w-full h-9 rounded-md border bg-background px-3 py-2 text-sm" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Select procedure</option>{(procedures || []).map((p: any) => <option key={p.id} value={p.id}>{p.procedure_name}</option>)}</select></div>
               <div><Label>Procedure date *</Label><Input className="mt-1" type="date" value={procedureDate} onChange={(e) => setProcedureDate(e.target.value)} /></div>
               <div><Label>Patient telephone</Label><Input className="mt-1" value={patientPhone} onChange={(e) => setPatientPhone(e.target.value)} placeholder="Optional override" /></div>
               <div><Label>Company / employer</Label><Input className="mt-1" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="As shown on card / policy" /></div>
