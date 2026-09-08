@@ -29,7 +29,21 @@ describe("offline sync payload normalization", () => {
     })).toEqual({
       id: "preauth-2",
       created_at: "2026-09-08T11:00:00.000Z",
-      updated_at: "2026-09-08T11:05:00.000Z",
+      updated_at: "local-value",
+    });
+  });
+
+  it("keeps the captured base version outside the server payload", () => {
+    expect(toSupabaseSyncPayload({
+      id: "preauth-3",
+      name: "Offline edit",
+      baseVersion: "2026-09-08T11:15:00.000Z",
+      updated_at: "2026-09-08T11:16:00.000Z",
+    })).toEqual({
+      id: "preauth-3",
+      name: "Offline edit",
+      baseVersion: "2026-09-08T11:15:00.000Z",
+      updated_at: "2026-09-08T11:16:00.000Z",
     });
   });
 });
