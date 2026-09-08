@@ -18,6 +18,7 @@ export function OfflineDataControls() {
   };
 
   const importBackup = async (file: File, mode: "merge" | "replace") => {
+    if (mode === "replace" && !window.confirm("Replace all supported local CareFlow data with this workbook? Export a backup first if you need the current data.")) return;
     setBusy(true);
     try {
       const buffer = await file.arrayBuffer();
