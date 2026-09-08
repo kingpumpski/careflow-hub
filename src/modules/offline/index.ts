@@ -4,3 +4,4 @@ export * from "./excel-bridge";
 export * from "./preauth-offline-repository";
 export * from "./preauth-data-provider";
 export * from "./data-mode";
+export * from "./settlement-exception-repository";

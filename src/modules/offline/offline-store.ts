@@ -12,7 +12,9 @@ export type OfflineEntity =
   | "preauthorization_versions"
   | "preauthorization_submissions"
   | "preauthorization_audit_events"
-  | "claims_settlement_periods";
+  | "claims_settlement_periods"
+  | "settlement_exceptions"
+  | "settlement_exception_audit_events";
 
 export type OfflineRecord = Record<string, unknown> & { id: string };
 type StoredRecord = OfflineRecord & { storageKey: string; entity: OfflineEntity };
@@ -62,10 +64,7 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function runOfflineTransaction<T>(
-  mode: IDBTransactionMode,
-  work: (store: IDBObjectStore, resolve: (value: T) => void, reject: (error: unknown) => void) => void,
-): Promise<T> {
+export async function runOfflineTransaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore, resolve: (value: T) => void, reject: (error: unknown) => void) => void): Promise<T> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, mode);
