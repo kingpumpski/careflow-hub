@@ -53,10 +53,12 @@ Deno.serve(async (req) => {
     if (action === "reset_password") {
       const email = typeof body.email === "string" ? body.email.trim() : "";
       if (!/^\S+@\S+\.\S+$/.test(email)) return json(req, { error: "Valid email required" }, 400);
-      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
+
+      const publicAuth = createClient(SUPABASE_URL, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
+      const redirectTo = Deno.env.get("PASSWORD_RESET_REDIRECT_URL")?.trim();
+      const { error } = await publicAuth.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
       if (error) throw error;
-      if (!data?.properties?.action_link) throw new Error("Unable to create recovery link");
-      return json(req, { ok: true, action_link: data.properties.action_link });
+      return json(req, { ok: true });
     }
 
     if (action === "set_password") {
