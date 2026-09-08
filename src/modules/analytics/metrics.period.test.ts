@@ -28,7 +28,7 @@ describe("buildTrendSeries", () => {
     const series = buildTrendSeries(claims, [], []);
 
     expect(series).toHaveLength(12);
-    expect(series[0].month).toBe("Mar 25");
-    expect(series.at(-1)?.month).toBe("Apr 26");
+    expect(series[0].month).toBe("Apr 25");
+    expect(series.at(-1)?.month).toBe("Mar 26");
   });
 });
