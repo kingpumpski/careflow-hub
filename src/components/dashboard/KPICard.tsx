@@ -22,6 +22,10 @@ export interface KPICardProps {
   frames?: KPIFrame[];
   /** Milliseconds each slide stays visible. */
   interval?: number;
+  /** Externally-driven slide index so multiple cards stay in sync. */
+  frameIndex?: number;
+  /** Total slides across the shared cycle (for badge/dots rendering when synced). */
+  frameCount?: number;
 }
 
 const toneRing: Record<NonNullable<KPICardProps["tone"]>, string> = {
@@ -44,7 +48,7 @@ const toneBar: Record<NonNullable<KPICardProps["tone"]>, string> = {
 
 export default function KPICard({
   title, value, hint, trend = "flat", tone = "primary", icon: Icon, progress, onClick,
-  frames, interval = 4000,
+  frames, interval = 6000, frameIndex, frameCount,
 }: KPICardProps) {
   const trendClass = trend === "up" ? "text-success" : trend === "down" ? "text-destructive" : "text-muted-foreground";
 
@@ -52,18 +56,22 @@ export default function KPICard({
     { label: "All time", value, hint, progress },
     ...(frames || []),
   ];
-  const [index, setIndex] = useState(0);
+  const synced = typeof frameIndex === "number";
+  const [localIndex, setLocalIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (slides.length < 2 || paused) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % slides.length), interval);
+    if (synced || slides.length < 2 || paused) return;
+    const id = window.setInterval(() => setLocalIndex((i) => (i + 1) % slides.length), interval);
     return () => window.clearInterval(id);
-  }, [slides.length, paused, interval]);
+  }, [synced, slides.length, paused, interval]);
 
   useEffect(() => {
-    if (index >= slides.length) setIndex(0);
-  }, [slides.length, index]);
+    if (localIndex >= slides.length) setLocalIndex(0);
+  }, [slides.length, localIndex]);
+
+  const slideCount = synced ? Math.min(frameCount ?? slides.length, slides.length) : slides.length;
+  const index = synced ? Math.min(frameIndex ?? 0, slides.length - 1) : localIndex;
 
   const active = slides[Math.min(index, slides.length - 1)];
 
@@ -83,7 +91,7 @@ export default function KPICard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold truncate">{title}</p>
-            {slides.length > 1 && (
+            {slideCount > 1 && (
               <span
                 key={`badge-${index}`}
                 className={cn(
@@ -115,9 +123,9 @@ export default function KPICard({
         </div>
       )}
 
-      {slides.length > 1 && (
+      {slideCount > 1 && (
         <div className="mt-3 flex items-center gap-1">
-          {slides.map((s, i) => (
+          {slides.slice(0, slideCount).map((s, i) => (
             <span
               key={s.label}
               className={cn(
