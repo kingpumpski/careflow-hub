@@ -1,86 +1,46 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "./preauthFacility.service";
+import { getCareFlowDataMode } from "@/modules/offline/data-mode";
+import { createOfflinePreAuthDraft, updateOfflinePreAuthDraft } from "@/modules/offline/preauth-offline-repository";
+import type { PreAuthReviewInput } from "@/modules/authorization/preauth-review";
+import { listOffline } from "@/modules/offline/offline-store";
 
-export interface ClientSuggestion {
-  id: string;
-  client_name: string;
-  date_of_birth?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-  identifier?: string | null;
-  membership_number?: string | null;
-  use_count?: number;
-  last_used_at?: string;
-}
-
-export interface StudioItem {
-  description: string;
-  quantity: number;
-  unit_price: number;
-  amount: number;
-}
-
-function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, (match) => `\\${match}`);
-}
+export interface ClientSuggestion { id: string; client_name: string; date_of_birth?: string | null; phone?: string | null; email?: string | null; address?: string | null; identifier?: string | null; membership_number?: string | null; use_count?: number; last_used_at?: string; }
+export interface StudioItem { description: string; quantity: number; unit_price: number; amount: number; }
+function escapeLike(value: string): string { return value.replace(/[%_\\]/g, (match) => `\\${match}`); }
 
 export async function searchClientSuggestions(query: string, limit = 12): Promise<ClientSuggestion[]> {
   const q = query.trim();
   if (limit < 1 || limit > 50) throw new Error("Suggestion limit must be between 1 and 50");
   const facilityId = getStoredFacilityId();
   if (!facilityId) return [];
-
-  let request = ((supabase as any).from("preauth_client_suggestions"))
-    .select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at")
-    .eq("facility_id", facilityId)
-    .order("last_used_at", { ascending: false })
-    .limit(limit);
-
-  if (q) {
-    const pattern = `%${escapeLike(q)}%`;
-    request = request.or(
-      `normalized_name.ilike.${pattern},membership_number.ilike.${pattern},phone.ilike.${pattern},identifier.ilike.${pattern}`,
-    );
+  if (getCareFlowDataMode() === "offline") {
+    const rows = await listOffline<Record<string, any>>("patients");
+    return rows.filter((row) => !q || [row.patient_name, row.membership_number, row.phone, row.identifier].some((value) => String(value ?? "").toLowerCase().includes(q.toLowerCase()))).slice(0, limit).map((row) => ({ id: row.id, client_name: String(row.patient_name ?? ""), date_of_birth: row.date_of_birth ?? null, phone: row.phone ?? null, email: row.email ?? null, identifier: row.identifier ?? null, membership_number: row.membership_number ?? null }));
   }
-
+  let request = ((supabase as any).from("preauth_client_suggestions")).select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at").eq("facility_id", facilityId).order("last_used_at", { ascending: false }).limit(limit);
+  if (q) { const pattern = `%${escapeLike(q)}%`; request = request.or(`normalized_name.ilike.${pattern},membership_number.ilike.${pattern},phone.ilike.${pattern},identifier.ilike.${pattern}`); }
   const { data, error } = await request;
   if (error) throw error;
   return (data || []) as ClientSuggestion[];
 }
 
-function withFacility(payload: Record<string, unknown>): Record<string, unknown> {
-  const facilityId = getStoredFacilityId();
-  if (!facilityId && !payload.facility_id) throw new Error("Select a facility before creating a pre-authorization.");
-  return { ...payload, facility_id: payload.facility_id || facilityId };
+function withFacility(payload: Record<string, unknown>): Record<string, unknown> { const facilityId = getStoredFacilityId(); if (!facilityId && !payload.facility_id) throw new Error("Select a facility before creating a pre-authorization."); return { ...payload, facility_id: payload.facility_id || facilityId }; }
+
+function toReviewInput(payload: Record<string, unknown>, items: StudioItem[]): PreAuthReviewInput {
+  return { patientId: String(payload.patient_id ?? ""), patientName: String(payload.patient_name ?? payload.client_name ?? "Patient"), membershipNumber: String(payload.membership_number ?? ""), insurerId: String(payload.insurance_company_id ?? ""), insurerName: String(payload.insurer_name ?? payload.client_company_name ?? ""), procedureId: String(payload.procedure_id ?? ""), procedureName: String(payload.procedure_name ?? "Procedure"), procedureDate: String(payload.procedure_date ?? ""), diagnosis: String(payload.diagnosis ?? ""), doctorId: payload.doctor_id ? String(payload.doctor_id) : undefined, doctorName: String(payload.doctor_name ?? ""), patientPhone: String(payload.patient_phone ?? ""), companyName: String(payload.client_company_name ?? ""), insurerEmail: String(payload.insurer_email ?? ""), providerEmail: String(payload.provider_email ?? ""), providerName: String(payload.provider_name ?? ""), providerAddress: String(payload.provider_address ?? ""), providerPhone: String(payload.provider_phone ?? ""), providerLogoUrl: payload.provider_logo_url ? String(payload.provider_logo_url) : undefined, issuedDate: String(payload.issued_date ?? new Date().toLocaleDateString("en-GB")), currency: String(payload.document_currency ?? "GH¢"), format: (payload.document_format === "international" ? "international" : "ghana"), items: items.map((item, index) => ({ id: `${payload.id ?? "draft"}-${index}`, category: item.description ? "procedure" : "other", description: item.description, quantity: item.quantity, unitPrice: item.unit_price })), };
 }
 
-export async function createPreAuthorizationAtomic(
-  payload: Record<string, unknown>,
-  items: StudioItem[],
-  saveClientSuggestion: boolean,
-) {
-  const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", {
-    p_payload: withFacility(payload),
-    p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })),
-    p_save_client_suggestion: saveClientSuggestion,
-  });
+export async function createPreAuthorizationAtomic(payload: Record<string, unknown>, items: StudioItem[], saveClientSuggestion: boolean) {
+  if (getCareFlowDataMode() === "offline") return createOfflinePreAuthDraft(toReviewInput(withFacility(payload), items), String(payload.created_by ?? "") || null);
+  const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", { p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_save_client_suggestion: saveClientSuggestion });
   if (error) throw error;
   return data;
 }
 
-export async function updatePreAuthorizationAtomic(
-  preauthId: string,
-  payload: Record<string, unknown>,
-  items: StudioItem[],
-  reason = "amended",
-) {
-  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", {
-    p_preauth_id: preauthId,
-    p_payload: withFacility(payload),
-    p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })),
-    p_reason: reason,
-  });
+export async function updatePreAuthorizationAtomic(preauthId: string, payload: Record<string, unknown>, items: StudioItem[], reason = "amended") {
+  if (getCareFlowDataMode() === "offline") return updateOfflinePreAuthDraft(preauthId, toReviewInput({ ...withFacility(payload), id: preauthId }, items), payload.doctor_id ? String(payload.doctor_id) : null, reason);
+  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
   if (error) throw error;
   return data;
 }

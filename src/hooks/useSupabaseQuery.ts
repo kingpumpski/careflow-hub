@@ -4,23 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
+import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
 
 type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
-  insurance_companies: "insurance_companies",
-  doctors: "doctors",
-  procedures: "procedures",
-  patients: "patients",
-  system_settings: "system_settings",
-  diagnosis_codes: "diagnosis_codes",
-  preauth_catalog_items: "preauth_catalog_items",
-  pre_authorizations: "preauthorizations",
-  preauth_items: "preauth_items",
-  claims_settlement_periods: "claims_settlement_periods",
-  settlement_exceptions: "settlement_exceptions",
-  settlement_exception_audit_events: "settlement_exception_audit_events",
+  insurance_companies: "insurance_companies", doctors: "doctors", procedures: "procedures", patients: "patients",
+  system_settings: "system_settings", diagnosis_codes: "diagnosis_codes", preauth_catalog_items: "preauth_catalog_items",
+  pre_authorizations: "preauthorizations", preauth_items: "preauth_items", claims_settlement_periods: "claims_settlement_periods",
+  settlement_exceptions: "settlement_exceptions", settlement_exception_audit_events: "settlement_exception_audit_events",
 };
 const STALE_TIME_MS = 60_000;
 const GC_TIME_MS = 10 * 60_000;
@@ -62,19 +55,14 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       if (error) throw error;
       return data;
     },
-    staleTime: STALE_TIME_MS,
-    gcTime: GC_TIME_MS,
-    retry: 1,
-    refetchOnWindowFocus: false,
+    staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
   });
 }
 
 function validateOfflineSettlementUpdate(existing: Record<string, any>, values: Record<string, any>) {
   const currentStatus = String(existing.settlement_status ?? "awaiting_payment");
   const nextStatus = String(values.settlement_status ?? currentStatus);
-  const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received")
-    || (currentStatus === "payment_advice_received" && nextStatus === "reconciled")
-    || (currentStatus === nextStatus);
+  const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received") || (currentStatus === "payment_advice_received" && nextStatus === "reconciled") || currentStatus === nextStatus;
   if (!allowed) throw new Error(`Invalid settlement transition: ${currentStatus} → ${nextStatus}.`);
   if (currentStatus === "reconciled") {
     const protectedFields = ["insurance_company_id", "period_start", "period_end", "period_type", "total_claims_submitted", "withholding_tax_rate", "provisional_withholding_tax", "payment_received", "rejection_amount", "actual_withholding_tax", "payment_advice_reference", "payment_advice_date", "withholding_tax_variance", "settlement_status"];
@@ -100,6 +88,7 @@ export function useSupabaseInsert(table: TableName) {
         const record = { id: values.id || crypto.randomUUID(), ...scopeInsertValues(table, values) };
         const { putOffline } = await import("@/modules/offline/offline-store");
         await putOffline(entity, record);
+        await enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record });
         return record;
       }
       const { data, error } = await (supabase.from(table) as any).insert(scopeInsertValues(table, values)).select().single();
@@ -120,6 +109,7 @@ export function useSupabaseBulkInsert(table: TableName) {
         const { putManyOffline } = await import("@/modules/offline/offline-store");
         const scopedRows = rows.map((row) => ({ id: row.id || crypto.randomUUID(), ...scopeInsertValues(table, row) }));
         await putManyOffline(entity, scopedRows);
+        await Promise.all(scopedRows.map((record) => enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record })));
         return scopedRows;
       }
       const { data, error } = await (supabase.from(table) as any).insert(rows.map((row) => scopeInsertValues(table, row))).select();
@@ -143,6 +133,7 @@ export function useSupabaseUpdate(table: TableName) {
         if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
         const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
         await putOffline(entity, record);
+        await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record });
         return record;
       }
       const { data, error } = await (supabase.from(table) as any).update(values).eq("id", id).select().single();
@@ -162,6 +153,7 @@ export function useSupabaseDelete(table: TableName) {
         if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
         const { deleteOffline } = await import("@/modules/offline/offline-store");
         await deleteOffline(entity, id);
+        await enqueueSyncOperation({ table, type: "delete", recordId: id });
         return;
       }
       const { error } = await (supabase.from(table) as any).delete().eq("id", id);
