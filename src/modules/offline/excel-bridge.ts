@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { EXCEL_SHEETS, normalizeExcelRows, serializeExcelValue } from "./excel-schema";
-import { clearOfflineEntity, listOffline, putManyOffline, type OfflineEntity, type OfflineRecord } from "./offline-store";
+import { clearOfflineEntity, listOffline, putManyOffline, runOfflineTransaction, type OfflineEntity, type OfflineRecord } from "./offline-store";
 
 export type ExcelExportResult = { workbook: XLSX.WorkBook; filename: string };
 
@@ -44,13 +44,45 @@ export function parseCareFlowWorkbook(file: ArrayBuffer): ImportValidation[] {
   return validations;
 }
 
+async function applyImportAtomically(validations: ImportValidation[], mode: "replace" | "merge"): Promise<void> {
+  await runOfflineTransaction<void>("readwrite", (store, resolve, reject) => {
+    const writeRows = () => {
+      const rows = validations.flatMap((validation) => validation.rows.map((row) => ({ ...row, entity: validation.entity })));
+      let remaining = rows.length;
+      if (!remaining) { resolve(); return; }
+      rows.forEach((row) => {
+        const request = store.put(row);
+        request.onerror = () => reject(request.error ?? new Error(`Unable to import ${row.entity} record.`));
+        request.onsuccess = () => { remaining -= 1; if (remaining === 0) resolve(); };
+      });
+    };
+
+    if (mode === "merge") { writeRows(); return; }
+
+    const clearEntity = (index: number) => {
+      if (index >= EXCEL_SHEETS.length) { writeRows(); return; }
+      const entity = EXCEL_SHEETS[index];
+      const request = store.index("entity").getAllKeys(entity);
+      request.onerror = () => reject(request.error ?? new Error(`Unable to clear ${entity} before import.`));
+      request.onsuccess = () => {
+        const keys = request.result;
+        let remaining = keys.length;
+        if (!remaining) { clearEntity(index + 1); return; }
+        keys.forEach((key) => {
+          const deletion = store.delete(key);
+          deletion.onerror = () => reject(deletion.error ?? new Error(`Unable to clear ${entity} before import.`));
+          deletion.onsuccess = () => { remaining -= 1; if (remaining === 0) clearEntity(index + 1); };
+        });
+      };
+    };
+    clearEntity(0);
+  });
+}
+
 export async function importCareFlowWorkbook(file: ArrayBuffer, mode: "replace" | "merge" = "merge"): Promise<ImportValidation[]> {
   const validations = parseCareFlowWorkbook(file);
   const errors = validations.flatMap((validation) => validation.warnings);
   if (errors.length) throw new Error(`Excel import validation failed: ${errors.slice(0, 10).join(" | ")}`);
-  if (mode === "replace") {
-    for (const entity of EXCEL_SHEETS) await clearOfflineEntity(entity);
-  }
-  for (const validation of validations) await putManyOffline(validation.entity, validation.rows);
+  await applyImportAtomically(validations, mode);
   return validations;
 }
