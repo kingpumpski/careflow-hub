@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Plus, AlertCircle } from "lucide-react";
+import { Search, Plus, AlertCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -23,6 +25,7 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<any>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
   const [form, setForm] = useState({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
 
@@ -143,7 +146,7 @@ export default function Payments() {
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title">Payment Tracking</h1><p className="page-description">Monitor payments received from insurance companies</p></div>
-        <Button onClick={() => setAddDialogOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Record Payment</Button>
+        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={() => setAddDialogOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Record Payment</Button></div>
       </div>
 
       <FilterBar filters={filters} onChange={setFilters} showCompany />
@@ -218,6 +221,35 @@ export default function Payments() {
           <Button type="submit" className="w-full" disabled={insertPayment.isPending}>{insertPayment.isPending ? "Recording..." : "Record Payment"}</Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Payments"
+        description="Imported payments also create the corresponding cash-to-receivables ledger entries. Withholding tax and outstanding balances remain system-computed."
+        columns={[
+          { key: "insurance_company_id", label: "Insurance Company", required: true, type: "lookup", options: (insurers || []).map((i: any) => ({ label: i.company_name, value: i.id })) },
+          { key: "amount_paid", label: "Amount Paid (GH¢)", required: true, type: "number" },
+          { key: "payment_date", label: "Payment Date", required: true, type: "date" },
+          { key: "claim_month", label: "Claim Month", required: true, type: "integer", example: 1 },
+          { key: "claim_year", label: "Claim Year", required: true, type: "integer", example: new Date().getFullYear() },
+          { key: "payment_method", label: "Payment Method", example: "Bank Transfer" },
+          { key: "reference_number", label: "Reference / Cheque Number" },
+        ]}
+        onImport={async (rows) => {
+          const paymentsToInsert = rows.map((row) => ({
+            insurance_company_id: row.insurance_company_id,
+            amount_paid: Number(row.amount_paid),
+            payment_date: row.payment_date,
+            claim_month: Number(row.claim_month),
+            claim_year: Number(row.claim_year),
+            payment_method: row.payment_method || "Bank Transfer",
+            reference_number: row.reference_number || null,
+          }));
+          const { error } = await (supabase.rpc as any)("import_payments_with_ledger", { p_rows: paymentsToInsert });
+          if (error) throw error;
+        }}
+      />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { aiDuplicateCheck } from "@/lib/dedupCheck";
+import DownloadTemplate from "@/components/shared/DownloadTemplate";
+import type { ImportColumn } from "@/lib/importUtils";
 
 type ParsedRow = {
   sheet: string;
@@ -17,7 +19,6 @@ type ParsedRow = {
   submitted: number;
   rejected: number;
   paid: number;
-  wht: number;
 };
 
 type MissingMap = Record<string, {
@@ -33,6 +34,15 @@ const MONTHS: Record<string, number> = {
   may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
   sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
 };
+
+const importColumns: ImportColumn[] = [
+  { key: "insurance_company", label: "Insurance Company", required: true, example: "Example Health Insurer" },
+  { key: "year", label: "Year", required: true, type: "integer", example: new Date().getFullYear() },
+  { key: "month", label: "Month", required: true, type: "integer", example: 1, hint: "1-12 or month name" },
+  { key: "submitted", label: "Submitted", required: true, type: "number" },
+  { key: "rejected", label: "Rejected", type: "number" },
+  { key: "paid", label: "Paid", type: "number" },
+];
 
 function norm(s: any) { return String(s ?? "").trim().toLowerCase(); }
 function num(v: any) { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return Number.isFinite(n) ? n : 0; }
@@ -64,13 +74,13 @@ function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): Par
   if (insurerCol < 0) return [];
 
   // Two supported layouts:
-  //  A) Long: columns include "month", "submitted", "rejected", "paid", "wht"
+  //  A) Long: columns include "month", "submitted", "rejected", "paid"
   //  B) Wide: one row per insurer, columns are month names (each cell = submitted amount)
   const monthCol = header.findIndex((c) => c === "month" || c === "period");
+  const yearCol = header.findIndex((c) => c === "year" || c === "claimyear");
   const submittedCol = header.findIndex((c) => c.includes("submit"));
   const rejectedCol = header.findIndex((c) => c.includes("reject"));
   const paidCol = header.findIndex((c) => c.includes("paid"));
-  const whtCol = header.findIndex((c) => c.includes("wht") || c.includes("tax"));
 
   const out: ParsedRow[] = [];
   if (monthCol >= 0 && submittedCol >= 0) {
@@ -80,11 +90,10 @@ function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): Par
       const m = detectMonth(r[monthCol]);
       if (!insurer || !m) continue;
       out.push({
-        sheet: sheetName, year, month: m, insurerNameRaw: insurer,
+        sheet: sheetName, year: yearCol >= 0 && num(r[yearCol]) ? num(r[yearCol]) : year, month: m, insurerNameRaw: insurer,
         submitted: num(r[submittedCol]),
         rejected: rejectedCol >= 0 ? num(r[rejectedCol]) : 0,
         paid: paidCol >= 0 ? num(r[paidCol]) : 0,
-        wht: whtCol >= 0 ? num(r[whtCol]) : 0,
       });
     }
   } else {
@@ -99,7 +108,7 @@ function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): Par
       for (const mc of monthCols) {
         const v = num(r[mc.col]);
         if (!v) continue;
-        out.push({ sheet: sheetName, year, month: mc.month, insurerNameRaw: insurer, submitted: v, rejected: 0, paid: 0, wht: 0 });
+        out.push({ sheet: sheetName, year, month: mc.month, insurerNameRaw: insurer, submitted: v, rejected: 0, paid: 0 });
       }
     }
   }
@@ -110,15 +119,12 @@ export default function InsuranceBulkImport() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: existingClaims } = useSupabaseQuery("claims");
   const { data: existingPayments } = useSupabaseQuery("payments");
-  const { data: existingWHT } = useSupabaseQuery("withholding_tax");
   const insertClaim = useSupabaseInsert("claims");
   const insertPayment = useSupabaseInsert("payments");
-  const insertWHT = useSupabaseInsert("withholding_tax");
   const insertAudit = useSupabaseInsert("audit_logs");
   const insertInsurer = useSupabaseInsert("insurance_companies");
   const updateClaim = useSupabaseUpdate("claims");
   const updatePayment = useSupabaseUpdate("payments");
-  const updateWHT = useSupabaseUpdate("withholding_tax");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -227,9 +233,6 @@ export default function InsuranceBulkImport() {
       const payIdx = new Map<string, { id: string; amount: number }>();
       (existingPayments || []).forEach((p: any) =>
         payIdx.set(`${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`, { id: p.id, amount: Number(p.amount_paid || 0) }));
-      const whtIdx = new Map<string, { id: string; amount: number }>();
-      (existingWHT || []).forEach((w: any) =>
-        whtIdx.set(`${w.insurance_company_id}|${w.month}|${w.year}`, { id: w.id, amount: Number(w.tax_amount || 0) }));
 
       const logDuplicate = async (r: ParsedRow, kind: string, amount: number) => {
         duplicates++;
@@ -282,21 +285,6 @@ export default function InsuranceBulkImport() {
           }
         }
 
-        // WHT — upsert on (insurer, month, year)
-        if (r.wht > 0) {
-          const key = `${insurerId}|${r.month}|${r.year}`;
-          const hit = whtIdx.get(key);
-          const payload = { claim_total: r.submitted, tax_rate: r.submitted ? (r.wht / r.submitted) * 100 : 0, tax_amount: r.wht };
-          if (hit && hit.amount === r.wht) { await logDuplicate(r, "wht", r.wht); }
-          else if (hit) {
-            await updateWHT.mutateAsync({ id: hit.id, ...payload });
-            await insertAudit.mutateAsync({ table_name: "withholding_tax", record_id: hit.id, action: "bulk_import_update", old_data: { tax_amount: hit.amount }, new_data: { ...payload, sheet: r.sheet } });
-            whtIdx.set(key, { id: hit.id, amount: r.wht }); updated++;
-          } else {
-            const row: any = await insertWHT.mutateAsync({ insurance_company_id: insurerId, month: r.month, year: r.year, ...payload });
-            whtIdx.set(key, { id: row?.id, amount: r.wht }); inserted++;
-          }
-        }
       }
       created = insurerIndex.size - createdBefore;
       setSummary({ inserted, updated, duplicates, created });
@@ -319,9 +307,10 @@ export default function InsuranceBulkImport() {
           <Label>Upload Workbook</Label>
           <div className="mt-2 border-2 border-dashed border-border rounded-lg p-6 text-center">
             <FileSpreadsheet className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">One sheet per year. Include an <em>Insurance</em>/<em>Company</em> column plus month rows or month columns.</p>
-            <p className="text-xs text-muted-foreground mt-1">Recognised value columns: Submitted, Rejected, Paid, WHT.</p>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
+            <p className="text-sm text-muted-foreground">One sheet per year, or use the Year column in the downloadable template. Include an <em>Insurance</em>/<em>Company</em> column plus month rows or month columns.</p>
+            <p className="text-xs text-muted-foreground mt-1">Recognised value columns: Submitted, Rejected, Paid. Withholding tax and outstanding balances are computed by the system.</p>
+            <div className="mt-3"><DownloadTemplate columns={importColumns} fileName="insurance-history-template" /></div>
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} className="hidden" />
             <Button variant="outline" size="sm" className="mt-3" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-2" />Choose Excel File</Button>
           </div>
         </div>
@@ -400,7 +389,7 @@ export default function InsuranceBulkImport() {
               <h3 className="font-heading font-semibold mb-2">Preview (first 10 rows)</h3>
               <div className="border rounded-lg overflow-x-auto">
                 <table className="data-table text-xs">
-                  <thead><tr><th>Sheet</th><th>Year</th><th>Month</th><th>Insurer</th><th>Submitted</th><th>Rejected</th><th>Paid</th><th>WHT</th><th>Status</th></tr></thead>
+                  <thead><tr><th>Sheet</th><th>Year</th><th>Month</th><th>Insurer</th><th>Submitted</th><th>Rejected</th><th>Paid</th><th>Status</th></tr></thead>
                   <tbody>
                     {rows.slice(0, 10).map((r, i) => {
                       const matched = insurerIndex.get(norm(r.insurerNameRaw));
@@ -411,7 +400,6 @@ export default function InsuranceBulkImport() {
                           <td>{r.submitted.toLocaleString()}</td>
                           <td>{r.rejected.toLocaleString()}</td>
                           <td>{r.paid.toLocaleString()}</td>
-                          <td>{r.wht.toLocaleString()}</td>
                           <td>{matched ? <Badge variant="outline" className="bg-success/10 text-success border-success/20">Matched</Badge> : <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Needs action</Badge>}</td>
                         </tr>
                       );

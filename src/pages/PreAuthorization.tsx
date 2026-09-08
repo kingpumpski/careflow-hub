@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History, Trash2 } from "lucide-react";
+import { Plus, Search, Eye, Download, Pencil, Send, CheckCircle2, XCircle, Clock, Mail, History, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import PreAuthForm from "@/components/preauth/PreAuthForm";
-import { useSupabaseQuery, useSupabaseUpdate, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery, useSupabaseUpdate, useSupabaseInsert, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import EntityDialog from "@/components/shared/EntityDialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { exportPreAuthPDF, preAuthPdfBase64 } from "@/lib/exportUtils";
+import { exportPreAuthPDF } from "@/lib/exportUtils";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { useAuth } from "@/contexts/AuthContext";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
 
 const statusStyles: Record<string, string> = {
   Draft: "bg-muted text-muted-foreground border-border",
@@ -58,6 +59,7 @@ export default function PreAuthorization() {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusForm, setStatusForm] = useState({ id: "", status: "", note: "" });
   const [sending, setSending] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: preauths, isLoading } = useSupabaseQuery("pre_authorizations");
   const { data: patients } = useSupabaseQuery("patients");
@@ -66,6 +68,7 @@ export default function PreAuthorization() {
   const { data: doctors } = useSupabaseQuery("doctors");
   const { data: settings } = useSupabaseQuery("system_settings");
   const updateMutation = useSupabaseUpdate("pre_authorizations");
+  const bulkInsert = useSupabaseBulkInsert("pre_authorizations");
   const insertVersion = useSupabaseInsert("preauth_versions");
   const insertNotif = useSupabaseInsert("notifications");
   const [search, setSearch] = useState("");
@@ -179,32 +182,11 @@ ${hospital}`;
         insurance_name: getInsurerName(pa.insurance_company_id),
         doctor_name: getDoctorName(pa.doctor_id),
       };
-      const { base64, filename } = await preAuthPdfBase64(docMeta, itemsData || [], companyInfo);
       const { to, cc, subject, body } = buildEmailDraft(pa);
-
-      const { data, error } = await supabase.functions.invoke("send-preauth-email", {
-        body: {
-          preauth_id: pa.id, to,
-          cc: cc ? cc.split(",").map((s) => s.trim()).filter(Boolean) : [],
-          subject, body, pdf_base64: base64, pdf_filename: filename,
-        },
-      });
-
-      if (error || (data && (data as any).ok === false)) {
-        const msg = (data as any)?.error || error?.message || "Email send failed";
-        toast({ title: "Email failed — opened fallback draft", description: msg, variant: "destructive" });
-        await exportPreAuthPDF(docMeta, itemsData || [], companyInfo);
-        const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        window.open(mailto, "_blank");
-      } else {
-        toast({ title: "Email sent", description: `Delivered to ${to}` });
-        await updateMutation.mutateAsync({
-          id: pa.id, status: "completed", current_state: "Completed",
-          submitted_at: pa.submitted_at || new Date().toISOString(),
-          email_sent_at: new Date().toISOString(),
-        });
-        await snapshotAndNotify({ ...pa, status: "completed" }, "Completed", "Email sent to insurer");
-      }
+      await exportPreAuthPDF(docMeta, itemsData || [], companyInfo);
+      const mailto = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailto, "_blank");
+      toast({ title: "Email draft opened", description: "The PDF was downloaded; attach it before sending. The request was not marked as completed." });
       if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -419,9 +401,7 @@ ${hospital}`;
           <h1 className="page-title">Pre-Authorization Requests</h1>
           <p className="page-description">Draft → Pending → Approved → Completed lifecycle with versioning and email tracking</p>
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <Plus className="w-4 h-4" />New Request
-        </Button>
+        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={() => setShowForm(true)} className="gap-2"><Plus className="w-4 h-4" />New Request</Button></div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -491,6 +471,44 @@ ${hospital}`;
           </table>
         )}
       </div>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Pre-Authorization Requests"
+        description="Imports parent requests and their references. Cost breakdown items can be added by editing the imported request afterward."
+        columns={[
+          { key: "patient_id", label: "Patient", required: true, type: "lookup", options: (patients || []).map((p: any) => ({ label: p.patient_name, value: p.id })) },
+          { key: "insurance_company_id", label: "Insurance Company", type: "lookup", options: (insurers || []).map((i: any) => ({ label: i.company_name, value: i.id })) },
+          { key: "procedure_id", label: "Procedure", type: "lookup", options: (procedures || []).map((p: any) => ({ label: p.procedure_name, value: p.id })) },
+          { key: "doctor_id", label: "Doctor", type: "lookup", options: (doctors || []).map((d: any) => ({ label: d.doctor_name, value: d.id })) },
+          { key: "procedure_date", label: "Procedure Date", type: "date" },
+          { key: "total_cost", label: "Total Cost (GH¢)", type: "number" },
+          { key: "diagnosis", label: "Diagnosis" },
+          { key: "clinical_notes", label: "Clinical Notes" },
+          { key: "status", label: "Status", example: "draft", hint: "draft, pending, approved, rejected or completed" },
+        ]}
+        onImport={async (rows) => {
+          const payload = rows.map((row) => {
+            const state = normState(row.status || "Draft");
+            return {
+              patient_id: row.patient_id,
+              insurance_company_id: row.insurance_company_id || null,
+              procedure_id: row.procedure_id || null,
+              doctor_id: row.doctor_id || null,
+              procedure_date: row.procedure_date || null,
+              total_cost: row.total_cost ?? 0,
+              diagnosis: row.diagnosis || null,
+              clinical_notes: row.clinical_notes || null,
+              status: state === "PendingApproval" ? "pending" : state.toLowerCase(),
+              current_state: state,
+              version: 1,
+              created_by: user?.id || null,
+            };
+          });
+          await bulkInsert.mutateAsync(payload);
+        }}
+      />
     </div>
   );
 }

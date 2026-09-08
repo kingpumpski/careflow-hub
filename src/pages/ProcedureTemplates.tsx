@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Pencil, Trash2, Copy, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, Archive, ArchiveRestore, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import EntityDialog from "@/components/shared/EntityDialog";
 import MultiDiagnosisPicker from "@/components/shared/MultiDiagnosisPicker";
-import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery";
+import BulkImportDialog from "@/components/shared/BulkImportDialog";
+import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 import { useMasterSearch } from "@/hooks/useMasterSearch";
 
@@ -22,9 +23,11 @@ export default function ProcedureTemplates() {
   const { data: templates, isLoading } = useSupabaseQuery("procedure_templates");
   const { data: procedures } = useSupabaseQuery("procedures");
   const insertMutation = useSupabaseInsert("procedure_templates");
+  const bulkInsert = useSupabaseBulkInsert("procedure_templates");
   const updateMutation = useSupabaseUpdate("procedure_templates");
   const deleteMutation = useSupabaseDelete("procedure_templates");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -117,7 +120,7 @@ export default function ProcedureTemplates() {
           <h1 className="page-title">Procedure Templates</h1>
           <p className="page-description">Reusable cost-item bundles with diagnoses, auto totals, and lifecycle management</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Template</Button>
+        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Template</Button></div>
       </div>
 
       <div className="stat-card">
@@ -212,6 +215,30 @@ export default function ProcedureTemplates() {
           </Button>
         </form>
       </EntityDialog>
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Procedure Templates"
+        description={'Items must be a JSON array, for example [{"description":"Consultation","quantity":1,"unitCharge":250}]. Totals are computed from the item lines.'}
+        columns={[
+          { key: "template_name", label: "Template Name", required: true },
+          { key: "procedure_id", label: "Procedure", type: "lookup", options: (procedures || []).map((p: any) => ({ label: p.procedure_name, value: p.id })) },
+          { key: "items", label: "Items JSON", required: true, hint: "JSON array with description, quantity and unitCharge" },
+          { key: "notes", label: "Notes" },
+          { key: "archived", label: "Archived", type: "boolean", example: "No" },
+        ]}
+        onImport={async (rows) => {
+          const payload = rows.map((row) => {
+            let items: TemplateItem[];
+            try { items = JSON.parse(String(row.items)); } catch { throw new Error(`Invalid items JSON for ${row.template_name}`); }
+            if (!Array.isArray(items) || items.some((item) => !item.description)) throw new Error(`Items JSON for ${row.template_name} must be a non-empty array with descriptions`);
+            const total = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0), 0);
+            return { template_name: String(row.template_name).trim(), procedure_id: row.procedure_id || null, items, total_amount: total, notes: row.notes || null, archived: Boolean(row.archived), diagnosis_code_id: null, diagnosis_code_ids: [] };
+          });
+          await bulkInsert.mutateAsync(payload);
+        }}
+      />
     </div>
   );
 }

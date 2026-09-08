@@ -19,6 +19,14 @@ export interface ExecutiveKpis {
   complianceScore: number;
 }
 
+export interface YearlyMetric {
+  year: number;
+  submitted: number;
+  payments: number;
+  withholdingTax: number;
+  outstanding: number;
+}
+
 const sum = (rows: any[], key: string) => rows.reduce((s, r) => s + Number(r[key] || 0), 0);
 
 export function computeExecutiveKpis(
@@ -61,9 +69,9 @@ export function computeExecutiveKpis(
 
 /** Best-effort year for any claims/payments/tax row. */
 export function rowYear(row: any): number | null {
-  const explicit = Number(row?.claim_year);
+  const explicit = Number(row?.claim_year ?? row?.year);
   if (explicit) return explicit;
-  const raw = row?.submitted_at || row?.payment_date || row?.created_at || row?.paid_at;
+  const raw = row?.submitted_at || row?.submission_date || row?.payment_date || row?.created_at || row?.paid_at;
   if (!raw) return null;
   const y = new Date(raw).getFullYear();
   return Number.isFinite(y) ? y : null;
@@ -104,6 +112,22 @@ export function computeYearlyKpis(
         rejectedCount: yc.filter((c) => c.status === "rejected").length,
       };
     });
+}
+
+export function buildYearlyMetrics(claims: any[] = [], payments: any[] = [], withholdingTax: any[] = []): YearlyMetric[] {
+  const years = new Set<number>();
+  claims.forEach((claim) => { const year = Number(claim.claim_year) || new Date(claim.submission_date || claim.created_at).getFullYear(); if (year) years.add(year); });
+  payments.forEach((payment) => { const year = Number(payment.claim_year) || new Date(payment.payment_date || payment.created_at).getFullYear(); if (year) years.add(year); });
+  withholdingTax.forEach((tax) => { const year = Number(tax.year); if (year) years.add(year); });
+
+  return Array.from(years).sort((a, b) => b - a).map((year) => {
+    const yearClaims = claims.filter((claim) => (Number(claim.claim_year) || new Date(claim.submission_date || claim.created_at).getFullYear()) === year);
+    const submitted = sum(yearClaims, "claim_amount");
+    const netSubmitted = sum(yearClaims.filter((claim) => claim.status !== "rejected"), "claim_amount");
+    const paid = sum(payments.filter((payment) => (Number(payment.claim_year) || new Date(payment.payment_date || payment.created_at).getFullYear()) === year), "amount_paid");
+    const tax = sum(withholdingTax.filter((record) => Number(record.year) === year), "tax_amount");
+    return { year, submitted, payments: paid, withholdingTax: tax, outstanding: netSubmitted - paid - tax };
+  });
 }
 
 export const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
