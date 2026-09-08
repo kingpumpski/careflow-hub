@@ -5,8 +5,10 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // GitHub Pages serves the application below /careflow-hub/; local and
+  // external hosts continue to use /. This is only a static-hosting concern.
+  base: process.env.GITHUB_ACTIONS ? "/careflow-hub/" : "/",
   server: {
-    // Bind IPv4 explicitly so local development environments can discover and forward the port.
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,
