@@ -6,7 +6,7 @@ import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
 
-type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events";
+type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
@@ -50,7 +50,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       if (offline) return listOfflineTable(table, options);
       let query = (supabase.from(table) as any).select(options?.select || "*");
       if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
-      query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : query.order("created_at", { ascending: false });
+      query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : query.order("created_at", { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
       return data;
