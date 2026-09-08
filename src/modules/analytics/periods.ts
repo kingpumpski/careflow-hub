@@ -3,7 +3,7 @@ export interface AnalyticsPeriod {
   month: number;
 }
 
-export function resolvePeriod(row: any, fallbackDate = new Date()): AnalyticsPeriod | null {
+export function resolvePeriod(row: any, fallbackDate?: Date): AnalyticsPeriod | null {
   const explicitYear = Number(row?.claim_year ?? row?.year);
   const explicitMonth = Number(row?.claim_month ?? row?.month);
   if (Number.isFinite(explicitYear) && explicitYear > 0 && Number.isFinite(explicitMonth) && explicitMonth >= 1 && explicitMonth <= 12) {
@@ -16,7 +16,8 @@ export function resolvePeriod(row: any, fallbackDate = new Date()): AnalyticsPer
     || row?.withholding_tax_date
     || row?.tax_date
     || row?.created_at;
-  const date = raw ? new Date(raw) : fallbackDate;
+  if (!raw && !fallbackDate) return null;
+  const date = new Date(raw || fallbackDate);
   if (Number.isNaN(date.getTime())) return null;
   return { year: date.getFullYear(), month: date.getMonth() + 1 };
 }
