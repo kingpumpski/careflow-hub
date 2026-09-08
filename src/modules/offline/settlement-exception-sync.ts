@@ -23,9 +23,13 @@ export async function syncOfflineSettlementExceptions(periods: Array<any>, asOf 
       const key = `${candidate.periodId}:${candidate.type}`;
       if (keys.has(key)) continue;
       await createOfflineSettlementException({
-        ...candidate,
+        facilityId: period.facility_id,
         settlementPeriodId: candidate.periodId,
-        id: "",
+        type: candidate.type,
+        severity: candidate.severity,
+        title: candidate.title,
+        description: candidate.description,
+        detectedAt: asOf.toISOString(),
         status: "open",
         assignedTo: null,
         resolutionNote: null,
