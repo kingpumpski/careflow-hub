@@ -140,7 +140,7 @@ async function recordSyncFailure(operation: SyncOperation, error: unknown): Prom
   await writeOperation({ ...operation, attempts, status: blocked ? "blocked" : "failed", nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString(), lastError: String((error as { message?: string })?.message ?? error), lastErrorCode: classified.code });
 }
 
-function toSupabasePayload(payload: Record<string, unknown>): Record<string, unknown> {
+export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const normalized = { ...payload };
   delete normalized.entity;
   delete normalized.storageKey;
@@ -164,7 +164,7 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
   }
 
   const query = supabase.from(operation.table) as any;
-  const payload = operation.payload ? toSupabasePayload(operation.payload) : undefined;
+  const payload = operation.payload ? toSupabaseSyncPayload(operation.payload) : undefined;
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
 
