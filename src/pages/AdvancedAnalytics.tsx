@@ -1,147 +1,29 @@
 import { useMemo } from "react";
-import { BarChart3, CandlestickChart, GitBranch, Grid3X3, Target, TrendingUp } from "lucide-react";
+import { BarChart3, CandlestickChart, GitBranch, Grid3X3, Target, TrendingUp, Activity, Box, Radar } from "lucide-react";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import ChartCard from "@/components/dashboard/ChartCard";
-import {
-  ClaimsExposureCandlestick,
-  ClaimsFunnel,
-  ClaimsHeatmap,
-  ClaimsPareto,
-  ClaimsWaterfall,
-} from "@/components/dashboard/AdvancedClaimsCharts";
+import { ClaimsExposureCandlestick, ClaimsFunnel, ClaimsHeatmap, ClaimsPareto, ClaimsWaterfall, SettlementControlChart, SettlementBoxPlot, InsurerPerformanceRadar } from "@/components/dashboard/AdvancedClaimsCharts";
 
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const n = (v: unknown) => Number(v || 0);
+const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const n=(v:unknown)=>Number(v||0);
+function periodOf(row:any){const d=row.claim_year||row.year?null:new Date(row.submitted_at||row.payment_date||row.created_at||Date.now());return {year:n(row.claim_year??row.year)||d!.getFullYear(),month:n(row.claim_month??row.month)||d!.getMonth()+1};}
+function quantiles(values:number[]){const a=[...values].sort((x,y)=>x-y);if(!a.length)return null;const q=(p:number)=>{const i=(a.length-1)*p;const lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo)};return {min:a[0],q1:q(.25),median:q(.5),q3:q(.75),max:a[a.length-1],count:a.length};}
 
-function periodOf(row: any) {
-  const year = n(row.claim_year ?? row.year) || new Date(row.submitted_at || row.payment_date || row.created_at || Date.now()).getFullYear();
-  const month = n(row.claim_month ?? row.month) || new Date(row.submitted_at || row.payment_date || row.created_at || Date.now()).getMonth() + 1;
-  return { year, month };
-}
-
-export default function AdvancedAnalytics() {
-  const { data: claims } = useSupabaseQuery("claims");
-  const { data: payments } = useSupabaseQuery("payments");
-  const { data: wht } = useSupabaseQuery("withholding_tax");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-
-  const periods = useMemo(() => {
-    const keys = new Set<string>();
-    [...(claims || []), ...(payments || []), ...(wht || [])].forEach((row: any) => {
-      const p = periodOf(row);
-      keys.add(`${p.year}-${String(p.month).padStart(2, "0")}`);
-    });
-    return [...keys].sort().slice(-12);
-  }, [claims, payments, wht]);
-
-  const exposure = useMemo(() => {
-    let previous = 0;
-    return periods.map((key) => {
-      const [year, month] = key.split("-").map(Number);
-      const scopedClaims = (claims || []).filter((c: any) => { const p = periodOf(c); return p.year === year && p.month === month; });
-      const submitted = scopedClaims.reduce((s: number, c: any) => s + n(c.claim_amount), 0);
-      const rejected = scopedClaims.filter((c: any) => c.status === "rejected").reduce((s: number, c: any) => s + n(c.claim_amount), 0);
-      const paid = (payments || []).filter((p: any) => { const q = periodOf(p); return q.year === year && q.month === month; }).reduce((s: number, p: any) => s + n(p.amount_paid), 0);
-      const tax = (wht || []).filter((t: any) => { const q = periodOf(t); return q.year === year && q.month === month; }).reduce((s: number, t: any) => s + n(t.tax_amount), 0);
-      const open = Math.max(previous, 0);
-      const high = open + Math.max(submitted - rejected, 0);
-      const low = Math.max(0, open - paid - tax);
-      const close = Math.max(0, high - paid - tax);
-      previous = close;
-      return { label: `${months[month - 1]} ${String(year).slice(-2)}`, open, high, low, close, submitted, paid, withholdingTax: tax };
-    });
-  }, [periods, claims, payments, wht]);
-
-  const waterfall = useMemo(() => {
-    const submitted = (claims || []).reduce((s: number, c: any) => s + n(c.claim_amount), 0);
-    const rejected = (claims || []).filter((c: any) => c.status === "rejected").reduce((s: number, c: any) => s + n(c.claim_amount), 0);
-    const paid = (payments || []).reduce((s: number, p: any) => s + n(p.amount_paid), 0);
-    const tax = (wht || []).reduce((s: number, t: any) => s + n(t.tax_amount), 0);
-    const net = Math.max(0, submitted - rejected);
-    const outstanding = Math.max(0, net - paid - tax);
-    return [
-      { label: "Gross submitted", value: submitted, kind: "start" as const },
-      { label: "Rejected", value: -rejected, kind: "negative" as const },
-      { label: "Payments", value: -paid, kind: "negative" as const },
-      { label: "WHT", value: -tax, kind: "negative" as const },
-      { label: "Outstanding", value: outstanding, kind: "end" as const },
-    ];
-  }, [claims, payments, wht]);
-
-  const pareto = useMemo(() => {
-    const rows = (insurers || []).map((ins: any) => ({
-      label: ins.company_name || "Unnamed",
-      value: (claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected").reduce((s: number, c: any) => s + n(c.claim_amount), 0),
-    })).filter((r) => r.value > 0).sort((a, b) => b.value - a.value);
-    const total = rows.reduce((s, r) => s + r.value, 0);
-    let running = 0;
-    return rows.map((r) => { running += r.value; return { ...r, cumulative: total ? (running / total) * 100 : 0 }; });
-  }, [insurers, claims]);
-
-  const heatmap = useMemo(() => {
-    const statuses = ["Submitted", "Paid", "Rejected"];
-    return statuses.map((status) => ({
-      label: status,
-      values: months.map((_, i) => {
-        if (status === "Submitted") return (claims || []).filter((c: any) => periodOf(c).month === i + 1 && c.status !== "rejected").length;
-        if (status === "Rejected") return (claims || []).filter((c: any) => periodOf(c).month === i + 1 && c.status === "rejected").length;
-        return (payments || []).filter((p: any) => periodOf(p).month === i + 1).length;
-      }),
-    }));
-  }, [claims, payments]);
-
-  const funnel = useMemo(() => {
-    const submitted = (claims || []).length;
-    const adjudicated = (claims || []).filter((c: any) => ["paid", "rejected"].includes(c.status)).length;
-    const paid = (claims || []).filter((c: any) => c.status === "paid").length;
-    return [
-      { label: "Claims received", value: submitted },
-      { label: "Adjudicated", value: adjudicated },
-      { label: "Paid claims", value: paid },
-    ];
-  }, [claims]);
-
-  return (
-    <div className="space-y-6">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6" /> Advanced Claims Analytics</h1>
-          <p className="page-description">Institutional-grade visual analysis for exposure, settlement, concentration, operational activity and claim conversion.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartCard title="Claims exposure OHLC" subtitle="Candlestick-style opening, high, low and closing outstanding exposure by period">
-          <ClaimsExposureCandlestick data={exposure} />
-        </ChartCard>
-        <ChartCard title="Financial reconciliation waterfall" subtitle="Gross submitted value reconciled through rejection, payment and withholding tax">
-          <ClaimsWaterfall data={waterfall} />
-        </ChartCard>
-        <ChartCard title="Rejection concentration Pareto" subtitle="Ranked insurer rejection value and cumulative concentration">
-          <ClaimsPareto data={pareto} />
-        </ChartCard>
-        <ChartCard title="Operational activity heatmap" subtitle="Monthly claim and payment activity intensity">
-          <ClaimsHeatmap data={heatmap} />
-        </ChartCard>
-        <ChartCard title="Claims lifecycle funnel" subtitle="Received → adjudicated → paid conversion">
-          <ClaimsFunnel data={funnel} />
-        </ChartCard>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          [CandlestickChart, "OHLC exposure", "Financial-style exposure movement"],
-          [GitBranch, "Waterfall reconciliation", "Trace every major value movement"],
-          [Target, "Pareto concentration", "Prioritize the largest rejection sources"],
-          [Grid3X3, "Activity heatmap", "Spot operational seasonality"],
-          [TrendingUp, "Lifecycle funnel", "Monitor conversion through adjudication"],
-        ].map(([Icon, title, description]: any) => (
-          <div key={title} className="stat-card flex items-start gap-3">
-            <Icon className="w-5 h-5 text-primary mt-0.5" />
-            <div><p className="font-semibold text-sm">{title}</p><p className="text-xs text-muted-foreground mt-1">{description}</p></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+export default function AdvancedAnalytics(){
+ const {data:claims}=useSupabaseQuery("claims"); const {data:payments}=useSupabaseQuery("payments"); const {data:wht}=useSupabaseQuery("withholding_tax"); const {data:insurers}=useSupabaseQuery("insurance_companies"); const {data:outstanding}=useSupabaseQuery("claims_outstanding_periods");
+ const periods=useMemo(()=>{const keys=new Set<string>();[...(claims||[]),...(payments||[]),...(wht||[]),(outstanding||[])].forEach((r:any)=>{const p=periodOf(r);keys.add(`${p.year}-${String(p.month).padStart(2,"0")}`)});return [...keys].sort().slice(-12)},[claims,payments,wht,outstanding]);
+ const exposure=useMemo(()=>{let previous=0;return periods.map(key=>{const [year,month]=key.split("-").map(Number);const cs=(claims||[]).filter((c:any)=>{const p=periodOf(c);return p.year===year&&p.month===month});const submitted=cs.reduce((s:number,c:any)=>s+n(c.claim_amount),0);const rejected=cs.filter((c:any)=>c.status==="rejected").reduce((s:number,c:any)=>s+n(c.claim_amount),0);const paid=(payments||[]).filter((p:any)=>{const q=periodOf(p);return q.year===year&&q.month===month}).reduce((s:number,p:any)=>s+n(p.amount_paid),0);const tax=(wht||[]).filter((t:any)=>{const q=periodOf(t);return q.year===year&&q.month===month}).reduce((s:number,t:any)=>s+n(t.tax_amount),0);const open=Math.max(previous,0),high=open+Math.max(submitted-rejected,0),low=Math.max(0,open-paid-tax),close=Math.max(0,high-paid-tax);previous=close;return {label:`${months[month-1]} ${String(year).slice(-2)}`,open,high,low,close,submitted,paid,withholdingTax:tax}})},[periods,claims,payments,wht]);
+ const waterfall=useMemo(()=>{const submitted=(claims||[]).reduce((s:number,c:any)=>s+n(c.claim_amount),0),rejected=(claims||[]).filter((c:any)=>c.status==="rejected").reduce((s:number,c:any)=>s+n(c.claim_amount),0),paid=(payments||[]).reduce((s:number,p:any)=>s+n(p.amount_paid),0),tax=(wht||[]).reduce((s:number,t:any)=>s+n(t.tax_amount),0);return [{label:"Gross submitted",value:submitted,kind:"start" as const},{label:"Rejected",value:-rejected,kind:"negative" as const},{label:"Payments",value:-paid,kind:"negative" as const},{label:"WHT",value:-tax,kind:"negative" as const},{label:"Outstanding",value:Math.max(0,submitted-rejected-paid-tax),kind:"end" as const}]},[claims,payments,wht]);
+ const pareto=useMemo(()=>{const rows=(insurers||[]).map((i:any)=>({label:i.company_name||"Unnamed",value:(claims||[]).filter((c:any)=>c.insurance_company_id===i.id&&c.status==="rejected").reduce((s:number,c:any)=>s+n(c.claim_amount),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);const total=rows.reduce((s,r)=>s+r.value,0);let run=0;return rows.map(r=>{run+=r.value;return {...r,cumulative:total?run/total*100:0}})},[insurers,claims]);
+ const heatmap=useMemo(()=>["Submitted","Paid","Rejected"].map(status=>({label:status,values:months.map((_,i)=>status==="Paid"?(payments||[]).filter((p:any)=>periodOf(p).month===i+1).length:(claims||[]).filter((c:any)=>periodOf(c).month===i+1&&(status==="Rejected"?c.status==="rejected":c.status!=="rejected")).length)})),[claims,payments]);
+ const funnel=useMemo(()=>{const total=(claims||[]).length,adjudicated=(claims||[]).filter((c:any)=>["paid","rejected"].includes(c.status)).length,paid=(claims||[]).filter((c:any)=>c.status==="paid").length;return [{label:"Claims received",value:total},{label:"Adjudicated",value:adjudicated},{label:"Paid claims",value:paid}]},[claims]);
+ const control=useMemo(()=>{return (claims||[]).filter((c:any)=>c.submitted_at&&c.paid_at).map((c:any)=>({label:String(c.claim_reference||c.id||"").slice(0,8),value:Math.max(0,(new Date(c.paid_at).getTime()-new Date(c.submitted_at).getTime())/86400000)})).slice(-24)},[claims]);
+ const box=useMemo(()=>{const by:Record<string,number[]>={};(claims||[]).filter((c:any)=>c.submitted_at&&c.paid_at).forEach((c:any)=>{const p=periodOf(c);const k=`${months[p.month-1]} ${p.year}`;by[k]??=[];by[k].push(Math.max(0,(new Date(c.paid_at).getTime()-new Date(c.submitted_at).getTime())/86400000))});return Object.entries(by).sort((a,b)=>a[0].localeCompare(b[0])).slice(-8).map(([label,v])=>{const q=quantiles(v)!;return {...q,label}})},[claims]);
+ const radar=useMemo(()=>{return (insurers||[]).map((i:any)=>{const cs=(claims||[]).filter((c:any)=>c.insurance_company_id===i.id),submitted=cs.reduce((s:number,c:any)=>s+n(c.claim_amount),0),rejected=cs.filter((c:any)=>c.status==="rejected").reduce((s:number,c:any)=>s+n(c.claim_amount),0),paid=(payments||[]).filter((p:any)=>p.insurance_company_id===i.id).reduce((s:number,p:any)=>s+n(p.amount_paid),0),paidClaims=cs.filter((c:any)=>c.submitted_at&&c.paid_at),avg=paidClaims.length?paidClaims.reduce((s:number,c:any)=>s+(new Date(c.paid_at).getTime()-new Date(c.submitted_at).getTime())/86400000,0)/paidClaims.length:0;return {label:i.company_name||"Unnamed",denial:submitted?Math.max(0,100-rejected/submitted*100):0,collection:submitted?Math.min(100,paid/submitted*100):0,speed:avg?Math.max(0,100-Math.min(avg,100)):0,volume:submitted}}).filter(r=>r.volume>0).sort((a,b)=>b.volume-a.volume).map((r,_,all)=>({...r,volume:all.length?Math.min(100,r.volume/Math.max(...all.map(x=>x.volume))*100):0}))},[insurers,claims,payments]);
+ const summary=useMemo(()=>{const rows=outstanding||[];return {actual:rows.filter((r:any)=>r.outstanding_status==="actual").length,provisional:rows.filter((r:any)=>r.outstanding_status==="provisional").length,total:rows.reduce((s:number,r:any)=>s+n(r.outstanding_amount),0)}},[outstanding]);
+ return <div className="space-y-6"><div className="page-header"><div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6"/>Advanced Claims Analytics</h1><p className="page-description">Executive BI workspace combining financial exposure, statistical process control, concentration, distribution and insurer benchmarking.</p></div></div>
+ <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="stat-card"><p className="text-xs text-muted-foreground">Calculated outstanding</p><p className="text-2xl font-bold">GH¢ {Math.round(summary.total).toLocaleString()}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Actual periods</p><p className="text-2xl font-bold">{summary.actual}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Provisional periods</p><p className="text-2xl font-bold">{summary.provisional}</p></div></div>
+ <div className="grid grid-cols-1 xl:grid-cols-2 gap-4"><ChartCard title="Claims exposure OHLC" subtitle="Candlestick-style opening, high, low and closing exposure"><ClaimsExposureCandlestick data={exposure}/></ChartCard><ChartCard title="Financial reconciliation waterfall" subtitle="Gross claims reconciled through rejection, payment and WHT"><ClaimsWaterfall data={waterfall}/></ChartCard><ChartCard title="Rejection concentration Pareto" subtitle="Rank insurers by rejection exposure"><ClaimsPareto data={pareto}/></ChartCard><ChartCard title="Operational activity heatmap" subtitle="Monthly claims and payment intensity"><ClaimsHeatmap data={heatmap}/></ChartCard><ChartCard title="Claims lifecycle funnel" subtitle="Received → adjudicated → paid conversion"><ClaimsFunnel data={funnel}/></ChartCard><ChartCard title="Settlement velocity control chart" subtitle="Statistical process control using mean and ±3σ limits"><SettlementControlChart data={control}/></ChartCard><ChartCard title="Settlement turnaround distribution" subtitle="Box-and-whisker view of settlement-day dispersion"><SettlementBoxPlot data={box}/></ChartCard><ChartCard title="Insurer performance radar" subtitle="Normalized denial, collection, speed and volume comparison"><InsurerPerformanceRadar data={radar}/></ChartCard></div>
+ <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[[CandlestickChart,"OHLC exposure"],[GitBranch,"Waterfall"],[Target,"Pareto"],[Grid3X3,"Heatmap"],[TrendingUp,"Funnel"],[Activity,"Control chart"],[Box,"Box plot"],[Radar,"Radar comparison"]].map(([Icon,title]:any)=><div key={title} className="stat-card flex items-center gap-2"><Icon className="w-4 h-4 text-primary"/><span className="text-xs font-medium">{title}</span></div>)}</div>
+ </div>;
 }
