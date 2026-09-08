@@ -14,6 +14,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Monthly Claims Entry", path: "/claims", permission: "claims.read" },
     { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
     { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
+    { label: "Settlement Capture", path: "/claims/settlements", permission: "payments.read" },
     { label: "Settlement Tracking", path: "/payments", permission: "payments.read" },
     { label: "Outstanding", path: "/outstanding", permission: "payments.read" },
     { label: "Rejections", path: "/rejections", permission: "claims.read" },
@@ -59,18 +60,5 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const toggle = (label: string) => setExpanded((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   const isActive = (path: string) => location.pathname === path;
   const visible = (child: NavChild) => !child.permission || can(child.permission);
-
-  return (
-    <aside className="w-64 h-screen sticky top-0 bg-sidebar flex flex-col border-r border-sidebar-border no-print">
-      <div className="p-5 border-b border-sidebar-border"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shrink-0"><Activity className="w-5 h-5 text-sidebar-primary-foreground" /></div><div className="min-w-0"><h1 className="font-heading text-base font-bold text-sidebar-primary-foreground truncate">CareFlow Hub</h1><p className="text-[11px] text-sidebar-muted truncate">{roleLabel ?? "Revenue Operations"}</p></div></div></div>
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {NAV_GROUPS.map((group) => {
-          if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} className={`sidebar-item ${isActive(group.path!) ? "sidebar-item-active" : ""}`}><group.icon className="w-[18px] h-[18px]" />{group.label}</Link>;
-          const children = group.children.filter(visible); if (!children.length) return null; const open = expanded.includes(group.label);
-          return <div key={group.label}><button onClick={() => toggle(group.label)} className="sidebar-item w-full justify-between"><span className="flex items-center gap-3"><group.icon className="w-[18px] h-[18px]" />{group.label}</span>{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</button>{open && <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">{children.map((child) => <Link key={child.path} to={child.path} onClick={onNavigate} className={`sidebar-item text-[13px] ${isActive(child.path) ? "sidebar-item-active" : ""}`}>{child.label}</Link>)}</div>}</div>;
-        })}
-      </nav>
-      <div className="p-3 border-t border-sidebar-border"><button onClick={signOut} className="sidebar-item w-full text-destructive/80 hover:text-destructive"><LogOut className="w-[18px] h-[18px]" />Sign Out</button></div>
-    </aside>
-  );
+  return <aside className="w-64 h-screen sticky top-0 bg-sidebar flex flex-col border-r border-sidebar-border no-print"><div className="p-5 border-b border-sidebar-border"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shrink-0"><Activity className="w-5 h-5 text-sidebar-primary-foreground" /></div><div className="min-w-0"><h1 className="font-heading text-base font-bold text-sidebar-primary-foreground truncate">CareFlow Hub</h1><p className="text-[11px] text-sidebar-muted truncate">{roleLabel ?? "Revenue Operations"}</p></div></div></div><nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">{NAV_GROUPS.map((group) => { if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} className={`sidebar-item ${isActive(group.path!) ? "sidebar-item-active" : ""}`}><group.icon className="w-[18px] h-[18px]" />{group.label}</Link>; const children = group.children.filter(visible); if (!children.length) return null; const open = expanded.includes(group.label); return <div key={group.label}><button onClick={() => toggle(group.label)} className="sidebar-item w-full justify-between"><span className="flex items-center gap-3"><group.icon className="w-[18px] h-[18px]" />{group.label}</span>{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</button>{open && <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">{children.map((child) => <Link key={child.path} to={child.path} onClick={onNavigate} className={`sidebar-item text-[13px] ${isActive(child.path) ? "sidebar-item-active" : ""}`}>{child.label}</Link>)}</div>}</div>; })}</nav><div className="p-3 border-t border-sidebar-border"><button onClick={signOut} className="sidebar-item w-full text-destructive/80 hover:text-destructive"><LogOut className="w-[18px] h-[18px]" />Sign Out</button></div></aside>;
 }

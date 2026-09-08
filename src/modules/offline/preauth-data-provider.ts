@@ -3,6 +3,7 @@ import {
   createOfflinePreAuthDraft,
   finalizeOfflinePreAuth,
   findOfflinePreAuthDuplicates,
+  updateOfflinePreAuthDraft,
   type OfflinePreAuthDraft,
   type OfflinePreAuthFinalizeResult,
 } from "./preauth-offline-repository";
@@ -30,9 +31,17 @@ export type PreAuthDataProvider = {
   listReferenceData<T extends OfflineRecord = OfflineRecord>(table: string): Promise<T[]>;
   findDuplicates(signature: string, excludeId?: string): Promise<OfflinePreAuthDraft[]>;
   createDraft(input: PreAuthReviewInput, createdBy?: string | null): Promise<OfflinePreAuthDraft>;
+  updateDraft(input: {
+    preauthId: string;
+    reviewInput: PreAuthReviewInput;
+    doctorId?: string | null;
+    notes?: string | null;
+  }): Promise<OfflinePreAuthDraft>;
   finalizeDraft(input: {
     preauthId: string;
     reviewInput: PreAuthReviewInput;
+    doctorId?: string | null;
+    notes?: string | null;
     recipientManifest: unknown;
     subject: string;
     messageBody: string;
@@ -49,8 +58,10 @@ export function createOfflinePreAuthDataProvider(): PreAuthDataProvider {
     },
     findDuplicates: findOfflinePreAuthDuplicates,
     createDraft: createOfflinePreAuthDraft,
-    finalizeDraft: ({ preauthId, reviewInput, recipientManifest, subject, messageBody }) =>
-      finalizeOfflinePreAuth(preauthId, reviewInput, recipientManifest, subject, messageBody),
+    updateDraft: ({ preauthId, reviewInput, doctorId, notes }) =>
+      updateOfflinePreAuthDraft(preauthId, reviewInput, doctorId, notes),
+    finalizeDraft: ({ preauthId, reviewInput, doctorId, notes, recipientManifest, subject, messageBody }) =>
+      finalizeOfflinePreAuth(preauthId, reviewInput, doctorId, notes, recipientManifest, subject, messageBody),
   };
 }
 

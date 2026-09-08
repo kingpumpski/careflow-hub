@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FileCheck2, Mail, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Download, FileCheck2, Mail, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdfFromSnapshot } from "@/modules/authorization/preauth-document";
 import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
-import { buildPreAuthDocumentPayload, validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
+import { buildDuplicateSignature, buildPreAuthDocumentPayload, validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
 import { buildPreAuthRecipientManifest, buildPreAuthSubmissionPackageFromSnapshot, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
 import { createOfflinePreAuthDataProvider } from "@/modules/offline/preauth-data-provider";
 import { OfflineDataControls } from "@/components/preauth/OfflineDataControls";
@@ -72,6 +72,7 @@ export default function OfflinePreAuthorizationStudio() {
     procedureName,
     procedureDate,
     diagnosis,
+    doctorId,
     doctorName: selectedDoctor?.doctor_name || "",
     patientPhone: patientPhone || selectedPatient?.phone || "",
     companyName: companyName || selectedInsurer?.company_name || "",
@@ -85,10 +86,10 @@ export default function OfflinePreAuthorizationStudio() {
     currency,
     format,
     items,
-  }), [patientId, patientName, membershipNumber, insurerId, selectedInsurer, procedureId, procedureName, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, providerName, providerAddress, providerPhone, providerLogoUrl, issuedDate, currency, format, items, settings]);
+  }), [patientId, patientName, membershipNumber, insurerId, selectedInsurer, procedureId, procedureName, procedureDate, diagnosis, doctorId, selectedDoctor, patientPhone, selectedPatient, companyName, providerName, providerAddress, providerPhone, providerLogoUrl, issuedDate, currency, format, items, settings]);
 
   const review = useMemo(() => validatePreAuthReview(reviewInput), [reviewInput]);
-  const duplicateSignature = [patientId, membershipNumber.trim().toUpperCase(), procedureId, procedureDate, insurerId].join("|");
+  const duplicateSignature = buildDuplicateSignature(reviewInput);
   const email = useMemo(() => buildPreAuthEmail({
     patientName,
     membershipNumber,
@@ -110,7 +111,9 @@ export default function OfflinePreAuthorizationStudio() {
     try {
       const duplicate = await provider.findDuplicates(duplicateSignature, savedId || undefined);
       if (duplicate.length) throw new Error("A matching offline pre-authorization already exists.");
-      const created = savedId ? { id: savedId } : await provider.createDraft(reviewInput, user?.id || null);
+      const created = savedId
+        ? await provider.updateDraft({ preauthId: savedId, reviewInput, doctorId, notes })
+        : await provider.createDraft(reviewInput, user?.id || null);
       setSavedId(created.id);
       toast({ title: "Draft saved locally", description: `Request ${buildRequestNumber(created.id)} is ready for review.` });
       return created.id;
@@ -121,7 +124,7 @@ export default function OfflinePreAuthorizationStudio() {
   };
 
   const reviewRequest = async () => {
-    const id = savedId || await saveDraft();
+    const id = await saveDraft();
     if (!id) return;
     const duplicates = await provider.findDuplicates(duplicateSignature, id);
     setDuplicateMatches(duplicates);
@@ -130,7 +133,7 @@ export default function OfflinePreAuthorizationStudio() {
   };
 
   const finalizeRequest = async () => {
-    const id = savedId || await saveDraft();
+    const id = await saveDraft();
     if (!id) return;
     if (!review.ready) { setReviewOpen(true); toast({ title: "Resolve blocking errors", description: `${review.errors.length} blocking issue(s) remain.`, variant: "destructive" }); return; }
     if (review.warnings.length && !warningsConfirmed) { setReviewOpen(true); toast({ title: "Confirm review warnings", description: "Review and confirm the warnings before freezing this request.", variant: "destructive" }); return; }
@@ -149,21 +152,21 @@ export default function OfflinePreAuthorizationStudio() {
         ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
       });
       if (!recipients.some((recipient) => recipient.type === "to")) throw new Error("The insurer does not have a valid email address for the authorization request.");
-      const finalized = await provider.finalizeDraft({ preauthId: id, reviewInput, recipientManifest: recipients, subject: email.subject, messageBody: email.body });
+      const finalized = await provider.finalizeDraft({ preauthId: id, reviewInput, doctorId, notes, recipientManifest: recipients, subject: email.subject, messageBody: email.body });
       if (!Number.isInteger(finalized.versionNumber) || finalized.versionNumber < 1) throw new Error("Offline freeze did not return a valid revision number.");
       const submissionPackage = buildPreAuthSubmissionPackageFromSnapshot({
         preauthId: id,
         versionNumber: finalized.versionNumber,
         requestNumber: finalized.requestNumber,
-        snapshot: frozenSnapshot,
-        subject: email.subject,
-        messageBody: email.body,
+        snapshot: finalized.snapshot as any,
+        subject: finalized.submission.subject as string,
+        messageBody: finalized.submission.message_body as string,
         insurerEmail: selectedInsurer?.email,
         insurerName: selectedInsurer?.company_name,
         additionalEmails: selectedInsurer?.additional_emails,
         ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean),
       });
-      await downloadPreAuthPdfFromSnapshot(frozenSnapshot);
+      await downloadPreAuthPdfFromSnapshot(finalized.snapshot as any);
       setPreparedEmail(submissionPackage);
       setReviewOpen(false);
       toast({ title: "Pre-authorization frozen", description: `${finalized.requestNumber}-v${finalized.versionNumber} is ready for email handoff.` });
@@ -215,10 +218,10 @@ export default function OfflinePreAuthorizationStudio() {
           <div className="flex flex-wrap gap-2"><Button onClick={() => void saveDraft()} disabled={saving || submitting}><Save className="mr-1 h-4 w-4" />{saving ? "Saving…" : "Save draft"}</Button><Button variant="outline" onClick={() => void reviewRequest()} disabled={saving || submitting}><FileCheck2 className="mr-1 h-4 w-4" />Review request</Button></div>
         </section>
 
-        <aside className="stat-card space-y-4"><div><p className="text-sm text-muted-foreground">Live summary</p><h2 className="text-lg font-semibold">{savedId ? buildRequestNumber(savedId) : "Draft not saved"}</h2></div><div className="space-y-2 text-sm"><p><strong>Patient:</strong> {patientName}</p><p><strong>Membership:</strong> {membershipNumber || "—"}</p><p><strong>Insurer:</strong> {selectedInsurer?.company_name || "—"}</p><p><strong>Procedure:</strong> {procedureName}</p><p><strong>Total:</strong> {currency} {total.toFixed(2)}</p></div>{review.errors.length ? <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{review.errors.map((error) => <div key={error}>{error}</div>)}</div> : <div className="rounded-md border p-3 text-sm">No blocking review errors detected.</div>}</aside>
+        <aside className="stat-card space-y-4"><div><p className="text-sm text-muted-foreground">Live summary</p><h2 className="text-lg font-semibold">{savedId ? buildRequestNumber(savedId) : "Draft not saved"}</h2></div><div className="space-y-2 text-sm"><p><strong>Patient:</strong> {patientName}</p><p><strong>Membership:</strong> {membershipNumber || "—"}</p><p><strong>Insurer:</strong> {selectedInsurer?.company_name || "—"}</p><p><strong>Procedure:</strong> {procedureName}</p><p><strong>Total:</strong> {currency} {total.toFixed(2)}</p></div>{review.errors.length ? <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{review.errors.map((error) => <div key={`${error.field}-${error.message}`}>{error.message}</div>)}</div> : <div className="rounded-md border p-3 text-sm">No blocking review errors detected.</div>}</aside>
       </div>
 
-      {reviewOpen && <div className="stat-card space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Final review</h2><p className="text-sm text-muted-foreground">Freeze creates one immutable local revision and prepares the email handoff.</p></div><Badge>{review.ready ? "Ready" : "Needs correction"}</Badge></div>{review.errors.length > 0 && <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive space-y-1">{review.errors.map((error) => <p key={error}>{error}</p>)}</div>}{review.warnings.length > 0 && <div className="rounded-md border p-3 text-sm space-y-2"><p className="font-medium">Warnings</p>{review.warnings.map((warning) => <p key={warning}>{warning}</p>)}<label className="flex items-center gap-2"><input type="checkbox" checked={warningsConfirmed} onChange={(e) => setWarningsConfirmed(e.target.checked)} /> I have reviewed and accept these warnings.</label></div>}{duplicateMatches.length > 0 && <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">Potential duplicates detected: {duplicateMatches.length}. Resolve before freeze.</div>}<div className="flex gap-2"><Button onClick={() => void finalizeRequest()} disabled={submitting || !review.ready || duplicateMatches.length > 0}><FileCheck2 className="mr-1 h-4 w-4" />{submitting ? "Freezing…" : "Freeze & prepare email"}</Button><Button variant="ghost" onClick={() => setReviewOpen(false)}>Close</Button></div></div>}
+      {reviewOpen && <div className="stat-card space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Final review</h2><p className="text-sm text-muted-foreground">Freeze creates one immutable local revision and prepares the email handoff.</p></div><Badge>{review.ready ? "Ready" : "Needs correction"}</Badge></div>{review.errors.length > 0 && <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive space-y-1">{review.errors.map((error) => <p key={`${error.field}-${error.message}`}>{error.message}</p>)}</div>}{review.warnings.length > 0 && <div className="rounded-md border p-3 text-sm space-y-2"><p className="font-medium">Warnings</p>{review.warnings.map((warning) => <p key={`${warning.field}-${warning.message}`}>{warning.message}</p>)}<label className="flex items-center gap-2"><input type="checkbox" checked={warningsConfirmed} onChange={(e) => setWarningsConfirmed(e.target.checked)} /> I have reviewed and accept these warnings.</label></div>}{duplicateMatches.length > 0 && <div className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">Potential duplicates detected: {duplicateMatches.length}. Resolve before freeze.</div>}<div className="flex gap-2"><Button onClick={() => void finalizeRequest()} disabled={submitting || !review.ready || duplicateMatches.length > 0}><FileCheck2 className="mr-1 h-4 w-4" />{submitting ? "Freezing…" : "Freeze & prepare email"}</Button><Button variant="ghost" onClick={() => setReviewOpen(false)}>Close</Button></div></div>}
 
       {preparedEmail && <div className="stat-card space-y-3"><div className="flex items-center gap-2"><Mail className="h-4 w-4" /><h2 className="font-semibold">Email handoff ready</h2></div><p className="text-sm text-muted-foreground">The PDF was generated from the frozen revision. CareFlow prepares the email but does not claim that the insurer received it.</p><div className="flex flex-wrap gap-2"><Button onClick={openPreparedEmail}><Mail className="mr-1 h-4 w-4" />Open email client</Button><Button variant="outline" onClick={() => void downloadPreAuthPdfFromSnapshot(preparedEmail.snapshot as any)}><Download className="mr-1 h-4 w-4" />Download frozen PDF</Button></div></div>}
     </div>

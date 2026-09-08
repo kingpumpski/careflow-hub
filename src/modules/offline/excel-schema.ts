@@ -14,6 +14,7 @@ export const EXCEL_SHEETS: readonly OfflineEntity[] = [
   "preauthorization_versions",
   "preauthorization_submissions",
   "preauthorization_audit_events",
+  "claims_settlement_periods",
 ];
 
 export type ExcelRow = OfflineRecord & { entity: OfflineEntity; createdAt?: string; updatedAt?: string };

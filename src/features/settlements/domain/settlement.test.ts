@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateProvisionalWithholdingTax,
   calculateWithholdingTaxVariance,
+  canReconcileSettlement,
   isSettlementConfirmed,
 } from './settlement';
 
@@ -31,5 +32,21 @@ describe('claims settlement domain', () => {
     expect(isSettlementConfirmed('awaiting_payment')).toBe(false);
     expect(isSettlementConfirmed('payment_advice_received')).toBe(true);
     expect(isSettlementConfirmed('reconciled')).toBe(true);
+  });
+
+  it('allows reconciliation only after all payment-advice fields are present', () => {
+    const period = {
+      settlementStatus: 'payment_advice_received' as const,
+      paymentReceived: 82_000,
+      rejectionAmount: 12_000,
+      actualWithholdingTax: 6_000,
+      paymentAdviceReference: 'PA-2026-001',
+      paymentAdviceDate: '2026-09-08',
+    };
+
+    expect(canReconcileSettlement(period)).toBe(true);
+    expect(canReconcileSettlement({ ...period, actualWithholdingTax: null })).toBe(false);
+    expect(canReconcileSettlement({ ...period, settlementStatus: 'awaiting_payment' })).toBe(false);
+    expect(canReconcileSettlement({ ...period, paymentAdviceReference: ' ' })).toBe(false);
   });
 });
