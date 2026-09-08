@@ -91,7 +91,7 @@ export default function KPICard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold truncate">{title}</p>
-            {slides.length > 1 && (
+            {slideCount > 1 && (
               <span
                 key={`badge-${index}`}
                 className={cn(
@@ -123,9 +123,9 @@ export default function KPICard({
         </div>
       )}
 
-      {slides.length > 1 && (
+      {slideCount > 1 && (
         <div className="mt-3 flex items-center gap-1">
-          {slides.map((s, i) => (
+          {slides.slice(0, slideCount).map((s, i) => (
             <span
               key={s.label}
               className={cn(
