@@ -57,7 +57,8 @@ export function computeExecutiveKpis(
     rejectedAmount,
     paymentsReceived,
     withholdingTax: tax,
-    outstanding: netSubmitted - paymentsReceived - tax,
+    // Canonical outstanding: gross submitted less rejected, cash paid and WHT; never negative.
+    outstanding: Math.max(0, netSubmitted - paymentsReceived - tax),
     rejectionRate,
     collectionRate: grossSubmitted > 0 ? (paymentsReceived / grossSubmitted) * 100 : 0,
     recoveryRate: netSubmitted > 0 ? (paymentsReceived / netSubmitted) * 100 : 0,
@@ -126,12 +127,11 @@ export function buildYearlyMetrics(claims: any[] = [], payments: any[] = [], wit
     const netSubmitted = sum(yearClaims.filter((claim) => claim.status !== "rejected"), "claim_amount");
     const paid = sum(payments.filter((payment) => (Number(payment.claim_year) || new Date(payment.payment_date || payment.created_at).getFullYear()) === year), "amount_paid");
     const tax = sum(withholdingTax.filter((record) => Number(record.year) === year), "tax_amount");
-    return { year, submitted, payments: paid, withholdingTax: tax, outstanding: netSubmitted - paid - tax };
+    return { year, submitted, payments: paid, withholdingTax: tax, outstanding: Math.max(0, netSubmitted - paid - tax) };
   });
 }
 
 export const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 
 export interface TrendPoint {
   month: string;
@@ -157,7 +157,7 @@ export function buildTrendSeries(claims: any[] = [], payments: any[] = []): Tren
       submitted: submitted / 1000,
       paid: paid / 1000,
       rejected: rejected / 1000,
-      outstanding: (cumSubmitted - cumPaid) / 1000,
+      outstanding: Math.max(0, cumSubmitted - cumPaid) / 1000,
     };
   });
 }
@@ -195,7 +195,7 @@ export function rankInsurers(insurers: any[] = [], claims: any[] = [], payments:
         submitted,
         rejected,
         paid,
-        outstanding: submitted - paid,
+        outstanding: Math.max(0, submitted - paid),
         rejectionRate: gross > 0 ? (rejected / gross) * 100 : 0,
         collectionRate: submitted > 0 ? (paid / submitted) * 100 : 0,
       };
