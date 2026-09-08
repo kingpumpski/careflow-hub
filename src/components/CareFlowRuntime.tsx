@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
-import { CloudOff, CloudUpload, Wifi, RefreshCw } from "lucide-react";
+import { AlertTriangle, CloudOff, CloudUpload, Wifi, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getPendingSyncCount, syncPendingOperations } from "@/modules/offline/sync-queue";
+import { getPendingSyncCount, getSyncConflicts, syncPendingOperations } from "@/modules/offline/sync-queue";
 import { startAutomaticSync } from "@/modules/offline/connectivity";
 import { getConfiguredDataMode, probeSupabaseReachability, useCareFlowDataMode } from "@/modules/offline/data-mode";
 
 export function CareFlowRuntime() {
   const mode = useCareFlowDataMode();
   const [pending, setPending] = useState(0);
+  const [conflicts, setConflicts] = useState(0);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => startAutomaticSync(), []);
   useEffect(() => {
     let active = true;
-    const refresh = async () => { const count = await getPendingSyncCount(); if (active) setPending(count); };
+    const refresh = async () => {
+      const [count, conflictRows] = await Promise.all([getPendingSyncCount(), getSyncConflicts()]);
+      if (active) { setPending(count); setConflicts(conflictRows.length); }
+    };
     void refresh();
     const timer = window.setInterval(refresh, 5_000);
     return () => { active = false; window.clearInterval(timer); };
@@ -35,13 +39,13 @@ export function CareFlowRuntime() {
   return (
     <div className="fixed bottom-3 right-3 z-50">
       <Badge
-        variant="outline"
+        variant={conflicts > 0 ? "destructive" : "outline"}
         className="group gap-1.5 bg-background/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-        title={offline ? "CareFlow is using the local operational database." : "CareFlow is connected to Supabase and can synchronize queued changes."}
+        title={conflicts > 0 ? "Some offline changes could not be applied because the server record changed. Local work has been preserved." : offline ? "CareFlow is using the local operational database." : "CareFlow is connected to Supabase and can synchronize queued changes."}
       >
-        {offline ? <CloudOff className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" /> : <Wifi className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />}
-        {offline ? "Offline — working locally" : hybrid ? "Online — sync enabled" : "Online"}
-        {pending > 0 && <><CloudUpload className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-y-[-1px]" /> {pending} pending</>}
+        {conflicts > 0 ? <AlertTriangle className="h-3.5 w-3.5" /> : offline ? <CloudOff className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" /> : <Wifi className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />}
+        {conflicts > 0 ? `${conflicts} sync conflict${conflicts === 1 ? "" : "s"}` : offline ? "Offline — working locally" : hybrid ? "Online — sync enabled" : "Online"}
+        {pending > 0 && conflicts === 0 && <><CloudUpload className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-y-[-1px]" /> {pending} pending</>}
         <button
           type="button"
           aria-label="Check online connection"

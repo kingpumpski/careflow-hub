@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
-import { putManyOffline, type OfflineEntity } from "./offline-store";
+import { putManyOffline, putOffline, type OfflineEntity } from "./offline-store";
 
 export type SyncOperationType = "insert" | "update" | "delete" | "rpc";
 export type SyncOperationStatus = "pending" | "failed" | "blocked";
@@ -46,6 +46,10 @@ const OFFLINE_PULL_TABLES: Array<{ table: string; entity: OfflineEntity }> = [
   { table: "settlement_exceptions", entity: "settlement_exceptions" },
   { table: "settlement_exception_audit_events", entity: "settlement_exception_audit_events" },
 ];
+
+function entityForTable(table: string): OfflineEntity | undefined {
+  return OFFLINE_PULL_TABLES.find((mapping) => mapping.table === table)?.entity;
+}
 
 function openSyncDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -119,13 +123,14 @@ async function removeSyncOperation(id: string): Promise<void> {
   db.close();
 }
 
-function classifySyncError(error: unknown): { code: string; blocked: boolean } {
+function classifySyncError(error: unknown): { code: string; blocked: boolean; conflict: boolean } {
   const message = String((error as { message?: string })?.message ?? error);
   const code = String((error as { code?: string })?.code ?? "");
   const status = Number((error as { status?: number })?.status ?? 0);
   const lower = message.toLowerCase();
-  const blocked = status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key") || lower.includes("sync_conflict:");
-  return { code: code || String(status || "SYNC_ERROR"), blocked };
+  const conflict = lower.includes("sync_conflict:");
+  const blocked = conflict || status === 401 || status === 403 || code === "42501" || lower.includes("jwt") || lower.includes("permission") || lower.includes("row-level security") || lower.includes("violates check constraint") || lower.includes("violates foreign key");
+  return { code: code || (conflict ? "SYNC_CONFLICT" : String(status || "SYNC_ERROR")), blocked, conflict };
 }
 
 function retryDelay(attempts: number): number {
@@ -133,10 +138,18 @@ function retryDelay(attempts: number): number {
   return exponential + Math.floor(Math.random() * 1_000);
 }
 
+async function restoreConflictedDelete(operation: SyncOperation): Promise<void> {
+  if (operation.type !== "delete" || !operation.payload || typeof operation.payload.id !== "string") return;
+  const entity = entityForTable(operation.table);
+  if (!entity) return;
+  await putOffline(entity, operation.payload as Record<string, unknown> & { id: string });
+}
+
 async function recordSyncFailure(operation: SyncOperation, error: unknown): Promise<void> {
   const classified = classifySyncError(error);
   const attempts = operation.attempts + 1;
   const blocked = classified.blocked || attempts >= MAX_AUTOMATIC_ATTEMPTS;
+  if (classified.conflict) await restoreConflictedDelete(operation);
   await writeOperation({ ...operation, attempts, status: blocked ? "blocked" : "failed", nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString(), lastError: String((error as { message?: string })?.message ?? error), lastErrorCode: classified.code });
 }
 
@@ -144,6 +157,7 @@ export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<
   const normalized = { ...payload };
   delete normalized.entity;
   delete normalized.storageKey;
+  delete normalized.baseVersion;
   if (Object.prototype.hasOwnProperty.call(normalized, "createdAt")) {
     if (!Object.prototype.hasOwnProperty.call(normalized, "created_at")) normalized.created_at = normalized.createdAt;
     delete normalized.createdAt;
@@ -153,6 +167,11 @@ export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<
     delete normalized.updatedAt;
   }
   return normalized;
+}
+
+function withBaseVersion<T extends { eq: (column: string, value: string | number) => T }>(query: T, operation: SyncOperation): T {
+  if (operation.baseVersion === undefined || operation.baseVersion === null) return query;
+  return query.eq("updated_at", operation.baseVersion);
 }
 
 async function applyOperation(operation: SyncOperation): Promise<void> {
@@ -167,15 +186,18 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
   if (operation.type === "delete") {
-    const { error } = await query.delete().eq("id", operation.recordId);
+    const guardedQuery = withBaseVersion(query.delete().eq("id", operation.recordId), operation);
+    const { data, error } = await guardedQuery.select("id").maybeSingle();
     if (error) throw error;
+    if (operation.baseVersion !== undefined && !data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} changed or is outside the current facility scope.`);
     return;
   }
   if (!payload) throw new Error(`Sync operation ${operation.id} has no payload.`);
   if (operation.type === "update") {
-    const { data, error } = await query.update(payload).eq("id", operation.recordId).select("id").maybeSingle();
+    const guardedQuery = withBaseVersion(query.update(payload).eq("id", operation.recordId), operation);
+    const { data, error } = await guardedQuery.select("id").maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} no longer exists or is outside the current facility scope.`);
+    if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} changed, no longer exists, or is outside the current facility scope.`);
     return;
   }
   await query.upsert(payload, { onConflict: "id" });
@@ -244,4 +266,26 @@ export async function getPendingSyncCount(): Promise<number> {
 export async function getSyncQueueSummary(): Promise<SyncQueueSummary> {
   const operations = await listSyncOperations();
   return operations.reduce<SyncQueueSummary>((summary, operation) => { summary[operation.status] += 1; return summary; }, { pending: 0, failed: 0, blocked: 0 });
+}
+
+export async function getSyncConflicts(): Promise<SyncOperation[]> {
+  const operations = await listSyncOperations();
+  return operations.filter((operation) => operation.status === "blocked" && operation.lastErrorCode === "SYNC_CONFLICT");
+}
+
+/**
+ * Safely abandons a blocked conflict and refreshes local state from the server.
+ * This is intentionally destructive to the local mutation only; it never overwrites
+ * the server with the stale offline payload.
+ */
+export async function discardSyncConflict(operationId: string): Promise<void> {
+  const operation = (await getSyncConflicts()).find((candidate) => candidate.id === operationId);
+  if (!operation) throw new Error("The sync conflict no longer exists.");
+  await removeSyncOperation(operation.id);
+  try {
+    await pullSupabaseDataToOffline();
+  } catch (error) {
+    await writeOperation(operation);
+    throw error;
+  }
 }

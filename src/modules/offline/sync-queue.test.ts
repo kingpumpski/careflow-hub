@@ -32,4 +32,20 @@ describe("offline sync payload normalization", () => {
       updated_at: "2026-09-08T11:05:00.000Z",
     });
   });
+
+  it("strips client-only base version metadata before persistence", () => {
+    const payload = toSupabaseSyncPayload({
+      id: "preauth-3",
+      name: "Offline edit",
+      updated_at: "2026-09-08T11:16:00.000Z",
+      baseVersion: "2026-09-08T11:05:00.000Z",
+    });
+
+    expect(payload).toEqual({
+      id: "preauth-3",
+      name: "Offline edit",
+      updated_at: "2026-09-08T11:16:00.000Z",
+    });
+    expect(payload).not.toHaveProperty("baseVersion");
+  });
 });
