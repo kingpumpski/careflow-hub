@@ -8,6 +8,22 @@ import { listOffline } from "@/modules/offline/offline-store";
 export interface ClientSuggestion { id: string; client_name: string; date_of_birth?: string | null; phone?: string | null; email?: string | null; address?: string | null; identifier?: string | null; membership_number?: string | null; use_count?: number; last_used_at?: string; }
 export interface StudioItem { description: string; quantity: number; unit_price: number; amount: number; }
 function escapeLike(value: string): string { return value.replace(/[%_\\]/g, (match) => `\\${match}`); }
+const EDIT_REVISION_KEY = "careflow:preauth:edit-revision:";
+
+export function storePreAuthorizationEditRevision(preauthId: string, revision: string | null | undefined): void {
+  if (!preauthId || !revision || typeof window === "undefined") return;
+  window.sessionStorage.setItem(`${EDIT_REVISION_KEY}${preauthId}`, revision);
+}
+
+function readPreAuthorizationEditRevision(preauthId: string): string | null {
+  if (!preauthId || typeof window === "undefined") return null;
+  return window.sessionStorage.getItem(`${EDIT_REVISION_KEY}${preauthId}`);
+}
+
+function clearPreAuthorizationEditRevision(preauthId: string): void {
+  if (!preauthId || typeof window === "undefined") return;
+  window.sessionStorage.removeItem(`${EDIT_REVISION_KEY}${preauthId}`);
+}
 
 export async function searchClientSuggestions(query: string, limit = 12): Promise<ClientSuggestion[]> {
   const q = query.trim();
@@ -68,10 +84,11 @@ export async function createPreAuthorizationAtomic(payload: Record<string, unkno
 
 export async function updatePreAuthorizationAtomic(preauthId: string, payload: Record<string, unknown>, items: StudioItem[], reason = "amended") {
   if (getCareFlowDataMode() === "offline") return updateOfflinePreAuthDraft(preauthId, toReviewInput({ ...withFacility(payload), id: preauthId }, items), payload.doctor_id ? String(payload.doctor_id) : null, reason);
-  await assertPreAuthorizationRevision(preauthId, typeof payload.baseVersion === "string" ? payload.baseVersion : undefined);
-  const { baseVersion: _baseVersion, ...serverPayload } = payload;
-  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(serverPayload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
+  const capturedRevision = readPreAuthorizationEditRevision(preauthId);
+  await assertPreAuthorizationRevision(preauthId, capturedRevision);
+  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
   if (error) throw error;
+  clearPreAuthorizationEditRevision(preauthId);
   return data;
 }
 
