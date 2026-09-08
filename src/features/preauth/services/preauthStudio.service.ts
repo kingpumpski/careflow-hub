@@ -31,7 +31,7 @@ export async function searchClientSuggestions(query: string, limit = 12): Promis
   const facilityId = getStoredFacilityId();
   if (!facilityId) return [];
 
-  let request = (supabase.from("preauth_client_suggestions") as any)
+  let request = ((supabase as any).from("preauth_client_suggestions"))
     .select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at")
     .eq("facility_id", facilityId)
     .order("last_used_at", { ascending: false })
