@@ -1,4 +1,4 @@
-import { buildPreAuthDocumentPayload, type PreAuthReviewInput } from "./preauth-review";
+import { buildPreAuthDocumentPayload, type PreAuthFrozenSnapshot, type PreAuthReviewInput } from "./preauth-review";
 
 export interface PreAuthRecipient {
   type: "to" | "cc";
@@ -7,15 +7,15 @@ export interface PreAuthRecipient {
 }
 
 export interface PreAuthAttachment {
-  type: "pdf" | "supporting_document";
+  type: "pdf";
   name: string;
-  mimeType: string;
+  mimeType: "application/pdf";
   sizeBytes?: number | null;
-  storagePath?: string | null;
+  storagePath?: null;
 }
 
 export interface PreAuthSubmissionPackage {
-  snapshot: ReturnType<typeof buildPreAuthDocumentPayload>;
+  snapshot: PreAuthFrozenSnapshot;
   idempotencyKey: string;
   recipients: PreAuthRecipient[];
   attachments: PreAuthAttachment[];
@@ -24,6 +24,7 @@ export interface PreAuthSubmissionPackage {
 }
 
 const normalize = (value: string) => value.trim().toLowerCase();
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function buildPreAuthIdempotencyKey(preauthId: string, versionNumber: number) {
   return `${preauthId}:v${versionNumber}`;
@@ -39,7 +40,7 @@ export function buildPreAuthRecipientManifest(input: {
   const seen = new Set<string>();
   const add = (type: "to" | "cc", email: string, name?: string | null) => {
     const normalized = normalize(email);
-    if (!normalized || seen.has(normalized)) return;
+    if (!normalized || !emailPattern.test(normalized) || seen.has(normalized)) return;
     seen.add(normalized);
     recipients.push({ type, email: normalized, name: name?.trim() || null });
   };
@@ -72,17 +73,49 @@ export function buildPreAuthSubmissionPackage(input: {
   additionalEmails?: string[] | null;
   ccEmails?: string[] | null;
 }): PreAuthSubmissionPackage {
-  return {
+  return buildPreAuthSubmissionPackageFromSnapshot({
+    preauthId: input.preauthId,
+    versionNumber: input.versionNumber,
+    requestNumber: input.requestNumber,
     snapshot: buildPreAuthDocumentPayload(input.reviewInput, input.requestNumber),
-    idempotencyKey: buildPreAuthIdempotencyKey(input.preauthId, input.versionNumber),
-    recipients: buildPreAuthRecipientManifest({
-      insurerEmail: input.insurerEmail,
-      insurerName: input.insurerName,
-      additionalEmails: input.additionalEmails,
-      ccEmails: input.ccEmails,
-    }),
-    attachments: buildPreAuthAttachmentManifest(input.requestNumber, input.versionNumber),
     subject: input.subject,
+    messageBody: input.messageBody,
+    insurerEmail: input.insurerEmail,
+    insurerName: input.insurerName,
+    additionalEmails: input.additionalEmails,
+    ccEmails: input.ccEmails,
+  });
+}
+
+/**
+ * Canonical finalisation path: once a snapshot is frozen, downstream PDF/email
+ * artifacts must be built from that snapshot rather than mutable UI state.
+ */
+export function buildPreAuthSubmissionPackageFromSnapshot(input: {
+  preauthId: string;
+  versionNumber: number;
+  requestNumber: string;
+  snapshot: PreAuthFrozenSnapshot;
+  subject: string;
+  messageBody: string;
+  insurerEmail?: string | null;
+  insurerName?: string | null;
+  additionalEmails?: string[] | null;
+  ccEmails?: string[] | null;
+}): PreAuthSubmissionPackage {
+  const recipients = buildPreAuthRecipientManifest({
+    insurerEmail: input.insurerEmail,
+    insurerName: input.insurerName,
+    additionalEmails: input.additionalEmails,
+    ccEmails: input.ccEmails,
+  });
+
+  return {
+    snapshot: input.snapshot,
+    idempotencyKey: buildPreAuthIdempotencyKey(input.preauthId, input.versionNumber),
+    recipients,
+    attachments: buildPreAuthAttachmentManifest(input.requestNumber, input.versionNumber),
+    subject: input.subject.trim(),
     messageBody: input.messageBody,
   };
 }
