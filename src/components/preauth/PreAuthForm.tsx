@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import PreAuthStudio from "./PreAuthStudio";
 import { listMyPreAuthFacilities, getStoredFacilityId, storeFacilityId, type FacilityMembership } from "@/features/preauth/services/preauthFacility.service";
-import { getPreAuthorizationRevision } from "@/features/preauth/services/preauthStudio.service";
+import { getPreAuthorizationRevision, storePreAuthorizationEditRevision } from "@/features/preauth/services/preauthStudio.service";
 import { Label } from "@/components/ui/label";
 
 export default function PreAuthForm(props: { onBack: () => void; editData?: any }) {
@@ -21,7 +21,9 @@ export default function PreAuthForm(props: { onBack: () => void; editData?: any 
         }
         if (props.editData?.id) {
           const revision = await getPreAuthorizationRevision(String(props.editData.id));
-          setEditSession({ ...props.editData, baseVersion: revision || props.editData.updated_at || props.editData.updatedAt || null });
+          const capturedRevision = revision || props.editData.updated_at || props.editData.updatedAt || null;
+          if (capturedRevision) storePreAuthorizationEditRevision(String(props.editData.id), capturedRevision);
+          setEditSession({ ...props.editData, baseVersion: capturedRevision });
         }
       })
       .catch((e) => setError(String(e?.message || e || "Unable to load facility or edit-session data.")))
