@@ -10,9 +10,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseInsert, useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
-import { downloadPreAuthPdf, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
+import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
+import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
 import { validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
-import { buildPreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
+import { buildPreAuthSubmissionPackage, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
 
 const blankItem = (): PreAuthStudioItem => ({ id: crypto.randomUUID(), category: "procedure", description: "", quantity: 1, unitPrice: 0 });
 
@@ -55,10 +56,12 @@ export default function PreAuthorizationStudio() {
   const providerName = getSetting("provider_name") || "MT. CARMEL HOSPITAL AND FERTILITY CENTER";
   const providerAddress = getSetting("provider_address") || "Loc: Community 25 Tema. P.O. Box 3618 Tema comm 1.";
   const providerPhone = getSetting("provider_phone") || "+233 242 160 557 / +233 303 939 896";
+  const providerLogoUrl = getSetting("provider_logo_url");
   const effectivePatientName = selectedPatient?.patient_name || "Patient";
   const membershipNumber = selectedPatient?.membership_number || "";
   const effectiveProcedure = selectedProcedure?.procedure_name || "Procedure";
   const today = new Date().toISOString().slice(0, 10);
+  const issuedDate = new Date().toLocaleDateString("en-GB");
   const requestNumber = savedId ? buildRequestNumber(savedId) : "Generated on save";
   const total = useMemo(() => totalItems(items), [items]);
 
@@ -84,7 +87,7 @@ export default function PreAuthorizationStudio() {
 
   const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({
     requestNumber: savedId ? finalRequestNumber : undefined,
-    issuedDate: new Date().toLocaleDateString("en-GB"),
+    issuedDate,
     patientName: effectivePatientName,
     membershipNumber,
     patientPhone: patientPhone || selectedPatient?.phone || "",
@@ -98,6 +101,7 @@ export default function PreAuthorizationStudio() {
     diagnosis,
     currency,
     format,
+    logoUrl: providerLogoUrl || undefined,
   });
 
   const email = useMemo(() => buildPreAuthEmail({
@@ -131,10 +135,15 @@ export default function PreAuthorizationStudio() {
     companyName: companyName || selectedInsurer?.company_name || "",
     insurerEmail: selectedInsurer?.email || "",
     providerEmail: getSetting("provider_email"),
+    providerName,
+    providerAddress,
+    providerPhone,
+    providerLogoUrl,
+    issuedDate,
     currency,
     format,
     items,
-  }), [patientId, effectivePatientName, membershipNumber, insurerId, selectedInsurer, procedureId, effectiveProcedure, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, currency, format, items, settings]);
+  }), [patientId, effectivePatientName, membershipNumber, insurerId, selectedInsurer, procedureId, effectiveProcedure, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, providerName, providerAddress, providerPhone, providerLogoUrl, issuedDate, currency, format, items, settings]);
 
   const review = useMemo(() => validatePreAuthReview(reviewInput), [reviewInput]);
   const duplicateSignature = [patientId, membershipNumber.trim().toUpperCase(), procedureId, procedureDate, insurerId].join("|");
@@ -191,6 +200,12 @@ export default function PreAuthorizationStudio() {
     window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, "_blank");
   };
 
+  const openPreparedEmail = (submissionPackage: PreAuthSubmissionPackage) => {
+    const to = submissionPackage.recipients.find((recipient) => recipient.type === "to")?.email || "";
+    const cc = submissionPackage.recipients.filter((recipient) => recipient.type === "cc").map((recipient) => recipient.email).join(",");
+    window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(submissionPackage.subject)}&body=${encodeURIComponent(submissionPackage.messageBody)}`, "_blank");
+  };
+
   const finalizeRequest = async () => {
     const id = savedId || await saveDraft();
     if (!id) return;
@@ -234,6 +249,7 @@ export default function PreAuthorizationStudio() {
       if (!submissionPackage.recipients.some((recipient) => recipient.type === "to")) {
         throw new Error("The insurer does not have a valid email address for the authorization request.");
       }
+      assertPreAuthSnapshotMatchesReviewInput(submissionPackage.snapshot, reviewInput);
 
       const { data: version, error: versionError } = await (supabase.from("preauthorization_versions") as any)
         .insert({ preauth_id: id, version_number: versionNumber, snapshot: submissionPackage.snapshot, total_cost: review.total, created_by: user?.id || null })
@@ -241,7 +257,7 @@ export default function PreAuthorizationStudio() {
         .single();
       if (versionError) throw versionError;
 
-      await downloadPreAuthPdf(pdfData(finalRequestNumber), items);
+      await downloadPreAuthPdfFromSnapshot(submissionPackage.snapshot);
 
       const now = new Date().toISOString();
       const { data: submission, error: submissionError } = await (supabase.from("preauthorization_submissions") as any)
@@ -282,7 +298,7 @@ export default function PreAuthorizationStudio() {
 
       setSavedId(id);
       setReviewOpen(false);
-      openEmail();
+      openPreparedEmail(submissionPackage);
       toast({ title: "Authorization request prepared", description: `${finalRequestNumber} revision ${versionNumber} is frozen and recorded. The PDF and email are ready for your final review and send.` });
     } catch (error: any) {
       toast({ title: "Request preparation failed", description: error.message || "The request could not be frozen and prepared.", variant: "destructive" });
@@ -334,7 +350,7 @@ export default function PreAuthorizationStudio() {
           <section className="stat-card"><div className="flex items-center justify-between gap-3"><div><h2 className="font-heading font-semibold">4. Submission email</h2><p className="text-xs text-muted-foreground">The wording changes automatically according to the procedure date. The final email package uses the frozen revision snapshot.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={copyEmail} className="gap-2"><Copy className="h-4 w-4" /> Copy</Button><Button size="sm" onClick={openEmail} className="gap-2"><Mail className="h-4 w-4" /> Open email</Button></div></div><div className="mt-4 rounded-md border bg-muted/30 p-4 space-y-3"><div className="text-xs text-muted-foreground">To: {selectedInsurer?.email || "Select an insurer"} · Subject: {email.subject}</div><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{email.body}</pre></div></section>
         </div>
 
-        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{new Date().toLocaleDateString("en-GB")}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Request preparation safeguard:</b> save a draft, review the request, resolve blocking errors, confirm warnings, then freeze the exact revision before handoff. The system records the frozen revision, recipients, attachment manifest and preparation audit event. The officer remains responsible for sending the email.</div></aside>
+        <aside className="xl:sticky xl:top-4 xl:self-start"><div className="rounded-lg border bg-white shadow-sm overflow-hidden"><div className="flex items-center justify-between border-b bg-muted/30 p-3"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="font-semibold">{requestNumber}</p></div><Badge variant="outline">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-5 text-[10px] leading-4"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{issuedDate}</span></div></div><div className="grid grid-cols-2 gap-1 mt-3"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || selectedInsurer?.company_name || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {membershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="border p-2 col-span-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-hidden border"><div className="grid grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid grid-cols-[1fr_120px_75px] border-t font-bold"><div className="p-2 col-span-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Request preparation safeguard:</b> save a draft, review the request, resolve blocking errors, confirm warnings, then freeze the exact revision before handoff. The system records the frozen revision, recipients, attachment manifest and preparation audit event. The officer remains responsible for sending the email.</div></aside>
       </div>
     </div>
   );
