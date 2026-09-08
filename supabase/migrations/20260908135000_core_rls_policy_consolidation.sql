@@ -244,4 +244,4 @@ REVOKE ALL ON TABLE public.insurance_companies, public.client_companies, public.
   public.claims, public.payments, public.withholding_tax FROM anon;
 
 COMMENT ON TABLE public.claims IS 'Internal claims operations ledger. Access is facility-scoped and role-controlled; reporting should read this governed dataset.';
-COMMENT ON TABLE public.preauthorizations IS 'Internal pre-authorization workflow source. Facility-scoped and role-controlled for operational use.';
+COMMENT ON TABLE public.pre_authorizations IS 'Internal pre-authorization workflow source. Facility-scoped and role-controlled for operational use.';
