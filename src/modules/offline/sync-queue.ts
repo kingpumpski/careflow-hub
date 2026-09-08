@@ -157,6 +157,7 @@ export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<
   const normalized = { ...payload };
   delete normalized.entity;
   delete normalized.storageKey;
+  delete normalized.baseVersion;
   if (Object.prototype.hasOwnProperty.call(normalized, "createdAt")) {
     if (!Object.prototype.hasOwnProperty.call(normalized, "created_at")) normalized.created_at = normalized.createdAt;
     delete normalized.createdAt;
@@ -270,4 +271,21 @@ export async function getSyncQueueSummary(): Promise<SyncQueueSummary> {
 export async function getSyncConflicts(): Promise<SyncOperation[]> {
   const operations = await listSyncOperations();
   return operations.filter((operation) => operation.status === "blocked" && operation.lastErrorCode === "SYNC_CONFLICT");
+}
+
+/**
+ * Safely abandons a blocked conflict and refreshes local state from the server.
+ * This is intentionally destructive to the local mutation only; it never overwrites
+ * the server with the stale offline payload.
+ */
+export async function discardSyncConflict(operationId: string): Promise<void> {
+  const operation = (await getSyncConflicts()).find((candidate) => candidate.id === operationId);
+  if (!operation) throw new Error("The sync conflict no longer exists.");
+  await removeSyncOperation(operation.id);
+  try {
+    await pullSupabaseDataToOffline();
+  } catch (error) {
+    await writeOperation(operation);
+    throw error;
+  }
 }
