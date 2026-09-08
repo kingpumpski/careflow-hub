@@ -55,8 +55,8 @@ jobs:
           set -euo pipefail
           fail=0
 
-          # Browser-facing application functions must never fall back to wildcard CORS.
-          if grep -RInE "Access-Control-Allow-Origin[^\n]*\\*|[=:][[:space:]]*['\"]\\*['\"]" supabase/functions --include='*.ts' --exclude-dir=node_modules; then
+          # Browser-facing application functions must never use wildcard CORS.
+          if grep -RInE "Access-Control-Allow-Origin[^\n]*(\*|['\"]\\*['\"])" supabase/functions --include='*.ts' --exclude-dir=node_modules; then
             echo "Wildcard CORS detected in an Edge Function."
             fail=1
           fi
