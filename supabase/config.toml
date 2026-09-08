@@ -1,4 +1,11 @@
 project_id = "snnvwptxcijlgzdcvbkl"
 
+# All application Edge Functions require an authenticated Supabase JWT.
 [functions.chat]
-verify_jwt = false
+verify_jwt = true
+
+[functions.ai-dedup-check]
+verify_jwt = true
+
+[functions.admin-user-action]
+verify_jwt = true

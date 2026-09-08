@@ -164,7 +164,7 @@ export default function PreAuthTextFirstForm({ onBack, editData }: PreAuthTextFi
   const updateClient = (patch: Partial<PreAuthClientIdentity>) => setClient((current) => ({ ...current, ...patch }));
   const updateInsurance = (patch: Partial<PreAuthInsuranceIdentity>) => setInsurance((current) => ({ ...current, ...patch }));
 
-  const useSavedPatient = (id: string) => {
+  const loadSavedPatient = (id: string) => {
     const patient = (patients || []).find((p: any) => p.id === id);
     if (!patient) return;
     updateClient({
@@ -177,7 +177,7 @@ export default function PreAuthTextFirstForm({ onBack, editData }: PreAuthTextFi
     toast({ title: "Saved client loaded", description: "You can edit any field without changing the stored client record." });
   };
 
-  const useSavedInsurer = (id: string) => {
+  const loadSavedInsurer = (id: string) => {
     const insurer = (insurers || []).find((i: any) => i.id === id);
     if (!insurer) return;
     updateInsurance({
@@ -337,7 +337,7 @@ export default function PreAuthTextFirstForm({ onBack, editData }: PreAuthTextFi
             <Input className="mt-1" placeholder="Search name, membership number or phone..." value={patientSearch} onChange={(e) => setPatientSearch(e.target.value)} />
             {patientSearch && filteredPatients.length > 0 && (
               <div className="mt-1 border rounded-md divide-y max-h-40 overflow-auto">
-                {filteredPatients.map((p: any) => <button key={p.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted" onClick={() => useSavedPatient(p.id)}>{p.patient_name} {p.membership_number ? `(${p.membership_number})` : ""}</button>)}
+                {filteredPatients.map((p: any) => <button key={p.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted" onClick={() => loadSavedPatient(p.id)}>{p.patient_name} {p.membership_number ? `(${p.membership_number})` : ""}</button>)}
               </div>
             )}
           </div>
@@ -357,7 +357,7 @@ export default function PreAuthTextFirstForm({ onBack, editData }: PreAuthTextFi
           <div>
             <Label>Optional saved insurer lookup</Label>
             <Input className="mt-1" placeholder="Search saved insurers..." value={insurerSearch} onChange={(e) => setInsurerSearch(e.target.value)} />
-            {insurerSearch && filteredInsurers.length > 0 && <div className="mt-1 border rounded-md divide-y max-h-40 overflow-auto">{filteredInsurers.map((i: any) => <button key={i.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted" onClick={() => useSavedInsurer(i.id)}>{i.company_name}</button>)}</div>}
+            {insurerSearch && filteredInsurers.length > 0 && <div className="mt-1 border rounded-md divide-y max-h-40 overflow-auto">{filteredInsurers.map((i: any) => <button key={i.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted" onClick={() => loadSavedInsurer(i.id)}>{i.company_name}</button>)}</div>}
           </div>
           <div><Label>Insurer name *</Label><Input className="mt-1" value={insurance.name} onChange={(e) => updateInsurance({ name: e.target.value, insurerId: null })} placeholder="Type insurer if not stored" /></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
