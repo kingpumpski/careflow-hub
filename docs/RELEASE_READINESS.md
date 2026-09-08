@@ -13,6 +13,7 @@
 - [ ] Outstanding balances use the canonical formula:
   `max(0, submitted - rejected - payments - withholding_tax)`.
 - [ ] Financial analytics use authoritative period data and distinguish actual vs provisional settlement.
+- [ ] Provisional WHT estimates do not count as proof of actual WHT settlement.
 - [ ] No client-side service-role or privileged Supabase credentials exist.
 - [ ] Document intake requires human review before database commit.
 - [ ] Offline operations remain available where supported and synchronize through the durable queue when connectivity returns.
@@ -23,6 +24,7 @@
 - [ ] RLS policies are enabled for application tables and reviewed for the affected role boundary.
 - [ ] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
 - [ ] Calculated financial views remain `security_invoker` where appropriate.
+- [ ] WHT rows distinguish calculated/provisional amounts from confirmed actual settlement (`is_actual`).
 - [ ] Production data changes are performed through application workflows or controlled SQL/migration procedures, not ad-hoc client-side writes.
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
 
