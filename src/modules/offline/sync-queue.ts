@@ -144,12 +144,12 @@ export function toSupabaseSyncPayload(payload: Record<string, unknown>): Record<
   const normalized = { ...payload };
   delete normalized.entity;
   delete normalized.storageKey;
-  if (Object.prototype.hasOwnProperty.call(normalized, "createdAt") && !Object.prototype.hasOwnProperty.call(normalized, "created_at")) {
-    normalized.created_at = normalized.createdAt;
+  if (Object.prototype.hasOwnProperty.call(normalized, "createdAt")) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, "created_at")) normalized.created_at = normalized.createdAt;
     delete normalized.createdAt;
   }
-  if (Object.prototype.hasOwnProperty.call(normalized, "updatedAt") && !Object.prototype.hasOwnProperty.call(normalized, "updated_at")) {
-    normalized.updated_at = normalized.updatedAt;
+  if (Object.prototype.hasOwnProperty.call(normalized, "updatedAt")) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, "updated_at")) normalized.updated_at = normalized.updatedAt;
     delete normalized.updatedAt;
   }
   return normalized;
@@ -162,27 +162,22 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
     if (error) throw error;
     return;
   }
-
   const query = supabase.from(operation.table) as any;
   const payload = operation.payload ? toSupabaseSyncPayload(operation.payload) : undefined;
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
-
   if (operation.type === "delete") {
     const { error } = await query.delete().eq("id", operation.recordId);
     if (error) throw error;
     return;
   }
-
   if (!payload) throw new Error(`Sync operation ${operation.id} has no payload.`);
-
   if (operation.type === "update") {
     const { data, error } = await query.update(payload).eq("id", operation.recordId).select("id").maybeSingle();
     if (error) throw error;
     if (!data) throw new Error(`SYNC_CONFLICT: record ${operation.table}/${operation.recordId} no longer exists or is outside the current facility scope.`);
     return;
   }
-
   await query.upsert(payload, { onConflict: "id" });
 }
 
@@ -199,7 +194,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
       .filter((row) => typeof row.id === "string")
       .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
     const safeRows = rows.filter((row) => {
-      const changed = operations.some((operation) => operation.table === mapping.table && operation.recordId === row.id && operation.status !== "blocked");
+      const changed = operations.some((queued) => queued.table === mapping.table && queued.recordId === row.id && queued.status !== "blocked");
       if (changed) skipped += 1;
       return !changed;
     });
