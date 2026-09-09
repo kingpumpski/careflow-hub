@@ -25,7 +25,7 @@ export default function PreAuthorizationStudio() {
   const { data: procedures } = useSupabaseQuery("procedures");
   const { data: diagnoses } = useSupabaseQuery("diagnosis_codes");
   const { data: catalog } = useSupabaseQuery("preauth_catalog_items");
-  const { data: tariffs } = useSupabaseQuery("preauth_insurer_tariffs");
+  const { data: tariffs } = useSupabaseQuery("preauth_insurer_tariffs" as any);
   const { data: settings } = useSupabaseQuery("system_settings");
   const insertPreauth = useSupabaseInsert("pre_authorizations");
   const insertPreAuthItems = useSupabaseBulkInsert("preauth_items");
@@ -268,7 +268,7 @@ export default function PreAuthorizationStudio() {
 
       await downloadPreAuthPdfFromSnapshot(frozenSnapshot);
 
-      const { error: auditError } = await (supabase.from("preauthorization_audit_events") as any).insert({
+      const { error: auditError } = await ((supabase as any).from("preauthorization_audit_events")).insert({
         preauth_id: id,
         version_id: finalized.version_id,
         submission_id: finalized.submission_id,
