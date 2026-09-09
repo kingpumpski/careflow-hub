@@ -29,6 +29,14 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Keep wide operational tables readable while preserving a bounded scroll viewport. */
+.stat-card > .overflow-x-auto > table,
+.surface-card > .overflow-x-auto > table,
+.kpi-card > .overflow-x-auto > table {
+  width: max-content;
+  min-width: 100%;
+}
+
 /* Custom scrollbars for the shell and sidebar */
 * {
   scrollbar-width: thin;
@@ -76,11 +84,18 @@
 
   .page-header {
     margin-bottom: 1rem;
+    min-width: 0;
+  }
+
+  .page-header > div {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .page-title {
     font-size: 1.25rem;
     line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .page-description {
@@ -111,6 +126,43 @@
   .data-table th,
   .data-table td {
     padding: 0.625rem 0.75rem;
+    white-space: nowrap;
+  }
+
+  /* Long insurer names, references and identifiers must wrap rather than widen cards. */
+  .stat-card td,
+  .stat-card th,
+  .surface-card td,
+  .surface-card th,
+  .kpi-card td,
+  .kpi-card th {
+    overflow-wrap: anywhere;
+  }
+
+  /* Keep two-column forms usable on phones; labels and controls get comfortable tap space. */
+  .stat-card .grid.grid-cols-2,
+  .surface-card .grid.grid-cols-2,
+  .kpi-card .grid.grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat-card select,
+  .stat-card input,
+  .stat-card textarea,
+  .surface-card select,
+  .surface-card input,
+  .surface-card textarea,
+  .kpi-card select,
+  .kpi-card input,
+  .kpi-card textarea {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .stat-card button,
+  .surface-card button,
+  .kpi-card button {
+    min-height: 2.5rem;
   }
 
   .shell-content > * {
@@ -135,6 +187,10 @@
   .surface-card,
   .kpi-card {
     padding: 0.75rem;
+  }
+
+  .page-header {
+    gap: 0.75rem;
   }
 }
 
