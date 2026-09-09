@@ -48,7 +48,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
     queryKey: [table, options?.select, options?.orderBy, options?.filters, offline],
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
-      let query = (supabase.from(table) as any).select(options?.select || "*");
+      let query = ((supabase as any).from(table)).select(options?.select || "*");
       if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : query.order("created_at", { ascending: false });
       const { data, error } = await query;
@@ -91,7 +91,7 @@ export function useSupabaseInsert(table: TableName) {
         await enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record });
         return record;
       }
-      const { data, error } = await (supabase.from(table) as any).insert(scopeInsertValues(table, values)).select().single();
+      const { data, error } = await ((supabase as any).from(table)).insert(scopeInsertValues(table, values)).select().single();
       if (error) throw error;
       return data;
     },
@@ -112,7 +112,7 @@ export function useSupabaseBulkInsert(table: TableName) {
         await Promise.all(scopedRows.map((record) => enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record })));
         return scopedRows;
       }
-      const { data, error } = await (supabase.from(table) as any).insert(rows.map((row) => scopeInsertValues(table, row))).select();
+      const { data, error } = await ((supabase as any).from(table)).insert(rows.map((row) => scopeInsertValues(table, row))).select();
       if (error) throw error;
       return data;
     },
@@ -137,7 +137,7 @@ export function useSupabaseUpdate(table: TableName) {
         await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record, ...(baseVersion != null ? { baseVersion } : {}) });
         return record;
       }
-      const { data, error } = await (supabase.from(table) as any).update(values).eq("id", id).select().single();
+      const { data, error } = await ((supabase as any).from(table)).update(values).eq("id", id).select().single();
       if (error) throw error;
       return data;
     },
@@ -160,7 +160,7 @@ export function useSupabaseDelete(table: TableName) {
         await enqueueSyncOperation({ table, type: "delete", recordId: id, payload: existing, ...(baseVersion != null ? { baseVersion } : {}) });
         return;
       }
-      const { error } = await (supabase.from(table) as any).delete().eq("id", id);
+      const { error } = await ((supabase as any).from(table)).delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),

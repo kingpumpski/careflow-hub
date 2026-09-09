@@ -177,11 +177,11 @@ function withBaseVersion<T extends { eq: (column: string, value: string | number
 async function applyOperation(operation: SyncOperation): Promise<void> {
   if (operation.type === "rpc") {
     if (!operation.rpcName) throw new Error(`Sync operation ${operation.id} has no RPC name.`);
-    const { error } = await supabase.rpc(operation.rpcName, operation.rpcArgs ?? {});
+    const { error } = await (supabase as any).rpc(operation.rpcName, operation.rpcArgs ?? {});
     if (error) throw error;
     return;
   }
-  const query = supabase.from(operation.table) as any;
+  const query = (supabase as any).from(operation.table);
   const payload = operation.payload ? toSupabaseSyncPayload(operation.payload) : undefined;
   if (payload && operation.idempotencyKey && !payload.idempotency_key) payload.idempotency_key = operation.idempotencyKey;
   if (payload && operation.facilityId && !payload.facility_id) payload.facility_id = operation.facilityId;
@@ -209,7 +209,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
   let records = 0;
   let skipped = 0;
   for (const mapping of OFFLINE_PULL_TABLES) {
-    const { data, error } = await (supabase.from(mapping.table) as any).select("*");
+    const { data, error } = await ((supabase as any).from(mapping.table)).select("*");
     if (error) throw error;
     const facilityId = getStoredFacilityId();
     const rows = ((data ?? []) as Record<string, unknown>[])

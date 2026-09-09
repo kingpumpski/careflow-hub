@@ -16,7 +16,7 @@ export type OfflineEntity =
   | "settlement_exceptions"
   | "settlement_exception_audit_events";
 
-export type OfflineRecord = Record<string, unknown> & { id: string };
+export type OfflineRecord = Record<string, any>;
 type StoredRecord = OfflineRecord & { storageKey: string; entity: OfflineEntity };
 
 const DB_NAME = "careflow-internal";
@@ -42,7 +42,7 @@ function openDb(): Promise<IDBDatabase> {
             const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
             if (cursor) {
               const value = cursor.value as OfflineRecord & { entity?: OfflineEntity };
-              if (value.entity) records.push({ ...value, storageKey: getOfflineStorageKey(value.entity, value.id) });
+              if (value.entity) records.push({ ...value, entity: value.entity, storageKey: getOfflineStorageKey(value.entity, value.id) } as StoredRecord);
               cursor.continue();
             } else {
               db.deleteObjectStore(STORE_NAME);

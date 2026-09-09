@@ -17,14 +17,16 @@ export async function syncOfflineSettlementExceptions(periods: Array<any>, asOf 
       paymentAdviceReference: period.payment_advice_reference ?? null,
       paymentAdviceDate: period.payment_advice_date ?? null,
       withholdingTaxVariance: period.withholding_tax_variance ?? null,
+      paymentReceived: period.payment_received ?? null,
+      rejectionAmount: period.rejection_amount ?? null,
     }, asOf);
 
     for (const candidate of detected) {
-      const key = `${candidate.periodId}:${candidate.type}`;
+      const key = `${candidate.settlementPeriodId}:${candidate.type}`;
       if (keys.has(key)) continue;
       await createOfflineSettlementException({
         facilityId: period.facility_id,
-        settlementPeriodId: candidate.periodId,
+        settlementPeriodId: candidate.settlementPeriodId,
         type: candidate.type,
         severity: candidate.severity,
         title: candidate.title,

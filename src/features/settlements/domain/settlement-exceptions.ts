@@ -11,7 +11,7 @@ export type SettlementExceptionType =
 export type SettlementExceptionSeverity = 'info' | 'warning' | 'critical';
 export type SettlementExceptionStatus = 'open' | 'under_review' | 'resolved' | 'waived';
 
-export interface SettlementException {
+export type SettlementException = {
   id: string;
   facilityId: string;
   settlementPeriodId: string;
