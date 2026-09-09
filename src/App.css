@@ -6,19 +6,19 @@
   min-width: 0;
 }
 
-/* Prevent shell-level horizontal overflow; dense data components should scroll locally. */
 .shell-content {
   min-width: 0;
   max-width: 100%;
   animation: shell-fade-in 220ms ease-out;
 }
 
-/* Dense operational tables must scroll inside their card instead of widening the page. */
 .stat-card,
 .surface-card,
 .kpi-card {
   min-width: 0;
   max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .stat-card > .overflow-x-auto,
@@ -29,7 +29,6 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Keep wide operational tables readable while preserving a bounded scroll viewport. */
 .stat-card > .overflow-x-auto > table,
 .surface-card > .overflow-x-auto > table,
 .kpi-card > .overflow-x-auto > table {
@@ -37,7 +36,13 @@
   min-width: 100%;
 }
 
-/* Custom scrollbars for the shell and sidebar */
+/* Direct data tables also get a bounded horizontal viewport on pages that do not
+   wrap them in an explicit overflow container. */
+.data-table {
+  width: max-content;
+  min-width: 100%;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
@@ -61,7 +66,6 @@
   background-color: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Shell entrance animation */
 @keyframes shell-fade-in {
   from {
     opacity: 0;
@@ -73,7 +77,6 @@
   }
 }
 
-/* Respect users who prefer reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   .shell-content {
     animation: none;
@@ -86,7 +89,6 @@
   }
 }
 
-/* Compact dashboard cards and controls on phones. */
 @media (max-width: 767px) {
   html,
   body,
@@ -142,7 +144,6 @@
     white-space: nowrap;
   }
 
-  /* Long insurer names, references and identifiers must wrap rather than widen cards. */
   .stat-card td,
   .stat-card th,
   .surface-card td,
@@ -152,7 +153,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* Keep two-column forms usable on phones; labels and controls get comfortable tap space. */
   .stat-card .grid.grid-cols-2,
   .surface-card .grid.grid-cols-2,
   .kpi-card .grid.grid-cols-2 {
@@ -207,7 +207,6 @@
   }
 }
 
-/* Print: hide navigation chrome so reports print clean */
 @media print {
   .no-print,
   aside,
