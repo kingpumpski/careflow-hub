@@ -16,6 +16,7 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildDashboardInsights, buildTrendSeries, computeExecutiveKpis, computeYearlyKpis, rankInsurers, type YearlyKpis } from "@/modules/analytics";
 import { managementRecommendations } from "@/modules/ai/services/insights";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const cedis = (v: number) => `GH¢ ${Math.round(v).toLocaleString()}`;
 const thousands = (v: number) => `GH¢ ${(v / 1000).toFixed(0)}K`;
@@ -23,11 +24,17 @@ const thousands = (v: number) => `GH¢ ${(v / 1000).toFixed(0)}K`;
 export default function Dashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { data: claims } = useSupabaseQuery("claims");
-  const { data: preauths } = useSupabaseQuery("pre_authorizations");
-  const { data: payments } = useSupabaseQuery("payments");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canClaimsRead = can("claims.read");
+  const canPaymentsRead = can("payments.read");
+  const canPreauthRead = can("preauth.read");
+  const canAnalyticsRead = can("analytics.read");
+  const canViewClaimsIntelligence = canClaimsRead || canPaymentsRead || canAnalyticsRead;
+  const { data: claims } = useSupabaseQuery("claims", { enabled: !permissionsLoading && canClaimsRead });
+  const { data: preauths } = useSupabaseQuery("pre_authorizations", { enabled: !permissionsLoading && canPreauthRead });
+  const { data: payments } = useSupabaseQuery("payments", { enabled: !permissionsLoading && canPaymentsRead });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: !permissionsLoading && canViewClaimsIntelligence });
+  const { data: withholdingTax } = useSupabaseQuery("withholding_tax", { enabled: !permissionsLoading && canPaymentsRead });
 
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
