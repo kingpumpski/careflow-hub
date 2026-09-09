@@ -12,6 +12,7 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 import { useMasterSearch } from "@/hooks/useMasterSearch";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 interface TemplateItem {
   description: string;
@@ -26,6 +27,8 @@ export default function ProcedureTemplates() {
   const bulkInsert = useSupabaseBulkInsert("procedure_templates");
   const updateMutation = useSupabaseUpdate("procedure_templates");
   const deleteMutation = useSupabaseDelete("procedure_templates");
+  const { can } = usePermissions();
+  const canWrite = can("masterdata.write");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -40,7 +43,10 @@ export default function ProcedureTemplates() {
     [items],
   );
 
+  const deny = () => toast({ title: "Permission denied", description: "You do not have permission to modify master data.", variant: "destructive" });
+
   const openNew = () => {
+    if (!canWrite) return deny();
     setEditing(null);
     setForm({ template_name: "", procedure_id: "", notes: "" });
     setDiagnosisIds([]);
@@ -49,6 +55,7 @@ export default function ProcedureTemplates() {
   };
 
   const openEdit = (t: any) => {
+    if (!canWrite) return deny();
     setEditing(t);
     setForm({ template_name: t.template_name, procedure_id: t.procedure_id || "", notes: t.notes || "" });
     setDiagnosisIds([...(t.diagnosis_code_ids || []), ...(t.diagnosis_code_id ? [t.diagnosis_code_id] : [])].filter((v, i, a) => v && a.indexOf(v) === i));
@@ -63,6 +70,7 @@ export default function ProcedureTemplates() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canWrite) return deny();
     const cleaned = items.filter(i => i.description);
     const payload = {
       template_name: form.template_name,
@@ -88,11 +96,13 @@ export default function ProcedureTemplates() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canWrite) return deny();
     if (!confirm("Permanently delete this template?")) return;
     try { await deleteMutation.mutateAsync(id); toast({ title: "Template deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
   const handleDuplicate = async (t: any) => {
+    if (!canWrite) return deny();
     try {
       const { id, created_at, updated_at, ...rest } = t;
       await insertMutation.mutateAsync({ ...rest, template_name: `${t.template_name} (Copy)`, archived: false });
@@ -101,6 +111,7 @@ export default function ProcedureTemplates() {
   };
 
   const handleToggleArchive = async (t: any) => {
+    if (!canWrite) return deny();
     try { await updateMutation.mutateAsync({ id: t.id, archived: !t.archived }); toast({ title: t.archived ? "Restored" : "Archived" }); }
     catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
@@ -120,7 +131,7 @@ export default function ProcedureTemplates() {
           <h1 className="page-title">Procedure Templates</h1>
           <p className="page-description">Reusable cost-item bundles with diagnoses, auto totals, and lifecycle management</p>
         </div>
-        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Template</Button></div>
+        {canWrite && <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />New Template</Button></div>}
       </div>
 
       <div className="stat-card">
@@ -154,14 +165,12 @@ export default function ProcedureTemplates() {
                     <td className="font-semibold">{Number(t.total_amount || 0).toLocaleString()}</td>
                     <td>{t.archived ? <Badge variant="outline" className="bg-muted">Archived</Badge> : <Badge variant="outline" className="bg-success/10 text-success border-success/20">Active</Badge>}</td>
                     <td>
-                      <div className="flex items-center gap-1">
+                      {canWrite && <div className="flex items-center gap-1">
                         <button onClick={() => openEdit(t)} className="p-1.5 rounded hover:bg-muted" title="Edit"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
                         <button onClick={() => handleDuplicate(t)} className="p-1.5 rounded hover:bg-muted" title="Duplicate"><Copy className="w-4 h-4 text-info" /></button>
-                        <button onClick={() => handleToggleArchive(t)} className="p-1.5 rounded hover:bg-muted" title={t.archived ? "Restore" : "Archive"}>
-                          {t.archived ? <ArchiveRestore className="w-4 h-4 text-info" /> : <Archive className="w-4 h-4 text-warning" />}
-                        </button>
+                        <button onClick={() => handleToggleArchive(t)} className="p-1.5 rounded hover:bg-muted" title={t.archived ? "Restore" : "Archive"}>{t.archived ? <ArchiveRestore className="w-4 h-4 text-info" /> : <Archive className="w-4 h-4 text-warning" />}</button>
                         <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded hover:bg-destructive/10" title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></button>
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 );
@@ -171,7 +180,7 @@ export default function ProcedureTemplates() {
         )}
       </div>
 
-      <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Template" : "Create Template"}>
+      {canWrite && <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Template" : "Create Template"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Template Name *</Label><Input value={form.template_name} onChange={(e) => setForm({ ...form, template_name: e.target.value })} required className="mt-1" /></div>
           <div>
@@ -183,40 +192,17 @@ export default function ProcedureTemplates() {
           </div>
           <MultiDiagnosisPicker value={diagnosisIds} onChange={setDiagnosisIds} />
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Cost Items</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { description: "", quantity: 1, unitCharge: 0 }])}>+ Item</Button>
-            </div>
-            <div className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 text-xs font-medium text-muted-foreground px-1">
-              <span>Description</span><span>Qty</span><span>Unit (GH¢)</span><span className="text-right">Line Total</span><span></span>
-            </div>
-            {items.map((item, i) => {
-              const line = (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0);
-              return (
-                <div key={i} className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 items-center">
-                  <Input placeholder="Description" value={item.description} onChange={(e) => { const n = [...items]; n[i].description = e.target.value; setItems(n); }} className="h-8" />
-                  <Input type="number" min="1" value={item.quantity} onChange={(e) => { const n = [...items]; n[i].quantity = parseInt(e.target.value) || 1; setItems(n); }} className="h-8" />
-                  <Input type="number" step="0.01" min="0" value={item.unitCharge} onChange={(e) => { const n = [...items]; n[i].unitCharge = parseFloat(e.target.value) || 0; setItems(n); }} className="h-8" />
-                  <div className="text-right font-semibold text-sm">{line.toLocaleString()}</div>
-                  <button type="button" onClick={() => { if (items.length > 1) setItems(items.filter((_, j) => j !== i)); }} className="text-destructive text-xs">✕</button>
-                </div>
-              );
-            })}
-            <div className="flex justify-end pt-2 border-t border-border">
-              <div className="text-sm">Total: <span className="font-bold text-primary text-base">GH¢ {totalAmount.toLocaleString()}</span></div>
-            </div>
+            <div className="flex items-center justify-between"><Label>Cost Items</Label><Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { description: "", quantity: 1, unitCharge: 0 }])}>+ Item</Button></div>
+            <div className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 text-xs font-medium text-muted-foreground px-1"><span>Description</span><span>Qty</span><span>Unit (GH¢)</span><span className="text-right">Line Total</span><span></span></div>
+            {items.map((item, i) => { const line = (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0); return <div key={i} className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 items-center"><Input placeholder="Description" value={item.description} onChange={(e) => { const n = [...items]; n[i].description = e.target.value; setItems(n); }} className="h-8" /><Input type="number" min="1" value={item.quantity} onChange={(e) => { const n = [...items]; n[i].quantity = parseInt(e.target.value) || 1; setItems(n); }} className="h-8" /><Input type="number" step="0.01" min="0" value={item.unitCharge} onChange={(e) => { const n = [...items]; n[i].unitCharge = parseFloat(e.target.value) || 0; setItems(n); }} className="h-8" /><div className="text-right font-semibold text-sm">{line.toLocaleString()}</div><button type="button" onClick={() => { if (items.length > 1) setItems(items.filter((_, j) => j !== i)); }} className="text-destructive text-xs">✕</button></div>; })}
+            <div className="flex justify-end pt-2 border-t border-border"><div className="text-sm">Total: <span className="font-bold text-primary text-base">GH¢ {totalAmount.toLocaleString()}</span></div></div>
           </div>
-          <div>
-            <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="mt-1" />
-          </div>
-          <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>
-            {editing ? "Update Template" : "Create Template"}
-          </Button>
+          <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="mt-1" /></div>
+          <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>{editing ? "Update Template" : "Create Template"}</Button>
         </form>
-      </EntityDialog>
+      </EntityDialog>}
 
-      <BulkImportDialog
+      {canWrite && <BulkImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         title="Import Procedure Templates"
@@ -229,6 +215,7 @@ export default function ProcedureTemplates() {
           { key: "archived", label: "Archived", type: "boolean", example: "No" },
         ]}
         onImport={async (rows) => {
+          if (!canWrite) return deny();
           const payload = rows.map((row) => {
             let items: TemplateItem[];
             try { items = JSON.parse(String(row.items)); } catch { throw new Error(`Invalid items JSON for ${row.template_name}`); }
@@ -238,7 +225,7 @@ export default function ProcedureTemplates() {
           });
           await bulkInsert.mutateAsync(payload);
         }}
-      />
+      />}
     </div>
   );
 }
