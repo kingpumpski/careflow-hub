@@ -58,7 +58,7 @@ begin
       rejection_reason=case when v_target='Rejected' then v_note when v_target in ('Draft','PendingApproval','Approved','Completed') then null else rejection_reason end,
       version=coalesce(version,0)+1
   where id=p_preauth_id returning * into v_row;
-  select coalesce(jsonb_agg(to_jsonb(i) order by i.id),'[]'::jsonb) into v_items from public.preauth_items i where i.preah_id=p_preauth_id;
+  select coalesce(jsonb_agg(to_jsonb(i) order by i.id),'[]'::jsonb) into v_items from public.preauth_items i where i.preauth_id=p_preauth_id;
   v_snapshot := jsonb_build_object('request',to_jsonb(v_row),'items',v_items,'transitioned_by',v_uid,'transitioned_at',now());
   v_next_version := coalesce(v_row.version, 1);
   insert into public.preauth_versions(preauth_id,version_number,state,snapshot,change_note,edited_by,edited_by_name)
