@@ -13,6 +13,22 @@
   animation: shell-fade-in 220ms ease-out;
 }
 
+/* Dense operational tables must scroll inside their card instead of widening the page. */
+.stat-card,
+.surface-card,
+.kpi-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stat-card > .overflow-x-auto,
+.surface-card > .overflow-x-auto,
+.kpi-card > .overflow-x-auto {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Custom scrollbars for the shell and sidebar */
 * {
   scrollbar-width: thin;
@@ -79,6 +95,13 @@
     max-width: 100%;
     padding: 0.875rem;
     border-radius: 0.75rem;
+  }
+
+  .stat-card > .overflow-x-auto,
+  .surface-card > .overflow-x-auto,
+  .kpi-card > .overflow-x-auto {
+    margin-inline: -0.125rem;
+    max-width: calc(100% + 0.25rem);
   }
 
   .data-table {
