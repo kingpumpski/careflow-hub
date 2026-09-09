@@ -15,6 +15,7 @@ import { toast } from "@/hooks/use-toast";
 import { exportPreAuthPDF } from "@/lib/exportUtils";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/modules/security/usePermissions";
 import BulkImportDialog from "@/components/shared/BulkImportDialog";
 
 const statusStyles: Record<string, string> = {
@@ -44,11 +45,14 @@ function normState(s?: string): string {
     draft: "Draft", pending: "PendingApproval", approved: "Approved",
     rejected: "Rejected", completed: "Completed",
   };
-  return map[s] || (["Draft","PendingApproval","Approved","Rejected","Completed"].includes(s) ? s : "Draft");
+  return map[s] || (["Draft", "PendingApproval", "Approved", "Rejected", "Completed"].includes(s) ? s : "Draft");
 }
 
 export default function PreAuthorization() {
   const { user } = useAuth();
+  const { can } = usePermissions();
+  const canWrite = can("preauth.write");
+  const canApprove = can("preauth.approve");
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingPreauth, setEditingPreauth] = useState<any>(null);
@@ -73,7 +77,19 @@ export default function PreAuthorization() {
   const insertNotif = useSupabaseInsert("notifications");
   const [search, setSearch] = useState("");
 
+  const permissionDenied = (action: string) => {
+    toast({ title: "Permission denied", description: `You do not have permission to ${action}.`, variant: "destructive" });
+  };
+
+  const canTransition = (target: string) => target === "PendingApproval" || target === "Draft"
+    ? canWrite
+    : canApprove;
+
   const handleDelete = async (pa: any) => {
+    if (!canWrite) {
+      permissionDenied("delete pre-authorizations");
+      return;
+    }
     if (!confirm(`Delete pre-authorization for ${getPatientName(pa.patient_id)}? This removes its items, versions and email log entries.`)) return;
     try {
       await (supabase.from("preauth_items") as any).delete().eq("preauth_id", pa.id);
@@ -196,6 +212,10 @@ ${hospital}`;
   };
 
   const handleTransition = async (pa: any, target: string, note?: string) => {
+    if (!canTransition(target)) {
+      permissionDenied(target === "Approved" || target === "Rejected" || target === "Completed" ? "approve or reject pre-authorizations" : "edit pre-authorizations");
+      return;
+    }
     const current = normState(pa.current_state || pa.status);
     if (!ALLOWED_TRANSITIONS[current]?.includes(target)) {
       toast({ title: "Invalid transition", description: `${current} → ${target} is not allowed`, variant: "destructive" });
@@ -246,11 +266,21 @@ ${hospital}`;
     e.preventDefault();
     const pa = (preauths || []).find((p: any) => p.id === statusForm.id);
     if (!pa) return;
+    if (!canTransition(statusForm.status)) {
+      permissionDenied(statusForm.status === "Approved" || statusForm.status === "Rejected" || statusForm.status === "Completed" ? "approve or reject pre-authorizations" : "edit pre-authorizations");
+      return;
+    }
     await handleTransition(pa, statusForm.status, statusForm.note);
     setStatusDialogOpen(false);
   };
 
   if (showForm || editingPreauth) {
+    if (!canWrite) {
+      setShowForm(false);
+      setEditingPreauth(null);
+      permissionDenied("create or edit pre-authorizations");
+      return null;
+    }
     return <PreAuthForm onBack={() => { setShowForm(false); setEditingPreauth(null); }} editData={editingPreauth} />;
   }
 
@@ -265,8 +295,8 @@ ${hospital}`;
             <h1 className="page-title">Pre-Authorization Details <span className="text-sm text-muted-foreground font-normal">v{viewPreauth.version || 1}</span></h1>
           </div>
           <Button variant="outline" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />Export PDF</Button>
-          <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>
-          <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => handleDelete(viewPreauth)}><Trash2 className="w-4 h-4" />Delete</Button>
+          {canWrite && <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>}
+          {canWrite && <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => handleDelete(viewPreauth)}><Trash2 className="w-4 h-4" />Delete</Button>}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -305,20 +335,22 @@ ${hospital}`;
         </div>
 
         <div className="flex gap-3 flex-wrap">
-          <Button variant="outline" onClick={() => { setStatusForm({ id: viewPreauth.id, status: allowed[0] || cur, note: "" }); setStatusDialogOpen(true); }} disabled={allowed.length === 0}>
-            Change State
-          </Button>
-          {allowed.includes("PendingApproval") && (
+          {canWrite && allowed.some((target) => canTransition(target)) && (
+            <Button variant="outline" onClick={() => { const firstAllowed = allowed.find((target) => canTransition(target)) || cur; setStatusForm({ id: viewPreauth.id, status: firstAllowed, note: "" }); setStatusDialogOpen(true); }} disabled={allowed.length === 0}>
+              Change State
+            </Button>
+          )}
+          {allowed.includes("PendingApproval") && canWrite && (
             <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "PendingApproval")}>
               <Send className="w-4 h-4 text-warning" />Submit for Approval
             </Button>
           )}
-          {allowed.includes("Approved") && (
+          {allowed.includes("Approved") && canApprove && (
             <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "Approved")}>
               <CheckCircle2 className="w-4 h-4 text-success" />Approve
             </Button>
           )}
-          {allowed.includes("Rejected") && (
+          {allowed.includes("Rejected") && canApprove && (
             <Button variant="outline" className="gap-2" onClick={() => { setStatusForm({ id: viewPreauth.id, status: "Rejected", note: "" }); setStatusDialogOpen(true); }}>
               <XCircle className="w-4 h-4 text-destructive" />Reject
             </Button>
@@ -371,7 +403,7 @@ ${hospital}`;
             <div>
               <Label>Next State</Label>
               <select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>
-                {(ALLOWED_TRANSITIONS[normState(viewPreauth?.current_state || viewPreauth?.status)] || []).map(s => (
+                {(ALLOWED_TRANSITIONS[normState(viewPreauth?.current_state || viewPreauth?.status)] || []).filter((state) => canTransition(state)).map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -380,7 +412,7 @@ ${hospital}`;
               <Label>Note (optional)</Label>
               <Textarea rows={2} value={statusForm.note} onChange={(e) => setStatusForm({ ...statusForm, note: e.target.value })} className="mt-1" />
             </div>
-            <Button type="submit" className="w-full" disabled={updateMutation.isPending}>Update</Button>
+            <Button type="submit" className="w-full" disabled={updateMutation.isPending || !canTransition(statusForm.status)}>Update</Button>
           </form>
         </EntityDialog>
       </div>
@@ -401,7 +433,10 @@ ${hospital}`;
           <h1 className="page-title">Pre-Authorization Requests</h1>
           <p className="page-description">Draft → Pending → Approved → Completed lifecycle with versioning and email tracking</p>
         </div>
-        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={() => setShowForm(true)} className="gap-2"><Plus className="w-4 h-4" />New Request</Button></div>
+        <div className="flex gap-2">
+          {canWrite && <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>}
+          {canWrite && <Button onClick={() => setShowForm(true)} className="gap-2"><Plus className="w-4 h-4" />New Request</Button>}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -457,22 +492,22 @@ ${hospital}`;
                     <td>
                       <div className="flex items-center gap-1">
                         <button onClick={() => handleView(pa)} className="p-1.5 rounded hover:bg-muted"><Eye className="w-4 h-4 text-muted-foreground" /></button>
-                        <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
-                        <button onClick={() => handleDelete(pa)} className="p-1.5 rounded hover:bg-destructive/10" title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                        {canWrite && <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>}
+                        {canWrite && <button onClick={() => handleDelete(pa)} className="p-1.5 rounded hover:bg-destructive/10" title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></button>}
                       </div>
                     </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-muted-foreground py-8">No pre-authorizations. Click "New Request" to create one.</td></tr>
+                <tr><td colSpan={8} className="text-center text-muted-foreground py-8">No pre-authorizations. {canWrite ? 'Click "New Request" to create one.' : 'You have read-only access to this module.'}</td></tr>
               )}
             </tbody>
           </table>
         )}
       </div>
 
-      <BulkImportDialog
+      {canWrite && <BulkImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         title="Import Pre-Authorization Requests"
@@ -508,7 +543,7 @@ ${hospital}`;
           });
           await bulkInsert.mutateAsync(payload);
         }}
-      />
+      />}
     </div>
   );
 }
