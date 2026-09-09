@@ -1,4 +1,4 @@
-project_id = "snnvwptxcijlgzdcvbkl"
+project_id = "jajfdgknctzqypdtvmxo"
 
 # All application Edge Functions require an authenticated Supabase JWT.
 [functions.chat]
