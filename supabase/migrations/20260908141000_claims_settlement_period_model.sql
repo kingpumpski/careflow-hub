@@ -12,46 +12,28 @@ CREATE TABLE public.claims_settlement_periods (
   period_start DATE NOT NULL,
   period_end DATE NOT NULL,
   period_type TEXT NOT NULL DEFAULT 'month',
-
-  -- External-platform figure entered for the reporting period.
   total_claims_submitted NUMERIC(14,2) NOT NULL DEFAULT 0,
-
-  -- Effective rate captured with the period so historical calculations do not
-  -- change when the configured rate is subsequently amended.
   withholding_tax_rate NUMERIC(7,4) NOT NULL DEFAULT 5.0000,
-
-  -- System estimate while settlement is still outstanding.
   provisional_withholding_tax NUMERIC(14,2)
-    GENERATED ALWAYS AS (
-      round(total_claims_submitted * withholding_tax_rate / 100, 2)
-    ) STORED,
-
-  -- Confirmed only from the external payment advice.
+    GENERATED ALWAYS AS (round(total_claims_submitted * withholding_tax_rate / 100, 2)) STORED,
   payment_received NUMERIC(14,2),
   rejection_amount NUMERIC(14,2),
   actual_withholding_tax NUMERIC(14,2),
-
-  -- Lightweight reference to the external advice; no document/file is stored.
   payment_advice_reference TEXT,
   payment_advice_date DATE,
-
   settlement_status TEXT NOT NULL DEFAULT 'awaiting_payment',
-
-  -- Difference between the system estimate and externally confirmed WHT.
   withholding_tax_variance NUMERIC(14,2)
     GENERATED ALWAYS AS (
       CASE
         WHEN actual_withholding_tax IS NULL THEN NULL
-        ELSE round(actual_withholding_tax - provisional_withholding_tax, 2)
+        ELSE round(actual_withholding_tax - round(total_claims_submitted * withholding_tax_rate / 100, 2), 2)
       END
     ) STORED,
-
   confirmed_by UUID REFERENCES auth.users(id),
   confirmed_at TIMESTAMPTZ,
   created_by UUID REFERENCES auth.users(id) NOT NULL DEFAULT auth.uid(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
   CONSTRAINT claims_settlement_period_dates_ck CHECK (period_end >= period_start),
   CONSTRAINT claims_settlement_period_type_ck CHECK (period_type IN ('month', 'quarter', 'custom')),
   CONSTRAINT claims_settlement_claim_total_ck CHECK (total_claims_submitted >= 0),
@@ -77,13 +59,10 @@ CREATE TABLE public.claims_settlement_periods (
 
 CREATE UNIQUE INDEX claims_settlement_period_identity_idx
   ON public.claims_settlement_periods (facility_id, insurance_company_id, period_start, period_end);
-
 CREATE INDEX claims_settlement_period_facility_idx
   ON public.claims_settlement_periods (facility_id, period_start DESC);
-
 CREATE INDEX claims_settlement_period_insurer_idx
   ON public.claims_settlement_periods (facility_id, insurance_company_id, period_start DESC);
-
 CREATE INDEX claims_settlement_status_idx
   ON public.claims_settlement_periods (facility_id, settlement_status, period_start DESC);
 
@@ -91,38 +70,34 @@ ALTER TABLE public.claims_settlement_periods ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY claims_settlement_period_select ON public.claims_settlement_periods
   FOR SELECT TO authenticated
-  USING (public.core_facility_access(facility_id));
-
+  USING (public.user_has_facility_access(facility_id));
 CREATE POLICY claims_settlement_period_insert ON public.claims_settlement_periods
   FOR INSERT TO authenticated
   WITH CHECK (
-    public.core_facility_access(facility_id)
+    public.user_has_facility_access(facility_id)
     AND created_by = (select auth.uid())
     AND public.current_user_has_any_role(
       ARRAY['superuser','admin','claims_officer','data_entry_officer','accounts_officer']::public.app_role[]
     )
   );
-
 CREATE POLICY claims_settlement_period_update ON public.claims_settlement_periods
   FOR UPDATE TO authenticated
   USING (
-    public.core_facility_access(facility_id)
+    public.user_has_facility_access(facility_id)
     AND public.current_user_has_any_role(
       ARRAY['superuser','admin','claims_officer','accounts_officer']::public.app_role[]
     )
   )
   WITH CHECK (
-    public.core_facility_access(facility_id)
+    public.user_has_facility_access(facility_id)
     AND public.current_user_has_any_role(
       ARRAY['superuser','admin','claims_officer','accounts_officer']::public.app_role[]
     )
   );
-
--- Settlement history should not be casually deleted because it feeds management reporting.
 CREATE POLICY claims_settlement_period_delete ON public.claims_settlement_periods
   FOR DELETE TO authenticated
   USING (
-    public.core_facility_access(facility_id)
+    public.user_has_facility_access(facility_id)
     AND public.current_user_has_any_role(ARRAY['superuser','admin']::public.app_role[])
   );
 
