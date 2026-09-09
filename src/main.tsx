@@ -19,6 +19,14 @@ if (typeof window !== "undefined") {
     const cleanRoute = restoredRoute.startsWith("/") ? restoredRoute : `/${restoredRoute}`;
     window.history.replaceState(null, "", `${cleanRoute}${window.location.hash}`);
   }
+
+  // Older shared Codespaces links sometimes retain the GitHub Pages project
+  // prefix (/careflow-hub/). Codespaces serves the SPA from /, so normalize
+  // that legacy prefix before BrowserRouter applies its basename.
+  if (import.meta.env.BASE_URL === "/" && window.location.pathname.startsWith("/careflow-hub")) {
+    const normalizedPath = window.location.pathname.replace(/^\/careflow-hub(?=\/|$)/, "") || "/";
+    window.history.replaceState(null, "", `${normalizedPath}${window.location.search}${window.location.hash}`);
+  }
 }
 
 createRoot(root).render(
