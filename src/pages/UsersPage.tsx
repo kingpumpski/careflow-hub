@@ -47,7 +47,7 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const data = await invokeAdmin({ action: "list_users" });
-      const profileMap = new Map((data.profiles ?? []).map((p: any) => [p.id, p]));
+      const profileMap = new Map<string, any>((data.profiles ?? []).map((p: any) => [p.id, p] as [string, any]));
       setUsers((data.users ?? []).map((u: any) => ({ ...u, full_name: profileMap.get(u.id)?.full_name ?? u.full_name, email: profileMap.get(u.id)?.email ?? u.email })));
       setRoles(data.roles ?? []); setOverrides(data.overrides ?? []);
       if (Array.isArray(data.permissions) && data.permissions.length) setPermissions(data.permissions);
