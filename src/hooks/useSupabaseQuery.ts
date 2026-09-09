@@ -125,14 +125,55 @@ export function useSupabaseBulkInsert(table: TableName) {
 function normalizePreauthTransitionState(values: Record<string, any>) {
   const raw = String(values.current_state ?? values.status ?? "");
   const map: Record<string, string> = {
-    draft: "Draft",
-    pending: "PendingApproval",
-    pendingapproval: "PendingApproval",
-    approved: "Approved",
-    rejected: "Rejected",
-    completed: "Completed",
+    draft: "Draft", pending: "PendingApproval", pendingapproval: "PendingApproval",
+    approved: "Approved", rejected: "Rejected", completed: "Completed",
   };
   return map[raw.toLowerCase()] ?? raw;
+}
+
+const PREAUTH_STATES = ["Draft", "PendingApproval", "Approved", "Rejected", "Completed"] as const;
+
+async function queueOfflinePreauthTransition(id: string, values: Record<string, any>) {
+  const entity = OFFLINE_ENTITY_BY_TABLE.pre_authorizations;
+  if (!entity) throw new Error("Offline pre-authorization storage is not configured.");
+  const { getOffline, putOffline } = await import("@/modules/offline/offline-store");
+  const existing = await getOffline<Record<string, any>>(entity, id);
+  if (!existing) throw new Error(`Offline pre-authorization ${id} was not found.`);
+  const targetState = normalizePreauthTransitionState(values);
+  if (!PREAUTH_STATES.includes(targetState as typeof PREAUTH_STATES[number])) throw new Error(`Invalid pre-authorization state: ${targetState}`);
+  const currentRaw = String(existing.current_state ?? existing.status ?? "Draft").toLowerCase();
+  const current = currentRaw === "pending" ? "PendingApproval" : currentRaw ? currentRaw.charAt(0).toUpperCase() + currentRaw.slice(1) : "Draft";
+  const allowed: Record<string, string[]> = {
+    Draft: ["PendingApproval"], PendingApproval: ["Approved", "Rejected", "Draft"],
+    Approved: ["Completed", "Rejected"], Rejected: ["Draft"], Completed: [],
+  };
+  if (!allowed[current]?.includes(targetState)) throw new Error(`Invalid pre-authorization transition: ${current} → ${targetState}.`);
+  if (targetState === "Rejected" && !String(values.rejection_reason ?? values.note ?? "").trim()) throw new Error("A rejection reason is required.");
+  const status = targetState === "PendingApproval" ? "pending" : targetState.toLowerCase();
+  const now = new Date().toISOString();
+  const record = {
+    ...existing,
+    current_state: targetState,
+    status,
+    ...(targetState === "PendingApproval" ? { submitted_at: existing.submitted_at ?? now } : {}),
+    ...(targetState === "Approved" ? { approved_at: now } : {}),
+    ...(targetState === "Rejected" ? { rejection_reason: String(values.rejection_reason ?? values.note).trim() } : {}),
+    updated_at: now,
+  };
+  await putOffline(entity, record);
+  await enqueueSyncOperation({
+    table: "pre_authorizations",
+    type: "rpc",
+    recordId: id,
+    rpcName: "transition_preauthorization_atomic",
+    rpcArgs: {
+      p_preauth_id: id,
+      p_target_state: targetState,
+      p_note: values.rejection_reason ?? values.note ?? null,
+    },
+    facilityId: record.facility_id,
+  });
+  return record;
 }
 
 export function useSupabaseUpdate(table: TableName) {
@@ -140,13 +181,12 @@ export function useSupabaseUpdate(table: TableName) {
   return useMutation({
     mutationFn: async ({ id, ...values }: Record<string, any>) => {
       const offline = getCareFlowDataMode() === "offline";
-      if (!offline && table === "pre_authorizations" && (Object.prototype.hasOwnProperty.call(values, "current_state") || Object.prototype.hasOwnProperty.call(values, "status"))) {
+      if (table === "pre_authorizations" && (Object.prototype.hasOwnProperty.call(values, "current_state") || Object.prototype.hasOwnProperty.call(values, "status"))) {
+        if (offline) return queueOfflinePreauthTransition(id, values);
         const targetState = normalizePreauthTransitionState(values);
-        if (!["Draft", "PendingApproval", "Approved", "Rejected", "Completed"].includes(targetState)) throw new Error(`Invalid pre-authorization state: ${targetState}`);
+        if (!PREAUTH_STATES.includes(targetState as typeof PREAUTH_STATES[number])) throw new Error(`Invalid pre-authorization state: ${targetState}`);
         const { data, error } = await (supabase.rpc as any)("transition_preauthorization_atomic", {
-          p_preauth_id: id,
-          p_target_state: targetState,
-          p_note: values.rejection_reason ?? values.note ?? null,
+          p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null,
         });
         if (error) throw error;
         return data;
