@@ -99,6 +99,14 @@ export default function KPICard({
     if (event.key === "Escape") setInfoOpen(false);
   };
 
+  const handleInfoKeyDown = (event: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      setInfoOpen((open) => !open);
+    }
+  };
+
   return (
     <div
       role={onClick ? "button" : undefined}
@@ -146,18 +154,19 @@ export default function KPICard({
           <span className={cn("w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105", toneRing[tone])}>
             <Icon className="w-5 h-5" aria-hidden="true" />
           </span>
-          <button
-            type="button"
+          <span
+            tabIndex={0}
             aria-label={`What ${title} means`}
             aria-describedby={descriptionId}
             aria-expanded={infoOpen}
             onClick={(event) => { event.stopPropagation(); setInfoOpen((open) => !open); }}
             onMouseEnter={() => setInfoOpen(true)}
             onFocus={() => setInfoOpen(true)}
+            onKeyDown={handleInfoKeyDown}
             className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 transition-colors"
           >
             <Info className="w-4 h-4" aria-hidden="true" />
-          </button>
+          </span>
         </div>
       </div>
 
