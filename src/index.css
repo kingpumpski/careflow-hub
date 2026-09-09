@@ -84,19 +84,20 @@
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-family: var(--font-body); }
+  html { min-width: 0; overflow-x: hidden; }
+  body { @apply bg-background text-foreground; font-family: var(--font-body); min-width: 0; overflow-x: hidden; }
   h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }
 }
 
 @layer components {
   .glass-card { @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-sm; }
 
-  .stat-card { @apply bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:shadow-md; }
+  .stat-card { @apply bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:shadow-md min-w-0; }
 
-  .surface-card { @apply bg-card rounded-xl border border-border shadow-sm transition-all duration-200; }
+  .surface-card { @apply bg-card rounded-xl border border-border shadow-sm transition-all duration-200 min-w-0; }
 
   .kpi-card {
-    @apply relative bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-300 ease-out disabled:cursor-default;
+    @apply relative bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-300 ease-out disabled:cursor-default min-w-0;
     transform: translateZ(0);
   }
 
@@ -145,6 +146,24 @@
   .data-table { @apply w-full text-sm; }
   .data-table th { @apply text-left font-semibold text-muted-foreground uppercase text-xs tracking-wider py-3 px-4 border-b; }
   .data-table td { @apply py-3 px-4 border-b border-border/50; }
+  .table-scroll { @apply w-full min-w-0 overflow-x-auto overscroll-x-contain; }
+}
+
+@media (max-width: 767px) {
+  .stat-card { @apply rounded-lg p-3; }
+  .kpi-card { @apply rounded-lg p-3; }
+  .page-header { @apply mb-4 gap-3; }
+  .page-title { @apply text-xl; }
+  .page-description { @apply text-xs leading-5; }
+  .data-table { min-width: 680px; }
+  .data-table th { @apply py-2 px-3 text-[10px]; }
+  .data-table td { @apply py-2 px-3 text-xs; }
+}
+
+@media (max-width: 420px) {
+  .stat-card { @apply p-2.5; }
+  .kpi-card { @apply p-2.5; }
+  .page-title { @apply text-lg; }
 }
 
 @media (prefers-reduced-motion: reduce) {
