@@ -12,10 +12,13 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { useSupabaseQuery, useSupabaseInsert } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export default function Payments() {
+  const { can } = usePermissions();
+  const canWritePayments = can("payments.write");
   const { data: payments, isLoading } = useSupabaseQuery("payments");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
@@ -63,6 +66,7 @@ export default function Payments() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canWritePayments) { toast({ title: "Permission required", description: "You need payment write permission to record a payment.", variant: "destructive" }); return; }
     try {
       const amount = parseFloat(form.amount_paid) || 0;
       await insertPayment.mutateAsync({
@@ -146,7 +150,7 @@ export default function Payments() {
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title">Payment Tracking</h1><p className="page-description">Monitor payments received from insurance companies</p></div>
-        <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={() => setAddDialogOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Record Payment</Button></div>
+        {canWritePayments ? <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={() => setAddDialogOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Record Payment</Button></div> : <Badge variant="secondary">READ ONLY</Badge>}
       </div>
 
       <FilterBar filters={filters} onChange={setFilters} showCompany />
@@ -201,7 +205,7 @@ export default function Payments() {
         )}
       </div>
 
-      <EntityDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} title="Record Payment">
+      {canWritePayments && <EntityDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} title="Record Payment">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label>Insurance Company *</Label>
@@ -220,9 +224,9 @@ export default function Payments() {
           <div><Label>Reference / Cheque Number</Label><Input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} placeholder="e.g. CHQ-00123" className="mt-1" /></div>
           <Button type="submit" className="w-full" disabled={insertPayment.isPending}>{insertPayment.isPending ? "Recording..." : "Record Payment"}</Button>
         </form>
-      </EntityDialog>
+      </EntityDialog>}
 
-      <BulkImportDialog
+      {canWritePayments && <BulkImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         title="Import Payments"
@@ -237,6 +241,7 @@ export default function Payments() {
           { key: "reference_number", label: "Reference / Cheque Number" },
         ]}
         onImport={async (rows) => {
+          if (!canWritePayments) { throw new Error("Payment write permission is required for imports."); }
           const paymentsToInsert = rows.map((row) => ({
             insurance_company_id: row.insurance_company_id,
             amount_paid: Number(row.amount_paid),
@@ -249,7 +254,7 @@ export default function Payments() {
           const { error } = await (supabase.rpc as any)("import_payments_with_ledger", { p_rows: paymentsToInsert });
           if (error) throw error;
         }}
-      />
+      />}
     </div>
   );
 }
