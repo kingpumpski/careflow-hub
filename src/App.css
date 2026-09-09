@@ -73,6 +73,19 @@
   }
 }
 
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .shell-content {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Compact dashboard cards and controls on phones. */
 @media (max-width: 767px) {
   html,
