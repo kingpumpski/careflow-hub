@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS insurance_companies_select_permission ON public.insurance_companies;
