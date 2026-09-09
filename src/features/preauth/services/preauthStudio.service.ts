@@ -50,7 +50,7 @@ function toReviewInput(payload: Record<string, unknown>, items: StudioItem[]): P
 export async function getPreAuthorizationRevision(preauthId: string): Promise<string | null> {
   if (!preauthId) throw new Error("Pre-authorization ID is required.");
   if (getCareFlowDataMode() === "offline") {
-    const rows = await listOffline<Record<string, any>>("pre_authorizations");
+    const rows = await listOffline<Record<string, any>>("preauthorizations");
     const row = rows.find((item) => String(item.id) === preauthId);
     return row?.updated_at ?? row?.updatedAt ?? null;
   }
