@@ -13,7 +13,7 @@ const actionColors: Record<string, string> = {
 };
 
 export default function AuditTrail() {
-  const { data: logs, isLoading } = useSupabaseQuery("audit_logs");
+  const { data: logs, isLoading } = useSupabaseQuery("audit_logs", { orderBy: "changed_at" });
   const { data: profiles } = useSupabaseQuery("profiles");
   const [search, setSearch] = useState("");
   const [filterTable, setFilterTable] = useState("");
