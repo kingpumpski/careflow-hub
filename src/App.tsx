@@ -83,7 +83,7 @@ function ProtectedRoutes() {
   return <Suspense fallback={<RouteFallback />}><Routes><Route element={<AppShell />}>
     <Route path="/" element={<Dashboard />} />
     <Route path="/pre-auth" element={<PermissionRoute permission="preauth.read"><PreAuthorization /></PermissionRoute>} />
-    <Route path="/pre-auth/studio" element={<PermissionRoute permission="preauth.read"><PreAuthorizationStudioRoute /></PermissionRoute>} />
+    <Route path="/pre-auth/studio" element={<PermissionRoute permission="preauth.write"><PreAuthorizationStudioRoute /></PermissionRoute>} />
     <Route path="/claims" element={<PermissionRoute permission="claims.read"><Claims /></PermissionRoute>} />
     <Route path="/claims/settlements" element={<PermissionRoute permission="payments.read"><ClaimsSettlement /></PermissionRoute>} />
     <Route path="/payments" element={<PermissionRoute permission="payments.read"><Payments /></PermissionRoute>} />
