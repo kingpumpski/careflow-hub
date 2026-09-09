@@ -149,6 +149,7 @@
   .data-table th { @apply text-left font-semibold text-muted-foreground uppercase text-xs tracking-wider py-3 px-4 border-b; }
   .data-table td { @apply py-3 px-4 border-b border-border/50; }
   .table-scroll { @apply w-full min-w-0 overflow-x-auto overscroll-x-contain; }
+  .table-scroll .data-table { min-width: 680px; }
 }
 
 @media (max-width: 767px) {
@@ -160,9 +161,9 @@
   .page-header > div:last-child > * { flex: 1 1 auto; min-width: 0; }
   .page-title { @apply text-xl; }
   .page-description { @apply text-xs leading-5; }
-  .data-table { min-width: 680px; }
-  .data-table th { @apply py-2 px-3 text-[10px]; }
-  .data-table td { @apply py-2 px-3 text-xs; }
+  .data-table { min-width: 0; table-layout: auto; }
+  .data-table th { @apply py-2 px-2 text-[10px]; }
+  .data-table td { @apply py-2 px-2 text-xs; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 420px) {
