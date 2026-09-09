@@ -46,7 +46,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
     return () => { supabase.removeChannel(channel); };
   }, [table, queryClient, offline, enabled]);
   return useQuery({
-    queryKey: [table, options?.select, options?.orderBy, options?.filters, offline],
+    queryKey: [table, options?.select, options?.orderBy, options?.filters, offline, enabled],
     enabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
