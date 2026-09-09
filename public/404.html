@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareFlow</title>
+    <script>
+      // GitHub Pages has no server-side SPA fallback. Preserve deep links and
+      // hand them back to the Vite/React entry point.
+      (function () {
+        var base = "/careflow-hub/";
+        var target = window.location.pathname + window.location.search + window.location.hash;
+        if (target.indexOf(base) === 0) target = target.slice(base.length);
+        window.location.replace(base + "?cf_route=" + encodeURIComponent("/" + target));
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
