@@ -122,11 +122,36 @@ export function useSupabaseBulkInsert(table: TableName) {
   });
 }
 
+function normalizePreauthTransitionState(values: Record<string, any>) {
+  const raw = String(values.current_state ?? values.status ?? "");
+  const map: Record<string, string> = {
+    draft: "Draft",
+    pending: "PendingApproval",
+    pendingapproval: "PendingApproval",
+    approved: "Approved",
+    rejected: "Rejected",
+    completed: "Completed",
+  };
+  return map[raw.toLowerCase()] ?? raw;
+}
+
 export function useSupabaseUpdate(table: TableName) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...values }: Record<string, any>) => {
-      if (getCareFlowDataMode() === "offline") {
+      const offline = getCareFlowDataMode() === "offline";
+      if (!offline && table === "pre_authorizations" && (Object.prototype.hasOwnProperty.call(values, "current_state") || Object.prototype.hasOwnProperty.call(values, "status"))) {
+        const targetState = normalizePreauthTransitionState(values);
+        if (!["Draft", "PendingApproval", "Approved", "Rejected", "Completed"].includes(targetState)) throw new Error(`Invalid pre-authorization state: ${targetState}`);
+        const { data, error } = await (supabase.rpc as any)("transition_preauthorization_atomic", {
+          p_preauth_id: id,
+          p_target_state: targetState,
+          p_note: values.rejection_reason ?? values.note ?? null,
+        });
+        if (error) throw error;
+        return data;
+      }
+      if (offline) {
         const entity = OFFLINE_ENTITY_BY_TABLE[table];
         if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
         const { getOffline, putOffline } = await import("@/modules/offline/offline-store");
