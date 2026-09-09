@@ -26,23 +26,18 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
+        // Only isolate genuinely heavy, independently useful libraries. Keep
+        // React, router, Radix, TanStack and the general dependency graph under
+        // Rollup's normal chunking so static builds cannot create framework
+        // initialization cycles (the previous broad vendor split caused
+        // React.createContext to be read before the React runtime initialized).
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-
-          // Keep the React runtime together. Broad substring matching such as
-          // `id.includes("react")` can incorrectly pull react-* integrations,
-          // react-router, lucide-react and @tanstack/react-query into the same
-          // runtime chunk and create circular initialization order failures in
-          // static production builds (e.g. React.createContext undefined).
-          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "react-vendor";
-          if (id.includes("node_modules/@supabase/")) return "supabase";
           if (id.includes("node_modules/recharts/") || id.includes("node_modules/d3-")) return "charts";
           if (id.includes("node_modules/jspdf/") || id.includes("node_modules/html2canvas/")) return "document-export";
           if (id.includes("node_modules/xlsx/")) return "spreadsheet";
-          if (id.includes("node_modules/@radix-ui/") || id.includes("node_modules/lucide-react/")) return "ui-vendor";
-          if (id.includes("node_modules/@tanstack/")) return "query-vendor";
-
-          return "vendor";
+          if (id.includes("node_modules/@supabase/")) return "supabase";
+          return undefined;
         },
       },
     },
