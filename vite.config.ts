@@ -29,13 +29,18 @@ export default defineConfig(({ mode }) => ({
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
 
-          if (id.includes("@supabase")) return "supabase";
-          if (id.includes("recharts") || id.includes("d3-")) return "charts";
-          if (id.includes("jspdf") || id.includes("html2canvas")) return "document-export";
-          if (id.includes("xlsx")) return "spreadsheet";
-          if (id.includes("react") || id.includes("scheduler")) return "react-vendor";
-          if (id.includes("@radix-ui") || id.includes("lucide-react")) return "ui-vendor";
-          if (id.includes("@tanstack")) return "query-vendor";
+          // Keep the React runtime together. Broad substring matching such as
+          // `id.includes("react")` can incorrectly pull react-* integrations,
+          // react-router, lucide-react and @tanstack/react-query into the same
+          // runtime chunk and create circular initialization order failures in
+          // static production builds (e.g. React.createContext undefined).
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "react-vendor";
+          if (id.includes("node_modules/@supabase/")) return "supabase";
+          if (id.includes("node_modules/recharts/") || id.includes("node_modules/d3-")) return "charts";
+          if (id.includes("node_modules/jspdf/") || id.includes("node_modules/html2canvas/")) return "document-export";
+          if (id.includes("node_modules/xlsx/")) return "spreadsheet";
+          if (id.includes("node_modules/@radix-ui/") || id.includes("node_modules/lucide-react/")) return "ui-vendor";
+          if (id.includes("node_modules/@tanstack/")) return "query-vendor";
 
           return "vendor";
         },
