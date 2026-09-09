@@ -24,23 +24,12 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    rollupOptions: {
-      output: {
-        // Only isolate genuinely heavy, independently useful libraries. Keep
-        // React, router, Radix, TanStack and the general dependency graph under
-        // Rollup's normal chunking so static builds cannot create framework
-        // initialization cycles (the previous broad vendor split caused
-        // React.createContext to be read before the React runtime initialized).
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-          if (id.includes("node_modules/recharts/") || id.includes("node_modules/d3-")) return "charts";
-          if (id.includes("node_modules/jspdf/") || id.includes("node_modules/html2canvas/")) return "document-export";
-          if (id.includes("node_modules/xlsx/")) return "spreadsheet";
-          if (id.includes("node_modules/@supabase/")) return "supabase";
-          return undefined;
-        },
-      },
-    },
-    chunkSizeWarningLimit: 450,
+    // Let Rollup preserve the dependency graph instead of manually forcing
+    // framework/vendor modules into shared chunks. The previous manual split
+    // could produce a static-hosting initialization cycle where React's
+    // createContext was accessed before the React runtime was initialized.
+    // Route-level React.lazy() and explicit heavy-library imports still provide
+    // natural code splitting without risking framework execution order.
+    chunkSizeWarningLimit: 1000,
   },
 }));
