@@ -3,6 +3,14 @@
 #root {
   width: 100%;
   min-height: 100vh;
+  min-width: 0;
+}
+
+/* Prevent shell-level horizontal overflow; dense data components should scroll locally. */
+.shell-content {
+  min-width: 0;
+  max-width: 100%;
+  animation: shell-fade-in 220ms ease-out;
 }
 
 /* Custom scrollbars for the shell and sidebar */
@@ -41,8 +49,70 @@
   }
 }
 
-.shell-content {
-  animation: shell-fade-in 220ms ease-out;
+/* Compact dashboard cards and controls on phones. */
+@media (max-width: 767px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .page-header {
+    margin-bottom: 1rem;
+  }
+
+  .page-title {
+    font-size: 1.25rem;
+    line-height: 1.35;
+  }
+
+  .page-description {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .stat-card,
+  .surface-card,
+  .kpi-card {
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.875rem;
+    border-radius: 0.75rem;
+  }
+
+  .data-table {
+    min-width: 42rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .shell-content > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .data-table {
+    min-width: 36rem;
+  }
+
+  .stat-card,
+  .surface-card,
+  .kpi-card {
+    padding: 0.75rem;
+  }
 }
 
 /* Print: hide navigation chrome so reports print clean */
