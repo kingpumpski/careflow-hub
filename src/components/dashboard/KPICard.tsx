@@ -153,11 +153,7 @@ export default function KPICard({
             aria-expanded={infoOpen}
             onClick={(event) => { event.stopPropagation(); setInfoOpen((open) => !open); }}
             onMouseEnter={() => setInfoOpen(true)}
-            onMouseLeave={() => setInfoOpen(false)}
             onFocus={() => setInfoOpen(true)}
-            onBlur={(event) => {
-              if (!event.currentTarget.closest("[role=button]")?.contains(event.relatedTarget as Node | null)) setInfoOpen(false);
-            }}
             className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 transition-colors"
           >
             <Info className="w-4 h-4" aria-hidden="true" />
