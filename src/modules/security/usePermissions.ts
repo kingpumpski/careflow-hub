@@ -24,7 +24,9 @@ export function usePermissions() {
       const effective = Array.isArray(data)
         ? data.map((row: { permission_key?: string }) => row.permission_key).filter(Boolean) as Permission[]
         : [];
-      setServerPermissions(!error && effective.length > 0 ? new Set(effective) : null);
+      // A successful RPC is authoritative, including an intentionally empty permission set.
+      // Fall back to role defaults only when the server lookup itself fails.
+      setServerPermissions(error ? null : new Set(effective));
       setPermissionLoading(false);
     })();
     return () => { active = false; };
