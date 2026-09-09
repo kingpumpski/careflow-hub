@@ -36,16 +36,18 @@ async function listOfflineTable(table: TableName, options?: { orderBy?: string; 
   return rows;
 }
 
-export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any> }) {
+export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean }) {
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
+  const enabled = options?.enabled ?? true;
   useEffect(() => {
-    if (offline || !REALTIME_TABLES.includes(table)) return;
+    if (!enabled || offline || !REALTIME_TABLES.includes(table)) return;
     const channel = supabase.channel(`realtime-${table}`).on("postgres_changes", { event: "*", schema: "public", table }, () => queryClient.invalidateQueries({ queryKey: [table] })).subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [table, queryClient, offline]);
+  }, [table, queryClient, offline, enabled]);
   return useQuery({
     queryKey: [table, options?.select, options?.orderBy, options?.filters, offline],
+    enabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
