@@ -4,8 +4,18 @@ export type CareFlowDataMode = "supabase" | "offline";
 export type CareFlowConfiguredMode = "hybrid" | CareFlowDataMode;
 
 const CONNECTIVITY_EVENT = "careflow:supabase-connectivity";
+const FALLBACK_SUPABASE_URL = "https://jajfdgknctzqypdtvmxo.supabase.co";
+const FALLBACK_SUPABASE_KEY = "sb_publishable_t0MoAS6_gg7y6nIA7cjJ2g_q1BihZMR";
 let supabaseReachable: boolean | null = null;
 let probeInFlight: Promise<boolean> | null = null;
+
+function getSupabaseUrl(): string {
+  return String(import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL);
+}
+
+function getSupabasePublishableKey(): string {
+  return String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || FALLBACK_SUPABASE_KEY);
+}
 
 export function getConfiguredDataMode(): CareFlowConfiguredMode {
   const configured = String(import.meta.env.VITE_CAREFLOW_DATA_MODE || "hybrid").toLowerCase();
@@ -14,7 +24,7 @@ export function getConfiguredDataMode(): CareFlowConfiguredMode {
 }
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
+  return Boolean(getSupabaseUrl() && getSupabasePublishableKey());
 }
 
 export function getSupabaseReachability(): boolean | null {
@@ -49,10 +59,10 @@ export async function probeSupabaseReachability(timeoutMs = 5_000): Promise<bool
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const url = `${String(import.meta.env.VITE_SUPABASE_URL).replace(/\/$/, "")}/auth/v1/health`;
+      const url = `${getSupabaseUrl().replace(/\/$/, "")}/auth/v1/health`;
       const response = await fetch(url, {
         method: "GET",
-        headers: { apikey: String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) },
+        headers: { apikey: getSupabasePublishableKey() },
         cache: "no-store",
         signal: controller.signal,
       });

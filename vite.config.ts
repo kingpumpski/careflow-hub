@@ -19,24 +19,25 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
+      "@/lib/exportUtils": path.resolve(__dirname, "./src/lib/exportUtils.lazy.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },
   build: {
     rollupOptions: {
       output: {
+        // Only isolate genuinely heavy, independently useful libraries. Keep
+        // React, router, Radix, TanStack and the general dependency graph under
+        // Rollup's normal chunking so static builds cannot create framework
+        // initialization cycles (the previous broad vendor split caused
+        // React.createContext to be read before the React runtime initialized).
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-
-          if (id.includes("@supabase")) return "supabase";
-          if (id.includes("recharts") || id.includes("d3-")) return "charts";
-          if (id.includes("jspdf") || id.includes("html2canvas")) return "document-export";
-          if (id.includes("xlsx")) return "spreadsheet";
-          if (id.includes("react") || id.includes("scheduler")) return "react-vendor";
-          if (id.includes("@radix-ui") || id.includes("lucide-react")) return "ui-vendor";
-          if (id.includes("@tanstack")) return "query-vendor";
-
-          return "vendor";
+          if (id.includes("node_modules/recharts/") || id.includes("node_modules/d3-")) return "charts";
+          if (id.includes("node_modules/jspdf/") || id.includes("node_modules/html2canvas/")) return "document-export";
+          if (id.includes("node_modules/xlsx/")) return "spreadsheet";
+          if (id.includes("node_modules/@supabase/")) return "supabase";
+          return undefined;
         },
       },
     },
