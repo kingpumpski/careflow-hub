@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -10,6 +10,7 @@ import { CareFlowRuntime } from "@/components/CareFlowRuntime";
 import ChunkLoadRecovery from "@/components/ChunkLoadRecovery";
 import { usePermissions } from "@/modules/security";
 import type { Permission } from "@/modules/security";
+import { APP_BRAND } from "@/config/branding";
 import "./App.css";
 
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
@@ -101,7 +102,7 @@ function ProtectedRoutes() {
     <Route path="/users" element={<PermissionRoute permission="users.manage"><UsersPage /></PermissionRoute>} />
     <Route path="/ledger" element={<PermissionRoute permission="ledger.read"><Ledger /></PermissionRoute>} />
     <Route path="/settings" element={<PermissionRoute permission="settings.manage"><SettingsPage /></PermissionRoute>} />
-    <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></PermissionRoute>} />
+    <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></Route>}
     <Route path="/provider-performance" element={<PermissionRoute permission="analytics.read"><ProviderPerformance /></PermissionRoute>} />
     <Route path="/fraud-alerts" element={<PermissionRoute permission="analytics.read"><FraudAlerts /></PermissionRoute>} />
     <Route path="/analytics" element={<PermissionRoute permission="analytics.read"><Analytics /></PermissionRoute>} />
@@ -121,5 +122,13 @@ function ProtectedRoutes() {
 }
 
 function AuthRoute() { const { user, loading } = useAuth(); if (loading) return <RouteFallback />; if (user) return <Navigate to="/" replace />; return <Suspense fallback={<RouteFallback />}><AuthPage /></Suspense>; }
-const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL}><AuthProvider><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
+
+function DocumentBranding() {
+  useEffect(() => {
+    document.title = APP_BRAND.displayName;
+  }, []);
+  return null;
+}
+
+const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL}><AuthProvider><DocumentBranding /><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
 export default App;
