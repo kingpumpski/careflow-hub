@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Building2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import PreAuthorizationStudio from "@/pages/PreAuthorizationStudio";
@@ -132,7 +133,20 @@ export default function PreAuthorizationStudioRoute() {
       );
     }
 
-    return <PreAuthorizationStudio />;
+    return (
+      <div className="w-full min-w-0 space-y-3">
+        <FacilityContextBar
+          facilities={facilities}
+          facilityId={facilityId}
+          onFacilityChange={(value) => {
+            setFacilityId(value);
+            storeFacilityId(value);
+          }}
+          administrator
+        />
+        <PreAuthorizationStudio />
+      </div>
+    );
   }
 
   if (!memberships.length) {
@@ -175,5 +189,66 @@ export default function PreAuthorizationStudioRoute() {
     );
   }
 
-  return <PreAuthorizationStudio />;
+  return (
+    <div className="w-full min-w-0 space-y-3">
+      {memberships.length > 1 && (
+        <FacilityContextBar
+          facilities={memberships.map((membership) => membership.facility).filter(Boolean) as PreAuthFacility[]}
+          facilityId={facilityId}
+          onFacilityChange={(value) => {
+            setFacilityId(value);
+            storeFacilityId(value);
+          }}
+        />
+      )}
+      <PreAuthorizationStudio />
+    </div>
+  );
+}
+
+function FacilityContextBar({
+  facilities,
+  facilityId,
+  onFacilityChange,
+  administrator = false,
+}: {
+  facilities: PreAuthFacility[];
+  facilityId: string;
+  onFacilityChange: (value: string) => void;
+  administrator?: boolean;
+}) {
+  const selected = facilities.find((facility) => facility.id === facilityId);
+  if (!selected) return null;
+
+  return (
+    <section className="surface-card flex min-w-0 flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4" aria-label="Pre-authorization facility context">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
+          <Building2 className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Working facility</p>
+          <p className="truncate text-sm font-semibold" title={selected.name}>{selected.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{administrator ? "System administrator context" : "Facility-scoped pre-authorization workspace"}</p>
+        </div>
+      </div>
+      {facilities.length > 1 && (
+        <div className="w-full min-w-0 sm:w-auto sm:min-w-[16rem]">
+          <Label htmlFor="preauth-facility-context" className="sr-only">Working facility</Label>
+          <select
+            id="preauth-facility-context"
+            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm sm:max-w-xs"
+            value={facilityId}
+            onChange={(event) => onFacilityChange(event.target.value)}
+          >
+            {facilities.map((facility) => (
+              <option key={facility.id} value={facility.id}>
+                {facility.name}{facility.code ? ` (${facility.code})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </section>
+  );
 }
