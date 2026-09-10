@@ -40,7 +40,7 @@ export default function AppShell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="app-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 md:p-6">
+        <main className="app-main min-w-0 flex-1 overflow-x-hidden p-3 pb-20 sm:p-4 sm:pb-6 md:p-6 md:pb-6">
           <div className="shell-content mx-auto w-full min-w-0 max-w-[1600px]">
             <Outlet />
           </div>
