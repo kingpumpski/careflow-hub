@@ -19,34 +19,11 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
 
 const statusStyles: Record<string, string> = {
-  Draft: "bg-muted text-muted-foreground border-border",
-  PendingApproval: "bg-warning/10 text-warning border-warning/20",
-  Approved: "bg-success/10 text-success border-success/20",
-  Rejected: "bg-destructive/10 text-destructive border-destructive/20",
-  Completed: "bg-info/10 text-info border-info/20",
-  approved: "bg-success/10 text-success border-success/20",
-  pending: "bg-warning/10 text-warning border-warning/20",
-  rejected: "bg-destructive/10 text-destructive border-destructive/20",
-  draft: "bg-muted text-muted-foreground border-border",
-  completed: "bg-info/10 text-info border-info/20",
+  Draft: "bg-muted text-muted-foreground border-border", PendingApproval: "bg-warning/10 text-warning border-warning/20", Approved: "bg-success/10 text-success border-success/20", Rejected: "bg-destructive/10 text-destructive border-destructive/20", Completed: "bg-info/10 text-info border-info/20",
+  approved: "bg-success/10 text-success border-success/20", pending: "bg-warning/10 text-warning border-warning/20", rejected: "bg-destructive/10 text-destructive border-destructive/20", draft: "bg-muted text-muted-foreground border-border", completed: "bg-info/10 text-info border-info/20",
 };
-
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  Draft: ["PendingApproval"],
-  PendingApproval: ["Approved", "Rejected", "Draft"],
-  Approved: ["Completed", "Rejected"],
-  Rejected: ["Draft"],
-  Completed: [],
-};
-
-function normState(s?: string): string {
-  if (!s) return "Draft";
-  const map: Record<string, string> = {
-    draft: "Draft", pending: "PendingApproval", approved: "Approved",
-    rejected: "Rejected", completed: "Completed",
-  };
-  return map[s] || (["Draft", "PendingApproval", "Approved", "Rejected", "Completed"].includes(s) ? s : "Draft");
-}
+const ALLOWED_TRANSITIONS: Record<string, string[]> = { Draft: ["PendingApproval"], PendingApproval: ["Approved", "Rejected", "Draft"], Approved: ["Completed", "Rejected"], Rejected: ["Draft"], Completed: [] };
+function normState(s?: string): string { if (!s) return "Draft"; const map: Record<string, string> = { draft: "Draft", pending: "PendingApproval", approved: "Approved", rejected: "Rejected", completed: "Completed" }; return map[s] || (["Draft", "PendingApproval", "Approved", "Rejected", "Completed"].includes(s) ? s : "Draft"); }
 
 export default function PreAuthorization() {
   const { user } = useAuth();
@@ -64,7 +41,6 @@ export default function PreAuthorization() {
   const [sending, setSending] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
-
   const { data: preauths, isLoading } = useSupabaseQuery("pre_authorizations");
   const { data: patients } = useSupabaseQuery("patients");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -74,10 +50,7 @@ export default function PreAuthorization() {
   const updateMutation = useSupabaseUpdate("pre_authorizations");
   const insertNotif = useSupabaseInsert("notifications");
 
-  const permissionDenied = (action: string) => {
-    toast({ title: "Permission denied", description: `You do not have permission to ${action}.`, variant: "destructive" });
-  };
-
+  const permissionDenied = (action: string) => toast({ title: "Permission denied", description: `You do not have permission to ${action}.`, variant: "destructive" });
   const canTransition = (target: string) => target === "PendingApproval" || target === "Draft" ? canWrite : canApprove;
   const getPatientName = (id: string) => (patients || []).find((p: any) => p.id === id)?.patient_name || "—";
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
@@ -86,180 +59,55 @@ export default function PreAuthorization() {
   const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
   const companyInfo = buildLetterheadConfig(getS);
 
-  const notifyTransition = async (pa: any, newState: string, note?: string) => {
-    try {
-      await insertNotif.mutateAsync({
-        user_id: user?.id,
-        title: `Pre-Auth ${newState}`,
-        message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`,
-        type: "preauth",
-        read: false,
-      });
-    } catch {
-      // Notification failure must not turn a successful lifecycle transition into a failed operation.
-    }
-  };
-
-  const buildEmailDraft = (pa: any) => {
-    const patient = (patients || []).find((p: any) => p.id === pa.patient_id);
-    const insurer = (insurers || []).find((i: any) => i.id === pa.insurance_company_id);
-    const proc = (procedures || []).find((p: any) => p.id === pa.procedure_id);
-    const patientName = patient?.patient_name || "Patient";
-    const membership = patient?.membership_number || "—";
-    const procName = proc?.procedure_name || pa.diagnosis || "treatment";
-    const procDate = pa.procedure_date || "scheduled date";
-    const isFuture = pa.procedure_date && new Date(pa.procedure_date) >= new Date(new Date().toDateString());
-    const verb = isFuture ? "has or is scheduled to undergo" : "has successfully undergone";
-    const diagBullets = [...((pa.custom_diagnoses || []) as string[]), pa.diagnosis].filter(Boolean).map((d: string) => `• ${d}`).join("\n");
-    const officer = getS("officer_name") || "Claims Officer";
-    const position = getS("officer_position") || "Claims Officer";
-    const officerPhone = getS("officer_phone") || "";
-    const senderEmail = getS("claims_sender_email") || getS("provider_email") || "";
-    const hospital = getS("provider_name") || "Hospital";
-    const subject = `PRE-AUTHORIZATION REQUEST – ${patientName.toUpperCase()}`;
-    const body = `Dear ${insurer?.contact_person || "Sir/Madam"},\n\nThe above-named client with membership number "${membership}" ${verb} a/an "${procName}" procedure on "${procDate}".\n\nInitial Diagnosis:\n${diagBullets || "• —"}\n\nKindly find attached a copy of the pre-authorization request document for your review.\n\nDo not hesitate to reach us if you require further information.\n\nThank you.\n\n${officer}\n${position}\n${officerPhone}\n${senderEmail}\n${hospital}`;
-    const to = [insurer?.email].filter(Boolean).join(",");
-    const cc = [...((insurer?.additional_emails || []) as string[]), ...((getS("claims_cc_emails") || "").split(",").map((s: string) => s.trim()).filter(Boolean))].join(",");
-    return { to, cc, subject, body };
-  };
-
-  const reloadTimeline = async (id: string) => {
-    const { data: v } = await (supabase.from("preauth_versions") as any).select("*").eq("preauth_id", id).order("version_number", { ascending: false });
-    setVersions(v || []);
-    const { data: e } = await (supabase.from("preauth_email_log") as any).select("*").eq("preauth_id", id).order("created_at", { ascending: false });
-    setEmailLog(e || []);
-  };
+  const notifyTransition = async (pa: any, newState: string, note?: string) => { try { await insertNotif.mutateAsync({ user_id: user?.id, title: `Pre-Auth ${newState}`, message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`, type: "preauth", read: false }); } catch {} };
+  const reloadTimeline = async (id: string) => { const { data: v } = await (supabase.from("preauth_versions") as any).select("*").eq("preauth_id", id).order("version_number", { ascending: false }); setVersions(v || []); const { data: e } = await (supabase.from("preauth_email_log") as any).select("*").eq("preauth_id", id).order("created_at", { ascending: false }); setEmailLog(e || []); };
 
   const handleTransition = async (pa: any, target: string, note?: string) => {
-    if (!canTransition(target)) {
-      permissionDenied(target === "Approved" || target === "Rejected" || target === "Completed" ? "approve or reject pre-authorizations" : "edit pre-authorizations");
-      return false;
-    }
+    if (!canTransition(target)) { permissionDenied(target === "Approved" || target === "Rejected" || target === "Completed" ? "approve or reject pre-authorizations" : "edit pre-authorizations"); return false; }
     const current = normState(pa.current_state || pa.status);
-    if (!ALLOWED_TRANSITIONS[current]?.includes(target)) {
-      toast({ title: "Invalid transition", description: `${current} → ${target} is not allowed`, variant: "destructive" });
-      return false;
-    }
+    if (!ALLOWED_TRANSITIONS[current]?.includes(target)) { toast({ title: "Invalid transition", description: `${current} → ${target} is not allowed`, variant: "destructive" }); return false; }
     const updates: any = { id: pa.id, current_state: target, status: target === "PendingApproval" ? "pending" : target.toLowerCase() };
     if (target === "Approved") { updates.approved_at = new Date().toISOString(); updates.approved_by = user?.id; }
     if (target === "Rejected" && note) updates.rejection_reason = note;
     if (target === "PendingApproval") updates.submitted_at = new Date().toISOString();
-    try {
-      await updateMutation.mutateAsync(updates);
-      await notifyTransition({ ...pa, ...updates }, target, note);
-      toast({ title: `Moved to ${target}` });
-      if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id);
-      return true;
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-      return false;
-    }
+    try { await updateMutation.mutateAsync(updates); await notifyTransition({ ...pa, ...updates }, target, note); toast({ title: `Moved to ${target}` }); if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id); return true; }
+    catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); return false; }
   };
 
-  const handleView = async (pa: any) => {
-    setViewPreauth(pa);
-    const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id);
-    setViewItems(data || []);
-    await reloadTimeline(pa.id);
+  const buildEmailDraft = (pa: any) => {
+    const patient = (patients || []).find((p: any) => p.id === pa.patient_id); const insurer = (insurers || []).find((i: any) => i.id === pa.insurance_company_id); const proc = (procedures || []).find((p: any) => p.id === pa.procedure_id);
+    const patientName = patient?.patient_name || "Patient"; const membership = patient?.membership_number || "—"; const procName = proc?.procedure_name || pa.diagnosis || "treatment"; const procDate = pa.procedure_date || "scheduled date";
+    const isFuture = pa.procedure_date && new Date(pa.procedure_date) >= new Date(new Date().toDateString()); const verb = isFuture ? "has or is scheduled to undergo" : "has successfully undergone"; const diagBullets = [...((pa.custom_diagnoses || []) as string[]), pa.diagnosis].filter(Boolean).map((d: string) => `• ${d}`).join("\n");
+    const officer = getS("officer_name") || "Claims Officer"; const position = getS("officer_position") || "Claims Officer"; const officerPhone = getS("officer_phone") || ""; const senderEmail = getS("claims_sender_email") || getS("provider_email") || ""; const hospital = getS("provider_name") || "Hospital";
+    const subject = `PRE-AUTHORIZATION REQUEST – ${patientName.toUpperCase()}`; const body = `Dear ${insurer?.contact_person || "Sir/Madam"},\n\nThe above-named client with membership number "${membership}" ${verb} a/an "${procName}" procedure on "${procDate}".\n\nInitial Diagnosis:\n${diagBullets || "• —"}\n\nKindly find attached a copy of the pre-authorization request document for your review.\n\nDo not hesitate to reach us if you require further information.\n\nThank you.\n\n${officer}\n${position}\n${officerPhone}\n${senderEmail}\n${hospital}`;
+    const to = [insurer?.email].filter(Boolean).join(","); const cc = [...((insurer?.additional_emails || []) as string[]), ...((getS("claims_cc_emails") || "").split(",").map((s: string) => s.trim()).filter(Boolean))].join(","); return { to, cc, subject, body };
   };
 
-  const handleExportPDF = async () => {
-    if (!viewPreauth) return;
-    await exportPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems, companyInfo);
-  };
+  const handleSendEmail = async (pa: any) => { setSending(true); try { const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); const docMeta = { ...pa, patient_name: getPatientName(pa.patient_id), insurance_name: getInsurerName(pa.insurance_company_id), doctor_name: getDoctorName(pa.doctor_id) }; const { to, cc, subject, body } = buildEmailDraft(pa); await exportPreAuthPDF(docMeta, itemsData || [], companyInfo); window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank"); toast({ title: "Email draft opened", description: "The PDF was downloaded; attach it before sending. The request was not marked as completed." }); if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } finally { setSending(false); } };
+  const handleView = async (pa: any) => { setViewPreauth(pa); const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); setViewItems(data || []); await reloadTimeline(pa.id); };
+  const handleExportPDF = async () => { if (!viewPreauth) return; await exportPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems, companyInfo); };
+  const handleStatusUpdate = async (e: React.FormEvent) => { e.preventDefault(); const pa = (preauths || []).find((p: any) => p.id === statusForm.id); if (!pa) return; const success = await handleTransition(pa, statusForm.status, statusForm.note); if (success) setStatusDialogOpen(false); };
 
-  const handleSendEmail = async (pa: any) => {
-    setSending(true);
-    try {
-      const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id);
-      const docMeta = { ...pa, patient_name: getPatientName(pa.patient_id), insurance_name: getInsurerName(pa.insurance_company_id), doctor_name: getDoctorName(pa.doctor_id) };
-      const { to, cc, subject, body } = buildEmailDraft(pa);
-      await exportPreAuthPDF(docMeta, itemsData || [], companyInfo);
-      window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
-      toast({ title: "Email draft opened", description: "The PDF was downloaded; attach it before sending. The request was not marked as completed." });
-      if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setSending(false); }
-  };
-
-  const handleStatusUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const pa = (preauths || []).find((p: any) => p.id === statusForm.id);
-    if (!pa) return;
-    const success = await handleTransition(pa, statusForm.status, statusForm.note);
-    if (success) setStatusDialogOpen(false);
-  };
-
-  if (showForm || editingPreauth) {
-    if (!canWrite) {
-      setShowForm(false); setEditingPreauth(null);
-      permissionDenied("create or edit pre-authorizations");
-      return null;
-    }
-    return <PreAuthForm onBack={() => { setShowForm(false); setEditingPreauth(null); }} editData={editingPreauth} />;
-  }
+  if (showForm || editingPreauth) { if (!canWrite) { setShowForm(false); setEditingPreauth(null); permissionDenied("create or edit pre-authorizations"); return null; } return <PreAuthForm onBack={() => { setShowForm(false); setEditingPreauth(null); }} editData={editingPreauth} />; }
 
   if (viewPreauth) {
-    const cur = normState(viewPreauth.current_state || viewPreauth.status);
-    const allowed = ALLOWED_TRANSITIONS[cur] || [];
-    return (
-      <div className="space-y-6 max-w-5xl min-w-0">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={() => setViewPreauth(null)}>← Back</Button>
-          <div className="flex-1 min-w-0"><h1 className="page-title">Pre-Authorization Details <span className="text-sm text-muted-foreground font-normal">v{viewPreauth.version || 1}</span></h1></div>
-          <Button variant="outline" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />Export PDF</Button>
-          {canWrite && <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>}
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 min-w-0">
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">Patient</p><p className="font-semibold mt-1 break-words">{getPatientName(viewPreauth.patient_id)}</p></div>
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">Insurance</p><p className="font-semibold mt-1 break-words">{getInsurerName(viewPreauth.insurance_company_id)}</p></div>
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">Doctor</p><p className="font-semibold mt-1 break-words">{getDoctorName(viewPreauth.doctor_id)}</p></div>
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">Procedure</p><p className="font-semibold mt-1 break-words">{getProcedureName(viewPreauth.procedure_id)}</p></div>
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">Diagnosis</p><p className="font-semibold mt-1 break-words">{viewPreauth.diagnosis || "—"}</p></div>
-          <div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">State</p><Badge variant="outline" className={`mt-1 ${statusStyles[cur] || ""}`}>{cur}</Badge></div>
-        </div>
-
-        <div className="stat-card min-w-0">
-          <h3 className="font-heading font-semibold mb-4">Cost Breakdown</h3>
-          <div className="table-scroll"><table className="data-table"><thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit Price (GH¢)</th><th>Amount (GH¢)</th></tr></thead><tbody>
-            {viewItems.map((item: any, i: number) => <tr key={item.id}><td>{i + 1}</td><td className="break-words">{item.description}</td><td>{item.quantity}</td><td>{Number(item.unit_price).toLocaleString()}</td><td className="font-semibold">{Number(item.amount).toLocaleString()}</td></tr>)}
-          </tbody><tfoot><tr className="font-bold"><td colSpan={4} className="text-right">Total</td><td className="text-primary">GH¢ {Number(viewPreauth.total_cost || 0).toLocaleString()}</td></tr></tfoot></table></div>
-        </div>
-
-        <div className="flex gap-3 flex-wrap">
-          {canWrite && allowed.some((target) => canTransition(target)) && <Button variant="outline" onClick={() => { const firstAllowed = allowed.find((target) => canTransition(target)) || cur; setStatusForm({ id: viewPreauth.id, status: firstAllowed, note: "" }); setStatusDialogOpen(true); }}>Change State</Button>}
-          {allowed.includes("PendingApproval") && canWrite && <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "PendingApproval")}><Send className="w-4 h-4 text-warning" />Submit for Approval</Button>}
-          {allowed.includes("Approved") && canApprove && <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "Approved")}><CheckCircle2 className="w-4 h-4 text-success" />Approve</Button>}
-          {allowed.includes("Rejected") && canApprove && <Button variant="outline" className="gap-2" onClick={() => { setStatusForm({ id: viewPreauth.id, status: "Rejected", note: "" }); setStatusDialogOpen(true); }}><XCircle className="w-4 h-4 text-destructive" />Reject</Button>}
-          {(cur === "Approved" || cur === "Completed") && <Button className="gap-2" onClick={() => handleSendEmail(viewPreauth)} disabled={sending}><Mail className="w-4 h-4" />{sending ? "Sending..." : "Send Email to Insurer"}</Button>}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-4 min-w-0">
-          <div className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-3 flex items-center gap-2"><History className="w-4 h-4" />Version History</h3>{versions.length === 0 ? <p className="text-sm text-muted-foreground">No prior versions yet. Versions are created on each state change.</p> : <ul className="space-y-2 max-h-72 overflow-y-auto">{versions.map(v => <li key={v.id} className="text-xs border-l-2 border-primary/40 pl-3 py-1"><div className="flex items-center justify-between gap-2"><span className="font-medium">v{v.version_number} · <Badge variant="outline" className={statusStyles[v.state] || ""}>{v.state}</Badge></span><span className="text-muted-foreground shrink-0">{new Date(v.created_at).toLocaleString()}</span></div><div className="text-muted-foreground break-words">By {v.edited_by_name || "system"}{v.change_note ? ` — ${v.change_note}` : ""}</div></li>)}</ul>}</div>
-          <div className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-3 flex items-center gap-2"><Mail className="w-4 h-4" />Email Delivery Log</h3>{emailLog.length === 0 ? <p className="text-sm text-muted-foreground">No email attempts yet.</p> : <ul className="space-y-2 max-h-72 overflow-y-auto">{emailLog.map(e => <li key={e.id} className="text-xs border-l-2 border-info/40 pl-3 py-1"><div className="flex items-center justify-between gap-2"><span className="font-medium truncate">{e.to_email}</span><Badge variant="outline" className={e.status === "sent" ? "bg-success/10 text-success border-success/20" : e.status === "failed" ? "bg-destructive/10 text-destructive border-destructive/20" : ""}>{e.status}</Badge></div><div className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(e.created_at).toLocaleString()}</div>{e.error_message && <div className="text-destructive mt-0.5 break-words">{e.error_message}</div>}</li>)}</ul>}</div>
-        </div>
-
-        <EntityDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen} title="Change State"><form onSubmit={handleStatusUpdate} className="space-y-4"><div><Label>Next State</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>{(ALLOWED_TRANSITIONS[cur] || []).filter((state) => canTransition(state)).map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><Label>Note (optional)</Label><Textarea rows={2} value={statusForm.note} onChange={(e) => setStatusForm({ ...statusForm, note: e.target.value })} className="mt-1" /></div><Button type="submit" className="w-full" disabled={updateMutation.isPending || !canTransition(statusForm.status)}>Update</Button></form></EntityDialog>
-      </div>
-    );
+    const cur = normState(viewPreauth.current_state || viewPreauth.status); const allowed = ALLOWED_TRANSITIONS[cur] || [];
+    return <div className="space-y-6 max-w-5xl min-w-0">
+      <div className="flex items-center gap-3 flex-wrap"><Button variant="ghost" size="sm" onClick={() => setViewPreauth(null)}>← Back</Button><div className="flex-1 min-w-0"><h1 className="page-title">Pre-Authorization Details <span className="text-sm text-muted-foreground font-normal">v{viewPreauth.version || 1}</span></h1></div><Button variant="outline" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />Export PDF</Button>{canWrite && <Button className="gap-2" onClick={() => { setViewPreauth(null); setEditingPreauth(viewPreauth); }}><Pencil className="w-4 h-4" />Edit</Button>}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 min-w-0">{[["Patient", getPatientName(viewPreauth.patient_id)], ["Insurance", getInsurerName(viewPreauth.insurance_company_id)], ["Doctor", getDoctorName(viewPreauth.doctor_id)], ["Procedure", getProcedureName(viewPreauth.procedure_id)], ["Diagnosis", viewPreauth.diagnosis || "—"]].map(([label, value]) => <div key={String(label)} className="stat-card min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold mt-1 break-words">{value}</p></div>)}<div className="stat-card min-w-0"><p className="text-xs text-muted-foreground">State</p><Badge variant="outline" className={`mt-1 ${statusStyles[cur] || ""}`}>{cur}</Badge></div></div>
+      <div className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-4">Cost Breakdown</h3><div className="table-scroll"><table className="data-table"><thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit Price (GH¢)</th><th>Amount (GH¢)</th></tr></thead><tbody>{viewItems.map((item: any, i: number) => <tr key={item.id}><td>{i + 1}</td><td className="break-words">{item.description}</td><td>{item.quantity}</td><td>{Number(item.unit_price).toLocaleString()}</td><td className="font-semibold">{Number(item.amount).toLocaleString()}</td></tr>)}</tbody><tfoot><tr className="font-bold"><td colSpan={4} className="text-right">Total</td><td className="text-primary">GH¢ {Number(viewPreauth.total_cost || 0).toLocaleString()}</td></tr></tfoot></table></div></div>
+      <div className="flex gap-3 flex-wrap">{canWrite && allowed.some((target) => canTransition(target)) && <Button variant="outline" onClick={() => { const firstAllowed = allowed.find((target) => canTransition(target)) || cur; setStatusForm({ id: viewPreauth.id, status: firstAllowed, note: "" }); setStatusDialogOpen(true); }}>Change State</Button>}{allowed.includes("PendingApproval") && canWrite && <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "PendingApproval")}><Send className="w-4 h-4 text-warning" />Submit for Approval</Button>}{allowed.includes("Approved") && canApprove && <Button variant="outline" className="gap-2" onClick={() => handleTransition(viewPreauth, "Approved")}><CheckCircle2 className="w-4 h-4 text-success" />Approve</Button>}{allowed.includes("Rejected") && canApprove && <Button variant="outline" className="gap-2" onClick={() => { setStatusForm({ id: viewPreauth.id, status: "Rejected", note: "" }); setStatusDialogOpen(true); }}><XCircle className="w-4 h-4 text-destructive" />Reject</Button>}{(cur === "Approved" || cur === "Completed") && <Button className="gap-2" onClick={() => handleSendEmail(viewPreauth)} disabled={sending}><Mail className="w-4 h-4" />{sending ? "Sending..." : "Send Email to Insurer"}</Button>}</div>
+      <div className="grid md:grid-cols-2 gap-4 min-w-0"><div className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-3 flex items-center gap-2"><History className="w-4 h-4" />Version History</h3>{versions.length === 0 ? <p className="text-sm text-muted-foreground">No prior versions yet. Versions are created on each state change.</p> : <ul className="space-y-2 max-h-72 overflow-y-auto">{versions.map(v => <li key={v.id} className="text-xs border-l-2 border-primary/40 pl-3 py-1"><div className="flex items-center justify-between gap-2"><span className="font-medium">v{v.version_number} · <Badge variant="outline" className={statusStyles[v.state] || ""}>{v.state}</Badge></span><span className="text-muted-foreground shrink-0">{new Date(v.created_at).toLocaleString()}</span></div><div className="text-muted-foreground break-words">By {v.edited_by_name || "system"}{v.change_note ? ` — ${v.change_note}` : ""}</div></li>)}</ul>}</div><div className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-3 flex items-center gap-2"><Mail className="w-4 h-4" />Email Delivery Log</h3>{emailLog.length === 0 ? <p className="text-sm text-muted-foreground">No email attempts yet.</p> : <ul className="space-y-2 max-h-72 overflow-y-auto">{emailLog.map(e => <li key={e.id} className="text-xs border-l-2 border-info/40 pl-3 py-1"><div className="flex items-center justify-between gap-2"><span className="font-medium truncate">{e.to_email}</span><Badge variant="outline" className={e.status === "sent" ? "bg-success/10 text-success border-success/20" : e.status === "failed" ? "bg-destructive/10 text-destructive border-destructive/20" : ""}>{e.status}</Badge></div><div className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(e.created_at).toLocaleString()}</div>{e.error_message && <div className="text-destructive mt-0.5 break-words">{e.error_message}</div>}</li>)}</ul>}</div></div>
+      <EntityDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen} title="Change State"><form onSubmit={handleStatusUpdate} className="space-y-4"><div><Label>Next State</Label><select className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>{allowed.filter((state) => canTransition(state)).map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><Label>Note (optional)</Label><Textarea rows={2} value={statusForm.note} onChange={(e) => setStatusForm({ ...statusForm, note: e.target.value })} className="mt-1" /></div><Button type="submit" className="w-full" disabled={updateMutation.isPending || !canTransition(statusForm.status)}>Update</Button></form></EntityDialog>
+    </div>;
   }
 
   const filtered = (preauths || []).filter((pa: any) => getPatientName(pa.patient_id).toLowerCase().includes(search.toLowerCase()) || getInsurerName(pa.insurance_company_id).toLowerCase().includes(search.toLowerCase()));
   const countByState = (s: string) => (preauths || []).filter((p: any) => normState(p.current_state || p.status) === s).length;
-
-  return (
-    <div className="space-y-6 min-w-0">
-      <div className="page-header flex items-start justify-between gap-3 flex-wrap"><div className="min-w-0"><h1 className="page-title">Pre-Authorization Requests</h1><p className="page-description">Draft → Pending → Approved → Completed lifecycle with versioning and email tracking</p></div><div className="flex gap-2 flex-wrap">{canWrite && <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>}{canWrite && <Button onClick={() => setShowForm(true)} className="gap-2"><Plus className="w-4 h-4" />New Request</Button>}</div></div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 min-w-0">{[["Total", (preauths || []).length, ""],["Draft", countByState("Draft"), "text-muted-foreground"],["Pending", countByState("PendingApproval"), "text-warning"],["Approved", countByState("Approved"), "text-success"],["Completed", countByState("Completed"), "text-info"]].map(([label, value, cls]) => <div key={String(label)} className="stat-card text-center min-w-0"><p className={`text-2xl font-bold font-heading ${cls}`}>{value}</p><p className="text-xs text-muted-foreground mt-1">{label}</p></div>)}</div>
-
-      <div className="stat-card min-w-0"><div className="flex items-center gap-3 mb-4"><div className="relative flex-1 max-w-sm min-w-0"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search by patient or insurance..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
-        {isLoading ? <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Patient</th><th>Insurance</th><th>Procedure</th><th>Total</th><th>State</th><th>v</th><th>Date</th><th>Actions</th></tr></thead><tbody>{filtered.map((pa: any) => { const cur = normState(pa.current_state || pa.status); return <tr key={pa.id} className="hover:bg-muted/50 transition-colors"><td className="font-medium break-words">{getPatientName(pa.patient_id)}</td><td className="break-words">{getInsurerName(pa.insurance_company_id)}</td><td className="break-words">{getProcedureName(pa.procedure_id)}</td><td className="font-semibold whitespace-nowrap">GH¢ {Number(pa.total_cost || 0).toLocaleString()}</td><td><Badge variant="outline" className={statusStyles[cur] || ""}>{cur}</Badge></td><td className="text-muted-foreground">v{pa.version || 1}</td><td className="text-muted-foreground whitespace-nowrap">{pa.procedure_date || "—"}</td><td><div className="flex items-center gap-1"><button onClick={() => handleView(pa)} className="p-1.5 rounded hover:bg-muted" aria-label="View pre-authorization"><Eye className="w-4 h-4 text-muted-foreground" /></button>{canWrite && <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted" aria-label="Edit pre-authorization"><Pencil className="w-4 h-4 text-muted-foreground" /></button>}</div></td></tr>; })}{filtered.length === 0 && <tr><td colSpan={8} className="text-center text-muted-foreground py-8">No pre-authorizations. {canWrite ? 'Click "New Request" to create one.' : 'You have read-only access to this module.'}</td></tr>}</tbody></table></div>}
-      </div>
-
-      {canWrite && <BulkImportDialog open={importOpen} onOpenChange={setImportOpen} title="Import Pre-Authorization Requests" description="Imports requests as drafts through the same atomic creation boundary used by the Pre-Authorization Studio. Submit each request through the normal lifecycle after review." columns={[{ key: "patient_id", label: "Patient", required: true, type: "lookup", options: (patients || []).map((p: any) => ({ label: p.patient_name, value: p.id })) }, { key: "insurance_company_id", label: "Insurance Company", type: "lookup", options: (insurers || []).map((i: any) => ({ label: i.company_name, value: i.id })) }, { key: "procedure_id", label: "Procedure", type: "lookup", options: (procedures || []).map((p: any) => ({ label: p.procedure_name, value: p.id })) }, { key: "doctor_id", label: "Doctor", type: "lookup", options: (doctors || []).map((d: any) => ({ label: d.doctor_name, value: d.id })) }, { key: "procedure_date", label: "Procedure Date", type: "date" }, { key: "total_cost", label: "Total Cost (GH¢)", type: "number" }, { key: "diagnosis", label: "Diagnosis" }, { key: "clinical_notes", label: "Clinical Notes" }, { key: "status", label: "Status", example: "draft", hint: "Imported requests are always created as Draft; submit them through the normal lifecycle after review." }]} onImport={async (rows) => { for (const row of rows) { await createPreAuthorizationAtomic({ patient_id: row.patient_id, insurance_company_id: row.insurance_company_id || null, procedure_id: row.procedure_id || null, doctor_id: row.doctor_id || null, procedure_date: row.procedure_date || null, total_cost: row.total_cost ?? 0, diagnosis: row.diagnosis || null, clinical_notes: row.clinical_notes || null, status: "draft", current_state: "Draft", created_by: user?.id || null }, [], true); } }} />}
-    </div>
-  );
+  return <div className="space-y-6 min-w-0">
+    <div className="page-header flex items-start justify-between gap-3 flex-wrap"><div className="min-w-0"><h1 className="page-title">Pre-Authorization Requests</h1><p className="page-description">Draft → Pending → Approved → Completed lifecycle with versioning and email tracking</p></div><div className="flex gap-2 flex-wrap">{canWrite && <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>}{canWrite && <Button onClick={() => setShowForm(true)} className="gap-2"><Plus className="w-4 h-4" />New Request</Button>}</div></div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 min-w-0">{[["Total", (preauths || []).length, ""], ["Draft", countByState("Draft"), "text-muted-foreground"], ["Pending", countByState("PendingApproval"), "text-warning"], ["Approved", countByState("Approved"), "text-success"], ["Completed", countByState("Completed"), "text-info"]].map(([label, value, cls]) => <div key={String(label)} className="stat-card text-center min-w-0"><p className={`text-2xl font-bold font-heading ${cls}`}>{value}</p><p className="text-xs text-muted-foreground mt-1">{label}</p></div>)}</div>
+    <div className="stat-card min-w-0"><div className="flex items-center gap-3 mb-4"><div className="relative flex-1 max-w-sm min-w-0"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search by patient or insurance..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>{isLoading ? <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Patient</th><th>Insurance</th><th>Procedure</th><th>Total</th><th>State</th><th>v</th><th>Date</th><th>Actions</th></tr></thead><tbody>{filtered.map((pa: any) => { const cur = normState(pa.current_state || pa.status); return <tr key={pa.id} className="hover:bg-muted/50 transition-colors"><td className="font-medium break-words">{getPatientName(pa.patient_id)}</td><td className="break-words">{getInsurerName(pa.insurance_company_id)}</td><td className="break-words">{getProcedureName(pa.procedure_id)}</td><td className="font-semibold whitespace-nowrap">GH¢ {Number(pa.total_cost || 0).toLocaleString()}</td><td><Badge variant="outline" className={statusStyles[cur] || ""}>{cur}</Badge></td><td className="text-muted-foreground">v{pa.version || 1}</td><td className="text-muted-foreground whitespace-nowrap">{pa.procedure_date || "—"}</td><td><div className="flex items-center gap-1"><button onClick={() => handleView(pa)} className="p-1.5 rounded hover:bg-muted" aria-label="View pre-authorization"><Eye className="w-4 h-4 text-muted-foreground" /></button>{canWrite && <button onClick={() => setEditingPreauth(pa)} className="p-1.5 rounded hover:bg-muted" aria-label="Edit pre-authorization"><Pencil className="w-4 h-4 text-muted-foreground" /></button>}</div></td></tr>; })}{filtered.length === 0 && <tr><td colSpan={8} className="text-center text-muted-foreground py-8">No pre-authorizations. {canWrite ? 'Click "New Request" to create one.' : 'You have read-only access to this module.'}</td></tr>}</tbody></table></div>}</div>
+    {canWrite && <BulkImportDialog open={importOpen} onOpenChange={setImportOpen} title="Import Pre-Authorization Requests" description="Imports requests as Drafts through the atomic creation boundary. Each row must include one charge line; review and submit through the normal lifecycle afterward." columns={[{ key: "patient_id", label: "Patient", required: true, type: "lookup", options: (patients || []).map((p: any) => ({ label: p.patient_name, value: p.id })) }, { key: "insurance_company_id", label: "Insurance Company", type: "lookup", options: (insurers || []).map((i: any) => ({ label: i.company_name, value: i.id })) }, { key: "procedure_id", label: "Procedure", type: "lookup", options: (procedures || []).map((p: any) => ({ label: p.procedure_name, value: p.id })) }, { key: "doctor_id", label: "Doctor", type: "lookup", options: (doctors || []).map((d: any) => ({ label: d.doctor_name, value: d.id })) }, { key: "procedure_date", label: "Procedure Date", type: "date" }, { key: "total_cost", label: "Total Cost (GH¢)", type: "number" }, { key: "charge_description", label: "Charge Description", required: true }, { key: "quantity", label: "Quantity", required: true, type: "number" }, { key: "unit_price", label: "Unit Price (GH¢)", required: true, type: "number" }, { key: "diagnosis", label: "Diagnosis" }, { key: "clinical_notes", label: "Clinical Notes" }]} onImport={async (rows) => { for (const row of rows) { const quantity = Number(row.quantity); const unitPrice = Number(row.unit_price); const amount = quantity * unitPrice; if (!row.patient_id || !row.charge_description || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("Each imported row requires a patient and a valid charge description, quantity and unit price."); await createPreAuthorizationAtomic({ patient_id: row.patient_id, insurance_company_id: row.insurance_company_id || null, procedure_id: row.procedure_id || null, doctor_id: row.doctor_id || null, procedure_date: row.procedure_date || null, total_cost: row.total_cost ?? amount, diagnosis: row.diagnosis || null, clinical_notes: row.clinical_notes || null, status: "draft", current_state: "Draft", created_by: user?.id || null }, [{ description: String(row.charge_description), quantity, unit_price: unitPrice, amount }], true); } }} />}
+  </div>;
 }
