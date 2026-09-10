@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "./preauthFacility.service";
-import { isFacilityInfrastructureAvailable } from "@/lib/schemaFallback";
+import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/schemaFallback";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { createOfflinePreAuthDraft, updateOfflinePreAuthDraft } from "@/modules/offline/preauth-offline-repository";
 import type { PreAuthReviewInput } from "@/modules/authorization/preauth-review";
@@ -40,7 +40,10 @@ export async function searchClientSuggestions(query: string, limit = 12): Promis
   let request = ((supabase as any).from("preauth_client_suggestions")).select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at").eq("facility_id", facilityId).order("last_used_at", { ascending: false }).limit(limit);
   if (q) { const pattern = `%${escapeLike(q)}%`; request = request.or(`normalized_name.ilike.${pattern},membership_number.ilike.${pattern},phone.ilike.${pattern},identifier.ilike.${pattern}`); }
   const { data, error } = await request;
-  if (error) throw error;
+  if (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
   return (data || []) as ClientSuggestion[];
 }
 
