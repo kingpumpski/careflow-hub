@@ -38,6 +38,11 @@ async function requireUser(req: Request) {
   });
   const { data: { user }, error } = await client.auth.getUser();
   if (error || !user) throw new Error("AUTH_REQUIRED");
+
+  const { data: permitted, error: permissionError } = await client.rpc("current_user_has_permission", {
+    p_permission_key: "masterdata.write",
+  });
+  if (permissionError || permitted !== true) throw new Error("FORBIDDEN");
   return user;
 }
 
@@ -116,6 +121,7 @@ Return: {"duplicate": boolean, "confidence": 0-1, "match_id": "<id-if-duplicate-
     return json(req, { duplicate, confidence, match_id: duplicate ? matchId : null, reason });
   } catch (cause: unknown) {
     if (cause instanceof Error && cause.message === "AUTH_REQUIRED") return json(req, { error: "Authentication required" }, 401);
+    if (cause instanceof Error && cause.message === "FORBIDDEN") return json(req, { error: "Insufficient permission" }, 403);
     console.error("ai-dedup-check failed", cause);
     return json(req, { duplicate: false, confidence: 0, reason: "Unable to complete duplicate check" }, 500);
   }
