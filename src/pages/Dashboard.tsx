@@ -17,6 +17,7 @@ import { buildDashboardInsights, buildTrendSeries, computeExecutiveKpis, compute
 import { managementRecommendations } from "@/modules/ai/services/insights";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { APP_BRAND } from "@/config/branding";
 
 const cedis = (v: number) => `GH¢ ${Math.round(v).toLocaleString()}`;
 const thousands = (v: number) => `GH¢ ${(v / 1000).toFixed(0)}K`;
@@ -67,7 +68,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 min-w-0">
       <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between min-w-0">
-        <div className="min-w-0"><h1 className="page-title flex items-center gap-2"><TrendingUp className="w-6 h-6 shrink-0" />CareFlow Hub</h1><p className="page-description">Executive claims intelligence — revenue, risk and operational health in real time.</p></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full lg:w-auto"><Button variant="outline" size="sm" onClick={() => navigate("/schedule")} className="min-h-10 w-full sm:w-auto">Generate schedule</Button><Button size="sm" onClick={() => navigate("/reports")} className="min-h-10 w-full sm:w-auto">Reports</Button></div>
+        <div className="min-w-0"><h1 className="page-title flex items-center gap-2"><TrendingUp className="w-6 h-6 shrink-0" />{APP_BRAND.displayName}</h1><p className="page-description">Executive claims intelligence — revenue, risk and operational health in real time.</p></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full lg:w-auto"><Button variant="outline" size="sm" onClick={() => navigate("/schedule")} className="min-h-10 w-full sm:w-auto">Generate schedule</Button><Button size="sm" onClick={() => navigate("/reports")} className="min-h-10 w-full sm:w-auto">Reports</Button></div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 min-w-0">
         <KPICard title="Total Claims Submitted" value={thousands(kpis.grossSubmitted)} hint={`${kpis.claimsCount} claims recorded`} tone="primary" icon={Shield} onClick={() => navigate("/claims")} {...sync} frames={yearFrames((y) => ({ value: thousands(y.kpis.grossSubmitted), hint: `${y.kpis.claimsCount} claims in ${y.year}` }))} />
