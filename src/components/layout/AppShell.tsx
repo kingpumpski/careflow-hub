@@ -11,6 +11,13 @@ export default function AppShell() {
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [mobileOpen]);
+
   return (
     <div className="flex min-h-screen w-full bg-background overflow-x-hidden">
       <div className="hidden lg:block shrink-0">
@@ -18,9 +25,14 @@ export default function AppShell() {
       </div>
 
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <div className="relative z-10 animate-in slide-in-from-left duration-200 max-w-[88vw]">
+        <div className="lg:hidden fixed inset-0 z-50 flex overscroll-contain">
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            className="absolute inset-0 bg-foreground/50 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="relative z-10 h-full max-w-[88vw] overflow-y-auto overscroll-contain animate-in slide-in-from-left duration-200">
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
