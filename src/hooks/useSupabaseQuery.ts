@@ -26,17 +26,17 @@ function scopeInsertValues(table: TableName, values: Record<string, any>) {
   return { ...values, facility_id: facilityId };
 }
 
-async function listOfflineTable(table: TableName, options?: { orderBy?: string; filters?: Record<string, any> }) {
+async function listOfflineTable(table: TableName, options?: { orderBy?: string; filters?: Record<string, any>; limit?: number }) {
   const entity = OFFLINE_ENTITY_BY_TABLE[table];
   if (!entity) return [];
   let rows = await listOffline<Record<string, any>>(entity);
   if (options?.filters) rows = rows.filter((row) => Object.entries(options.filters!).every(([key, value]) => row[key] === value));
   if (options?.orderBy) rows.sort((a, b) => String(b[options.orderBy!] ?? "").localeCompare(String(a[options.orderBy!] ?? "")));
   else rows.sort((a, b) => String(b.created_at ?? b.updated_at ?? "").localeCompare(String(a.created_at ?? a.updated_at ?? "")));
-  return rows;
+  return options?.limit ? rows.slice(0, options.limit) : rows;
 }
 
-export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean }) {
+export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean; limit?: number }) {
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
   const enabled = options?.enabled ?? true;
@@ -46,13 +46,14 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
     return () => { supabase.removeChannel(channel); };
   }, [table, queryClient, offline, enabled]);
   return useQuery({
-    queryKey: [table, options?.select, options?.orderBy, options?.filters, offline, enabled],
+    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, enabled],
     enabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
       if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : query.order("created_at", { ascending: false });
+      if (options?.limit) query = query.limit(options.limit);
       const { data, error } = await query;
       if (error) throw error;
       return data;
