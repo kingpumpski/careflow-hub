@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
-import { hasPermission, permissionsFor, ROLE_LABELS, type AppRole, type Permission } from "./permissions";
+import { hasPermission, permissionsFor, PERMISSION_CATALOG, ROLE_LABELS, type AppRole, type Permission } from "./permissions";
+
+const SYSTEM_ADMIN_ROLES = new Set<AppRole>(["superuser", "admin"]);
+const ALL_PERMISSIONS = new Set<Permission>(PERMISSION_CATALOG.map((permission) => permission.key));
 
 export function usePermissions() {
   const { userRole, roleLoading } = useAuth();
   const roles = useMemo<AppRole[]>(() => (userRole ? [userRole as AppRole] : []), [userRole]);
+  const isSystemAdministrator = roles.some((role) => SYSTEM_ADMIN_ROLES.has(role));
   const [serverPermissions, setServerPermissions] = useState<Set<Permission> | null>(null);
   const [permissionLoading, setPermissionLoading] = useState(false);
 
@@ -24,8 +28,8 @@ export function usePermissions() {
       const effective = Array.isArray(data)
         ? data.map((row: { permission_key?: string }) => row.permission_key).filter(Boolean) as Permission[]
         : [];
-      // A successful RPC is authoritative, including an intentionally empty permission set.
-      // Fall back to role defaults only when the server lookup itself fails.
+      // A successful RPC is authoritative for ordinary users. System administrators
+      // retain full control by role, independent of permission overrides or tenancy.
       setServerPermissions(error ? null : new Set(effective));
       setPermissionLoading(false);
     })();
@@ -33,14 +37,15 @@ export function usePermissions() {
   }, [userRole]);
 
   const fallback = useMemo(() => permissionsFor(roles), [roles]);
-  const permissions = serverPermissions ?? fallback;
+  const permissions = isSystemAdministrator ? ALL_PERMISSIONS : (serverPermissions ?? fallback);
   const loading = roleLoading || permissionLoading;
   return useMemo(() => ({
     roles,
     roleLabel: roles[0] ? ROLE_LABELS[roles[0]] ?? roles[0] : null,
     loading,
+    isSystemAdministrator,
     permissions,
-    can: (permission: Permission) => permissions.has(permission),
-    hasRolePermission: (permission: Permission) => hasPermission(roles, permission),
-  }), [roles, loading, permissions]);
+    can: (permission: Permission) => isSystemAdministrator || permissions.has(permission),
+    hasRolePermission: (permission: Permission) => isSystemAdministrator || hasPermission(roles, permission),
+  }), [roles, loading, isSystemAdministrator, permissions]);
 }
