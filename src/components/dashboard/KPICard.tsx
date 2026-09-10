@@ -57,7 +57,7 @@ export default function KPICard({ title, value, hint, description, trend = "flat
       onClick={onClick} onKeyDown={handleKeyDown}
       onMouseEnter={() => { setPaused(true); setInfoOpen(true); }} onMouseLeave={() => { setPaused(false); setInfoOpen(false); }}
       onFocus={() => setInfoOpen(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInfoOpen(false); }}
-      className={cn("kpi-card group relative text-left w-full min-w-0 overflow-visible", onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2")}
+      className={cn("kpi-card group relative text-left w-full min-w-0 overflow-hidden", onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2")}
     >
       <span id={descriptionId} className="sr-only">{resolvedDescription}</span>
       <div className="flex items-start justify-between gap-2 sm:gap-3 min-w-0">
@@ -81,8 +81,8 @@ export default function KPICard({ title, value, hint, description, trend = "flat
       </div>
       {typeof active.progress === "number" && <div className="mt-3 sm:mt-4 h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full transition-all duration-700 ease-out", toneBar[tone])} style={{ width: `${Math.max(0, Math.min(100, active.progress))}%` }} /></div>}
       {slideCount > 1 && <div className="mt-2.5 sm:mt-3 flex items-center gap-1">{slides.slice(0, slideCount).map((s, i) => <span key={s.label} className={cn("h-1 rounded-full transition-all duration-300", i === index ? cn("w-5", toneBar[tone]) : "w-1.5 bg-muted")} />)}</div>}
-      <div role="tooltip" aria-hidden={!infoOpen} className={cn("absolute z-50 left-0 right-0 top-full mt-2 rounded-xl border border-border bg-popover/95 p-3 text-xs leading-relaxed text-popover-foreground shadow-xl backdrop-blur-sm transition-all duration-150", infoOpen ? "opacity-100 translate-y-0 visible" : "opacity-0 -translate-y-1 invisible pointer-events-none")}>
-        <div className="flex items-start gap-2"><Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary" aria-hidden="true" /><p>{resolvedDescription}</p></div>
+      <div role="tooltip" aria-hidden={!infoOpen} className={cn("absolute z-50 inset-2 rounded-lg border border-border bg-popover/98 p-3 text-xs leading-relaxed text-popover-foreground shadow-lg backdrop-blur-sm overflow-y-auto overscroll-contain transition-all duration-150", infoOpen ? "opacity-100 translate-y-0 visible" : "opacity-0 translate-y-1 invisible pointer-events-none")}>
+        <div className="flex items-start gap-2 min-w-0"><Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary" aria-hidden="true" /><p className="min-w-0 break-words whitespace-normal">{resolvedDescription}</p></div>
       </div>
     </div>
   );
