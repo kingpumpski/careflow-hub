@@ -102,7 +102,7 @@ function ProtectedRoutes() {
     <Route path="/users" element={<PermissionRoute permission="users.manage"><UsersPage /></PermissionRoute>} />
     <Route path="/ledger" element={<PermissionRoute permission="ledger.read"><Ledger /></PermissionRoute>} />
     <Route path="/settings" element={<PermissionRoute permission="settings.manage"><SettingsPage /></PermissionRoute>} />
-    <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></Route>}
+    <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></PermissionRoute>} />
     <Route path="/provider-performance" element={<PermissionRoute permission="analytics.read"><ProviderPerformance /></PermissionRoute>} />
     <Route path="/fraud-alerts" element={<PermissionRoute permission="analytics.read"><FraudAlerts /></PermissionRoute>} />
     <Route path="/analytics" element={<PermissionRoute permission="analytics.read"><Analytics /></PermissionRoute>} />
