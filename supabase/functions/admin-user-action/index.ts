@@ -37,6 +37,7 @@ Deno.serve(async (req) => {
     if (roleError) return json(req, { error: "Unable to verify privileges" }, 500);
     const currentRole = (roles ?? []).find((role: { role?: string | null }) => VALID_ROLES.has(role.role ?? ""))?.role ?? null;
     if (currentRole !== "superuser" && currentRole !== "admin") return json(req, { error: "Forbidden" }, 403);
+    const isSuperuser = currentRole === "superuser";
     const audit = async (action: string, targetUserId?: string | null, metadata: Record<string, unknown> = {}) => {
       const { error } = await admin.from("security_audit_log").insert({
         actor_user_id: user.id,
@@ -77,6 +78,7 @@ Deno.serve(async (req) => {
       const password = body.password;
       const role = cleanText(body.role, 40);
       if (!/^\S+@\S+\.\S+$/.test(email) || !fullName || typeof password !== "string" || !VALID_ROLES.has(role)) return json(req, { error: "Valid name, email, password and role are required." }, 400);
+      if (!isSuperuser && role === "superuser") return json(req, { error: "Only a superuser can assign the superuser role." }, 403);
       if (password.length < 12 || password.length > 128) return json(req, { error: "Password must be between 12 and 128 characters." }, 400);
       const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } });
       if (error || !data.user) throw error ?? new Error("User creation failed");
@@ -105,6 +107,7 @@ Deno.serve(async (req) => {
       if (!isUuid(targetUserId)) return json(req, { error: "Valid target_user_id required" }, 400);
       const role = cleanText(body.role, 40);
       if (!VALID_ROLES.has(role)) return json(req, { error: "Invalid role" }, 400);
+      if (!isSuperuser && role === "superuser") return json(req, { error: "Only a superuser can assign the superuser role." }, 403);
       if (targetUserId === user.id && role !== currentRole) return json(req, { error: "You cannot change your own administrative role." }, 400);
       const rawOverrides = body.overrides;
       if (!Array.isArray(rawOverrides) || rawOverrides.length > MAX_PERMISSION_KEYS) return json(req, { error: "Invalid permission overrides" }, 400);
@@ -114,8 +117,9 @@ Deno.serve(async (req) => {
       if (permissionError) throw permissionError;
       const validKeys = new Set((validPermissions ?? []).map((p: { key: string }) => p.key));
       if (overrides.some((item) => !validKeys.has(item.permission_key))) return json(req, { error: "Unknown permission" }, 400);
-      const { data: targetRole, error: targetRoleError } = await admin.from("user_roles").select("id").eq("user_id", targetUserId).maybeSingle();
+      const { data: targetRole, error: targetRoleError } = await admin.from("user_roles").select("id, role").eq("user_id", targetUserId).maybeSingle();
       if (targetRoleError) throw targetRoleError;
+      if (!isSuperuser && targetRole?.role === "superuser") return json(req, { error: "Only a superuser can modify a superuser account." }, 403);
       if (targetRole?.id) {
         const { error } = await admin.from("user_roles").update({ role }).eq("id", targetRole.id);
         if (error) throw error;
