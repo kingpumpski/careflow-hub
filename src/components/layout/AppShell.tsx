@@ -25,14 +25,14 @@ export default function AppShell() {
       </aside>
 
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex overscroll-contain">
+        <div className="lg:hidden fixed inset-0 z-50 flex overscroll-contain overflow-hidden">
           <button
             type="button"
             aria-label="Close navigation menu"
             className="absolute inset-0 bg-foreground/50 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative z-10 h-full w-[min(18rem,88vw)] overflow-y-auto overscroll-contain animate-in slide-in-from-left duration-200">
+          <div className="relative z-10 h-full w-[min(18rem,88vw)] overflow-hidden animate-in slide-in-from-left duration-200">
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
