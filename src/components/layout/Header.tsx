@@ -19,8 +19,8 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   }, []);
 
   return (
-    <header className="h-14 sm:h-16 sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur-md flex items-center justify-between gap-2 px-2.5 sm:px-3 md:px-6 no-print">
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+    <header className="h-14 sm:h-16 sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur-md flex items-center justify-between gap-1.5 sm:gap-2 px-2 sm:px-3 md:px-6 no-print">
+      <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 min-w-0 flex-1">
         <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9 shrink-0" onClick={onMenuClick} aria-label="Open menu">
           <Menu className="w-5 h-5" />
         </Button>
@@ -28,12 +28,12 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search patients, claims, procedures..." className="pl-10 bg-muted/50 border-0 h-9 text-sm" />
         </div>
-        <div className="min-w-0 hidden sm:block overflow-hidden">
+        <div className="min-w-0 hidden sm:block overflow-hidden flex-1">
           <Breadcrumbs />
         </div>
       </div>
-      <div className="flex items-center gap-0.5 sm:gap-1 md:gap-3 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} className="h-9 w-9" aria-label="Toggle theme">
+      <div className="flex items-center gap-0 shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} className="h-9 w-9 sm:h-10 sm:w-10" aria-label="Toggle theme">
           {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
         <NotificationsPopover />
