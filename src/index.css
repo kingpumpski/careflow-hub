@@ -87,6 +87,8 @@
   .stat-card { @apply bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:shadow-md min-w-0 max-w-full overflow-hidden; overflow-wrap: anywhere; }
   .surface-card { @apply bg-card rounded-xl border border-border shadow-sm transition-all duration-200 min-w-0 max-w-full; overflow-wrap: anywhere; }
   .kpi-card { @apply relative bg-card rounded-xl border border-border p-5 shadow-sm transition-all duration-300 ease-out disabled:cursor-default min-w-0; transform: translateZ(0); overflow-wrap: anywhere; }
+  .stat-card > *, .surface-card > *, .kpi-card > * { min-width: 0; }
+  .stat-card svg, .kpi-card svg { flex-shrink: 0; }
   .page-header { @apply mb-6 min-w-0; }
   .page-header > * { min-width: 0; }
   .page-title { @apply text-2xl font-bold tracking-tight; overflow-wrap: anywhere; }
