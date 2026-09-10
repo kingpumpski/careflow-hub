@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getDocument } from "npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
 
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+const MAX_BODY_BYTES = 11_000_000;
+const MAX_DOCUMENT_BYTES = 8_000_000;
 const isAllowedOrigin = (origin: string | null) => !origin || allowedOrigins.includes(origin) || /^https?:\/\/localhost:\d+$/.test(origin) || /^https:\/\/[-a-z0-9]+\.app\.github\.dev$/.test(origin);
 const cors = (req: Request) => {
   const origin = req.headers.get("Origin");
@@ -22,6 +24,7 @@ function decodeDataUrl(dataUrl: string): Uint8Array {
   const metadata = dataUrl.slice(0, comma);
   if (!/;base64$/i.test(metadata)) throw new Error("Only base64 document payloads are supported");
   const binary = atob(dataUrl.slice(comma + 1));
+  if (binary.length > MAX_DOCUMENT_BYTES) throw new Error("DOCUMENT_TOO_LARGE");
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
@@ -44,24 +47,39 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
   return pages.join("\n\n").slice(0, 100_000);
 }
 
+async function requireAuthorizedUser(req: Request) {
+  const authorization = req.headers.get("Authorization");
+  const url = Deno.env.get("SUPABASE_URL");
+  const anon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!authorization?.startsWith("Bearer ") || !url || !anon) throw new Error("AUTH_REQUIRED");
+  const userClient = createClient(url, anon, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: { user }, error: authError } = await userClient.auth.getUser();
+  if (authError || !user) throw new Error("AUTH_REQUIRED");
+
+  // Document intake can create operational records, so require at least one relevant write capability.
+  const writePermissions = ["claims.write", "payments.write", "preauth.write", "masterdata.write", "ledger.write"];
+  const permissionResults = await Promise.all(writePermissions.map((permission) =>
+    userClient.rpc("current_user_has_permission", { p_permission_key: permission }),
+  ));
+  if (!permissionResults.some(({ data, error }) => !error && data === true)) throw new Error("FORBIDDEN");
+  return userClient;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
   try {
     if (!isAllowedOrigin(req.headers.get("Origin"))) return json(req, { error: "Origin not allowed" }, 403);
-    const authorization = req.headers.get("Authorization");
-    const url = Deno.env.get("SUPABASE_URL");
-    const anon = Deno.env.get("SUPABASE_ANON_KEY");
+    const contentLength = Number(req.headers.get("content-length") || 0);
+    if (contentLength > MAX_BODY_BYTES) return json(req, { error: "Document payload is too large. Please use a file below 8 MB." }, 413);
+
     const aiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!authorization?.startsWith("Bearer ") || !url || !anon) return json(req, { error: "Authentication required" }, 401);
     if (!aiKey) return json(req, { error: "Document transcription service is not configured." }, 503);
-    const userClient = createClient(url, anon, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) return json(req, { error: "Authentication required" }, 401);
+    await requireAuthorizedUser(req);
 
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     const fileName = typeof body?.file_name === "string" ? body.file_name.slice(0, 180) : "uploaded document";
-    const mimeType = typeof body?.mime_type === "string" ? body.mime_type.slice(0, 120) : "application/octet-stream";
+    const mimeType = typeof body?.mime_type === "string" ? body.mime_type.slice(0, 120).toLowerCase() : "application/octet-stream";
     const text = typeof body?.text === "string" ? body.text.slice(0, 100_000) : null;
     const dataUrl = typeof body?.data_url === "string" ? body.data_url : null;
     if (!text && !dataUrl) return json(req, { error: "No document content supplied." }, 400);
@@ -70,7 +88,7 @@ Deno.serve(async (req) => {
     let sourceText = text;
     let imageDataUrl: string | null = null;
     if (dataUrl) {
-      if (mimeType.toLowerCase() === "application/pdf" || /^\.pdf$/i.test(fileName.slice(-4))) {
+      if (mimeType === "application/pdf" || /\.pdf$/i.test(fileName)) {
         const bytes = decodeDataUrl(dataUrl);
         sourceText = await extractPdfText(bytes);
         if (!sourceText.trim()) return json(req, { error: "The PDF contains no extractable text. Please use a text-based PDF or provide a clear page image." }, 422);
@@ -108,6 +126,9 @@ Deno.serve(async (req) => {
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 50) : [],
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "AUTH_REQUIRED") return json(req, { error: "Authentication required" }, 401);
+    if (error instanceof Error && error.message === "FORBIDDEN") return json(req, { error: "Insufficient permission" }, 403);
+    if (error instanceof Error && error.message === "DOCUMENT_TOO_LARGE") return json(req, { error: "Document exceeds the 8 MB limit." }, 413);
     console.error("document-transcribe failed", error);
     return json(req, { error: "Unable to transcribe the supplied document." }, 500);
   }
