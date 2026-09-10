@@ -1,4 +1,5 @@
 import { itemAmount, totalItems, type PreAuthStudioItem } from "./preauth-studio";
+import { buildDuplicateSignature as buildStudioDuplicateSignature } from "./preauth-studio";
 
 export interface PreAuthReviewInput {
   patientId: string;
@@ -40,11 +41,7 @@ export interface PreAuthReviewResult {
   itemCount: number;
 }
 
-const issue = (field: string, message: string, severity: PreAuthReviewIssue["severity"]): PreAuthReviewIssue => ({
-  field,
-  message,
-  severity,
-});
+const issue = (field: string, message: string, severity: PreAuthReviewIssue["severity"]): PreAuthReviewIssue => ({ field, message, severity });
 
 export function buildDuplicateSignature(input: {
   patientId: string;
@@ -53,13 +50,7 @@ export function buildDuplicateSignature(input: {
   procedureDate: string;
   insurerId?: string | null;
 }): string {
-  return [
-    input.patientId,
-    input.membershipNumber.trim().toUpperCase(),
-    input.procedureId || "",
-    input.procedureDate,
-    input.insurerId || "",
-  ].join("|");
+  return buildStudioDuplicateSignature(input);
 }
 
 export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewResult {
