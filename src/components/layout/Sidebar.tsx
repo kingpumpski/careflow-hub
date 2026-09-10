@@ -70,5 +70,33 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const toggle = (label: string) => setExpanded((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   const isActive = (path: string) => location.pathname === path;
   const visible = (child: NavChild) => !child.permission || can(child.permission);
-  return <aside className="w-64 max-w-[88vw] h-full lg:h-screen sticky top-0 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border no-print overflow-hidden"><div className="p-4 sm:p-5 border-b border-sidebar-border shrink-0"><div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shrink-0"><Activity className="w-5 h-5 text-sidebar-primary-foreground" /></div><div className="min-w-0"><h1 className="font-heading text-base font-bold text-sidebar-primary-foreground truncate" title={APP_BRAND.displayName}>{APP_BRAND.shortName}</h1><p className="text-[11px] text-sidebar-muted truncate">{roleLabel ?? "Revenue Operations"}</p></div></div></div><nav className="sidebar-nav flex-1 min-h-0 p-2.5 sm:p-3 space-y-0.5 overflow-y-auto overflow-x-hidden overscroll-contain">{NAV_GROUPS.map((group) => { if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} aria-current={isActive(group.path!) ? "page" : undefined} className={`sidebar-item min-h-10 ${isActive(group.path!) ? "sidebar-item-active" : ""}`}><group.icon className="w-[18px] h-[18px] shrink-0" />{group.label}</Link>; const children = group.children.filter(visible); if (!children.length) return null; const open = expanded.includes(group.label); return <div key={group.label}><button type="button" onClick={() => toggle(group.label)} aria-expanded={open} className="sidebar-item w-full min-h-10 justify-between"><span className="flex items-center gap-3 min-w-0"><group.icon className="w-[18px] h-[18px] shrink-0" /><span className="truncate">{group.label}</span></span>{open ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}</button>{open && <div className="ml-3 sm:ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 sm:pl-3">{children.map((child) => <Link key={child.path} to={child.path} onClick={onNavigate} aria-current={isActive(child.path) ? "page" : undefined} className={`sidebar-item min-h-10 text-[13px] min-w-0 ${isActive(child.path) ? "sidebar-item-active" : ""}`}><span className="truncate">{child.label}</span></Link>)}</div>}</div>; })}</nav><div className="p-2.5 sm:p-3 border-t border-sidebar-border shrink-0"><button type="button" onClick={signOut} className="sidebar-item w-full min-h-10 text-destructive/80 hover:text-destructive"><LogOut className="w-[18px] h-[18px] shrink-0" />Sign Out</button></div></aside>;
+  return <aside className="w-64 max-w-[88vw] h-screen max-h-screen bg-sidebar !text-sidebar-foreground flex flex-col border-r border-sidebar-border no-print overflow-hidden">
+    <div className="p-4 sm:p-5 border-b border-sidebar-border shrink-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shrink-0"><Activity className="w-5 h-5 text-sidebar-primary-foreground" /></div>
+        <div className="min-w-0">
+          <h1 className="font-heading text-base font-bold text-sidebar-primary-foreground truncate" title={APP_BRAND.displayName}>{APP_BRAND.shortName}</h1>
+          <p className="text-[11px] text-sidebar-muted truncate">{roleLabel ?? "Revenue Operations"}</p>
+        </div>
+      </div>
+    </div>
+    <nav aria-label="Primary navigation" className="sidebar-nav flex-1 min-h-0 min-w-0 p-2.5 sm:p-3 space-y-0.5 overflow-y-auto overflow-x-hidden overscroll-contain">
+      {NAV_GROUPS.map((group) => {
+        if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} aria-current={isActive(group.path!) ? "page" : undefined} className={`sidebar-item min-h-10 !text-sidebar-foreground ${isActive(group.path!) ? "sidebar-item-active !text-sidebar-primary-foreground" : ""}`}><group.icon className="w-[18px] h-[18px] shrink-0" />{group.label}</Link>;
+        const children = group.children.filter(visible);
+        if (!children.length) return null;
+        const open = expanded.includes(group.label);
+        return <div key={group.label} className="min-w-0">
+          <button type="button" onClick={() => toggle(group.label)} aria-expanded={open} className="sidebar-item w-full min-h-10 !text-sidebar-foreground justify-between">
+            <span className="flex items-center gap-3 min-w-0"><group.icon className="w-[18px] h-[18px] shrink-0" /><span className="truncate">{group.label}</span></span>
+            {open ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+          </button>
+          {open && <div className="ml-3 sm:ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 sm:pl-3 min-w-0">{children.map((child) => <Link key={child.path} to={child.path} onClick={onNavigate} aria-current={isActive(child.path) ? "page" : undefined} className={`sidebar-item min-h-10 !text-sidebar-foreground text-[13px] min-w-0 ${isActive(child.path) ? "sidebar-item-active !text-sidebar-primary-foreground" : ""}`}><span className="truncate">{child.label}</span></Link>)}</div>}
+        </div>;
+      })}
+    </nav>
+    <div className="p-2.5 sm:p-3 border-t border-sidebar-border shrink-0 bg-sidebar">
+      <button type="button" onClick={signOut} className="sidebar-item w-full min-h-10 !text-destructive/80 hover:!text-destructive"><LogOut className="w-[18px] h-[18px] shrink-0" />Sign Out</button>
+    </div>
+  </aside>;
 }
