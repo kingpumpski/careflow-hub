@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   // GitHub Pages serves the application below /careflow-hub/; local and
   // external hosts continue to use /. This is only a static-hosting concern.
   base: process.env.GITHUB_ACTIONS ? "/careflow-hub/" : "/",
+  appType: "spa",
   server: {
     host: "0.0.0.0",
     port: 8080,
