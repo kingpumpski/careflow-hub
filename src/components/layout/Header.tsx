@@ -19,22 +19,22 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   }, []);
 
   return (
-    <header className="h-14 sm:h-16 sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur-md flex items-center justify-between gap-1.5 sm:gap-2 px-2 sm:px-3 md:px-6 no-print">
-      <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 min-w-0 flex-1">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center border-b border-border bg-card/90 px-2 backdrop-blur-md sm:h-16 sm:px-3 md:px-6 no-print">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 md:gap-3">
         <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9 shrink-0" onClick={onMenuClick} aria-label="Open menu">
-          <Menu className="w-5 h-5" />
+          <Menu className="h-5 w-5" />
         </Button>
-        <div className="relative w-full max-w-xs hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search patients, claims, procedures..." className="pl-10 bg-muted/50 border-0 h-9 text-sm" />
+        <div className="relative hidden w-full max-w-xs shrink-0 md:block">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search patients, claims, procedures..." className="h-9 border-0 bg-muted/50 pl-10 text-sm" />
         </div>
-        <div className="min-w-0 hidden sm:block overflow-hidden flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden sm:block hidden">
           <Breadcrumbs />
         </div>
       </div>
-      <div className="flex items-center gap-0 shrink-0">
+      <div className="ml-1 flex shrink-0 items-center gap-0 sm:ml-2">
         <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} className="h-9 w-9 sm:h-10 sm:w-10" aria-label="Toggle theme">
-          {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
         <NotificationsPopover />
         <UserMenu />
