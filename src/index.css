@@ -106,10 +106,10 @@
   .sidebar-item:hover { @apply bg-sidebar-accent text-sidebar-accent-foreground; }
   .sidebar-item:focus-visible { @apply outline-none ring-2 ring-sidebar-primary ring-offset-2 ring-offset-sidebar; }
   .sidebar-item-active { @apply bg-sidebar-primary/15 text-sidebar-primary-foreground; }
-  .sidebar-nav { scrollbar-width: thin; scrollbar-color: hsl(var(--sidebar-border)) transparent; }
+  .sidebar-nav { scrollbar-width: thin; scrollbar-color: hsl(var(--sidebar-muted) / 0.55) transparent; scrollbar-gutter: stable; }
   .sidebar-nav::-webkit-scrollbar { width: 6px; height: 0; }
   .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-  .sidebar-nav::-webkit-scrollbar-thumb { background: hsl(var(--sidebar-border)); border-radius: 9999px; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: hsl(var(--sidebar-muted) / 0.55); border-radius: 9999px; }
   .sidebar-nav::-webkit-scrollbar-thumb:hover { background: hsl(var(--sidebar-muted)); }
 }
 
