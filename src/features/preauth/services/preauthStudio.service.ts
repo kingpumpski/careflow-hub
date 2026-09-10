@@ -43,7 +43,13 @@ export async function searchClientSuggestions(query: string, limit = 12): Promis
   return (data || []) as ClientSuggestion[];
 }
 
-function withFacility(payload: Record<string, unknown>): Record<string, unknown> { const facilityId = getStoredFacilityId(); if (!facilityId && !payload.facility_id) throw new Error("Select a facility before creating a pre-authorization."); return { ...payload, facility_id: payload.facility_id || facilityId }; }
+function withFacility(payload: Record<string, unknown>): Record<string, unknown> {
+  const activeFacilityId = getStoredFacilityId();
+  const requestedFacilityId = payload.facility_id ? String(payload.facility_id) : "";
+  if (!activeFacilityId && !requestedFacilityId) throw new Error("Select a facility before creating a pre-authorization.");
+  if (activeFacilityId && requestedFacilityId && activeFacilityId !== requestedFacilityId) throw new Error("FACILITY_CONTEXT_MISMATCH");
+  return { ...payload, facility_id: activeFacilityId || requestedFacilityId };
+}
 
 function toReviewInput(payload: Record<string, unknown>, items: StudioItem[]): PreAuthReviewInput {
   return { patientId: String(payload.patient_id ?? ""), patientName: String(payload.patient_name ?? payload.client_name ?? "Patient"), membershipNumber: String(payload.membership_number ?? ""), insurerId: String(payload.insurance_company_id ?? ""), insurerName: String(payload.insurer_name ?? payload.client_company_name ?? ""), procedureId: String(payload.procedure_id ?? ""), procedureName: String(payload.procedure_name ?? "Procedure"), procedureDate: String(payload.procedure_date ?? ""), diagnosis: String(payload.diagnosis ?? ""), doctorId: payload.doctor_id ? String(payload.doctor_id) : undefined, doctorName: String(payload.doctor_name ?? ""), patientPhone: String(payload.patient_phone ?? ""), companyName: String(payload.client_company_name ?? ""), insurerEmail: String(payload.insurer_email ?? ""), providerEmail: String(payload.provider_email ?? ""), providerName: String(payload.provider_name ?? ""), providerAddress: String(payload.provider_address ?? ""), providerPhone: String(payload.provider_phone ?? ""), providerLogoUrl: payload.provider_logo_url ? String(payload.provider_logo_url) : undefined, issuedDate: String(payload.issued_date ?? new Date().toLocaleDateString("en-GB")), currency: String(payload.document_currency ?? "GH¢"), format: (payload.document_format === "international" ? "international" : "ghana"), items: items.map((item, index) => ({ id: `${payload.id ?? "draft"}-${index}`, category: item.description ? "procedure" : "other", description: item.description, quantity: item.quantity, unitPrice: item.unit_price })), };
@@ -120,6 +126,7 @@ export function getPreAuthorizationErrorMessage(error: unknown): string {
   if (message.includes("INSURER_NAME_REQUIRED")) return "Insurer name is required.";
   if (message.includes("FACILITY_REQUIRED")) return "Select a facility before saving the request.";
   if (message.includes("FACILITY_ACCESS_DENIED")) return "You do not have access to the selected facility.";
+  if (message.includes("FACILITY_CONTEXT_MISMATCH")) return "The selected facility changed while this request was being prepared. Review the working facility and try again.";
   if (message.includes("CHARGE_DESCRIPTION_REQUIRED")) return "Every charge line must have a description.";
   if (message.includes("INVALID_CHARGE_VALUE")) return "Charge quantities and unit prices contain an invalid value.";
   return message || "Unable to save the pre-authorization.";
