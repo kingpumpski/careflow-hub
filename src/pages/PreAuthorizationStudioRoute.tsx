@@ -13,6 +13,7 @@ import {
   type FacilityMembership,
   type PreAuthFacility,
 } from "@/features/preauth/services/preauthFacility.service";
+import { isFacilityInfrastructureAvailable } from "@/lib/schemaFallback";
 
 const SYSTEM_ADMIN_ROLES = new Set(["admin", "superuser"]);
 
@@ -92,6 +93,10 @@ export default function PreAuthorizationStudioRoute() {
   if (offline) return <OfflinePreAuthorizationStudio />;
   if (loading) return <div className="stat-card">Loading facility access…</div>;
   if (error) return <div className="stat-card text-destructive">{error}</div>;
+
+  // When facility scoping is not provisioned in this environment, everyone works
+  // in a single implicit context instead of being blocked.
+  if (!isFacilityInfrastructureAvailable()) return <PreAuthorizationStudio />;
 
   if (isSystemAdministrator) {
     if (!facilities.length) {

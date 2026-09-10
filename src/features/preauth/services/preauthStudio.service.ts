@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "./preauthFacility.service";
+import { isFacilityInfrastructureAvailable } from "@/lib/schemaFallback";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { createOfflinePreAuthDraft, updateOfflinePreAuthDraft } from "@/modules/offline/preauth-offline-repository";
 import type { PreAuthReviewInput } from "@/modules/authorization/preauth-review";
@@ -46,7 +47,10 @@ export async function searchClientSuggestions(query: string, limit = 12): Promis
 function withFacility(payload: Record<string, unknown>): Record<string, unknown> {
   const activeFacilityId = getStoredFacilityId();
   const requestedFacilityId = payload.facility_id ? String(payload.facility_id) : "";
-  if (!activeFacilityId && !requestedFacilityId) throw new Error("Select a facility before creating a pre-authorization.");
+  if (!activeFacilityId && !requestedFacilityId) {
+    if (!isFacilityInfrastructureAvailable()) return payload;
+    throw new Error("Select a facility before creating a pre-authorization.");
+  }
   if (activeFacilityId && requestedFacilityId && activeFacilityId !== requestedFacilityId) throw new Error("FACILITY_CONTEXT_MISMATCH");
   return { ...payload, facility_id: activeFacilityId || requestedFacilityId };
 }
