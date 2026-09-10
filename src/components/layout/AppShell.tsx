@@ -20,9 +20,9 @@ export default function AppShell() {
 
   return (
     <div className="flex min-h-screen w-full bg-background overflow-x-hidden">
-      <div className="hidden lg:block shrink-0">
+      <aside className="hidden lg:block lg:w-64 shrink-0">
         <Sidebar />
-      </div>
+      </aside>
 
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex overscroll-contain">
@@ -32,16 +32,16 @@ export default function AppShell() {
             className="absolute inset-0 bg-foreground/50 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative z-10 h-full max-w-[88vw] overflow-y-auto overscroll-contain animate-in slide-in-from-left duration-200">
+          <div className="relative z-10 h-full w-[min(18rem,88vw)] overflow-y-auto overscroll-contain animate-in slide-in-from-left duration-200">
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 w-full">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 min-w-0 p-3 sm:p-4 md:p-6 overflow-x-hidden">
-          <div className="shell-content max-w-[1600px] mx-auto w-full min-w-0">
+        <main className="app-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 md:p-6">
+          <div className="shell-content mx-auto w-full min-w-0 max-w-[1600px]">
             <Outlet />
           </div>
         </main>
