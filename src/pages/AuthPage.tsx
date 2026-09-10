@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { APP_BRAND } from "@/config/branding";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -72,8 +73,8 @@ export default function AuthPage() {
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <Shield className="w-7 h-7 text-primary" />
           </div>
-          <h1 className="font-heading text-2xl font-bold">MedClaims</h1>
-          <p className="text-muted-foreground text-sm mt-1">Insurance Authorization & Claims Management</p>
+          <h1 className="font-heading text-2xl font-bold">{APP_BRAND.displayName}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{APP_BRAND.description}</p>
         </div>
 
         <div className="stat-card">
