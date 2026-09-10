@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((origin) => origin.trim()).filter(Boolean);
+const READ_PERMISSIONS = ["claims.read", "payments.read", "preauth.read", "reports.read", "analytics.read", "ledger.read"];
 
 function isAllowedOrigin(origin: string | null) {
   if (!origin) return true;
@@ -44,7 +45,7 @@ function validateMessages(value: unknown): Array<{ role: "user" | "assistant"; c
   return messages;
 }
 
-async function getSystemContext(req: Request) {
+async function getAuthorizedClient(req: Request) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const authorization = req.headers.get("Authorization");
@@ -58,6 +59,16 @@ async function getSystemContext(req: Request) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("AUTH_REQUIRED");
 
+  // Prevent users with no operational read permission from consuming the AI gateway.
+  const permissionResults = await Promise.all(READ_PERMISSIONS.map((permission) =>
+    supabase.rpc("current_user_has_permission", { p_permission_key: permission }),
+  ));
+  if (!permissionResults.some(({ data, error }) => !error && data === true)) throw new Error("FORBIDDEN");
+
+  return supabase;
+}
+
+async function getSystemContext(supabase: ReturnType<typeof createClient>) {
   // AI context is limited to operational/aggregate fields; patient/clinical/document payloads are excluded.
   const [claimsRes, paymentsRes, preauthRes, insurersRes, taxRes, ledgerRes] = await Promise.all([
     supabase.from("claims").select("insurance_company_id, claim_amount, status, claim_year, claim_month").order("claim_year", { ascending: false }).order("claim_month", { ascending: false }).limit(200),
@@ -163,7 +174,8 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) return jsonResponse(req, { error: "AI service unavailable" }, 503);
 
-    const systemContext = await getSystemContext(req);
+    const supabase = await getAuthorizedClient(req);
+    const systemContext = await getSystemContext(supabase);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -194,6 +206,7 @@ Keep answers clear, professional and data-driven. Use GH¢ as currency. Do not e
     return new Response(response.body, { headers: { ...headers, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } });
   } catch (error) {
     if (error instanceof Error && error.message === "AUTH_REQUIRED") return jsonResponse(req, { error: "Authentication required" }, 401);
+    if (error instanceof Error && error.message === "FORBIDDEN") return jsonResponse(req, { error: "Insufficient permission" }, 403);
     if (error instanceof Error && ["INVALID_MESSAGE_PAYLOAD", "INVALID_MESSAGE_ROLE", "INVALID_MESSAGE_CONTENT", "MESSAGE_PAYLOAD_TOO_LARGE"].includes(error.message)) return jsonResponse(req, { error: "Invalid AI message payload" }, 400);
     console.error("chat error:", error);
     return jsonResponse(req, { error: "Unable to process AI request" }, 500);
