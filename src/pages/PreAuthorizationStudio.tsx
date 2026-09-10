@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { buildPreAuthEmail, buildRequestNumber, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
 import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
@@ -117,7 +118,12 @@ export default function PreAuthorizationStudio() {
   const reviewRequest = async () => {
     const id = savedId || await saveDraft();
     if (!id) return;
-    const { data, error } = await (supabase.from("pre_authorizations") as any).select("id,request_number,status,current_state,procedure_date,duplicate_signature").eq("duplicate_signature", duplicateSignature).neq("id", id).in("status", ["draft", "prepared"]).order("created_at", { ascending: false }).limit(5);
+    const facilityId = getStoredFacilityId();
+    if (!facilityId) {
+      toast({ title: "Facility context required", description: "Select a facility before reviewing duplicate requests.", variant: "destructive" });
+      return;
+    }
+    const { data, error } = await (supabase.from("pre_authorizations") as any).select("id,request_number,status,current_state,procedure_date,duplicate_signature").eq("facility_id", facilityId).eq("duplicate_signature", duplicateSignature).neq("id", id).in("status", ["draft", "prepared"]).order("created_at", { ascending: false }).limit(5);
     if (error) { toast({ title: "Duplicate check unavailable", description: error.message, variant: "destructive" }); return; }
     setDuplicateMatches(data || []);
     setWarningsConfirmed(false);
