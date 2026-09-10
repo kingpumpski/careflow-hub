@@ -57,7 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const location = useLocation();
   const { signOut } = useAuth();
-  const { can, roleLabel } = usePermissions();
+  const { can } = usePermissions();
   const groupContaining = (g: NavGroup) => g.children?.some((c) => c.path === location.pathname);
   const [expanded, setExpanded] = useState<string[]>(() => { const open = NAV_GROUPS.filter(groupContaining).map((g) => g.label); return open.length ? open : ["Claims Intelligence"]; });
 
@@ -76,7 +76,6 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
         <div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shrink-0"><Activity className="w-5 h-5 text-sidebar-primary-foreground" /></div>
         <div className="min-w-0">
           <h1 className="font-heading text-base font-bold text-sidebar-primary-foreground truncate" title={APP_BRAND.displayName}>{APP_BRAND.shortName}</h1>
-          <p className="text-[11px] text-sidebar-muted truncate">{roleLabel ?? "Revenue Operations"}</p>
         </div>
       </div>
     </div>
