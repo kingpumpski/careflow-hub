@@ -5,6 +5,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
+import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/schemaFallback";
 
 type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods";
 
@@ -21,7 +22,10 @@ const GC_TIME_MS = 10 * 60_000;
 function scopeInsertValues(table: TableName, values: Record<string, any>) {
   if (table !== "pre_authorizations" && table !== "claims_settlement_periods" && table !== "settlement_exceptions" && table !== "settlement_exception_audit_events") return values;
   const facilityId = getStoredFacilityId();
-  if (!facilityId) throw new Error("Facility context is required before creating a record.");
+  if (!facilityId) {
+    if (!isFacilityInfrastructureAvailable()) return values;
+    throw new Error("Facility context is required before creating a record.");
+  }
   if (values.facility_id && values.facility_id !== facilityId) throw new Error("The selected facility does not match the current context.");
   return { ...values, facility_id: facilityId };
 }
@@ -55,7 +59,12 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : query.order("created_at", { ascending: false });
       if (options?.limit) query = query.limit(options.limit);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        // Environments whose database is behind the app simply have no rows for
+        // these sections yet; surface an empty list instead of a hard failure.
+        if (isMissingSchemaError(error)) return [];
+        throw error;
+      }
       return data;
     },
     staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
