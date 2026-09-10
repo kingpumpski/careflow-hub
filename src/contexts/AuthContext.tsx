@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { isOfflineMode, useCareFlowDataMode } from "@/modules/offline/data-mode";
@@ -85,6 +85,7 @@ async function checkRole(role: AppRole): Promise<RoleCheckResult> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const mode = useCareFlowDataMode();
+  const authGenerationRef = useRef(0);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,26 +127,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchProfile = useCallback(async (userId: string, isCurrent: () => boolean) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!isCurrent()) return;
-    if (error) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!isCurrent()) return;
+      if (error) {
+        console.error("Unable to resolve CareFlow profile", error);
+        setProfile(null);
+        return;
+      }
+      const row = data as ProfileRow | null;
+      setProfile(row?.full_name && row?.email ? { full_name: row.full_name, email: row.email } : null);
+    } catch (error) {
       console.error("Unable to resolve CareFlow profile", error);
-      setProfile(null);
-      return;
+      if (isCurrent()) setProfile(null);
     }
-    const row = data as ProfileRow | null;
-    setProfile(row?.full_name && row?.email ? { full_name: row.full_name, email: row.email } : null);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    const isCurrent = () => !cancelled;
+    const isMounted = () => !cancelled;
 
     if (isOfflineMode()) {
+      authGenerationRef.current += 1;
       const offlineUser = createOfflineUser();
       setUser(offlineUser);
       setSession(null);
@@ -162,7 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoleLoading(true);
 
     const applySession = (nextSession: Session | null) => {
-      if (!isCurrent()) return;
+      if (!isMounted()) return;
+      const generation = ++authGenerationRef.current;
+      const isCurrent = () => isMounted() && authGenerationRef.current === generation;
+
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);
@@ -188,7 +198,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         console.error("Unable to restore CareFlow session", error);
-        if (!isCurrent()) return;
+        if (!isMounted()) return;
+        ++authGenerationRef.current;
         setUser(null);
         setSession(null);
         setUserRole(null);
@@ -199,16 +210,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      ++authGenerationRef.current;
       subscription.unsubscribe();
     };
   }, [fetchProfile, fetchUserRole, mode]);
 
   const signOut = async () => {
     if (isOfflineMode()) {
+      ++authGenerationRef.current;
       setUser(null);
       setSession(null);
       setUserRole(null);
       setProfile(null);
+      setRoleLoading(false);
       return;
     }
     await supabase.auth.signOut();
