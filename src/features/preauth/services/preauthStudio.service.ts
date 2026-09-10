@@ -9,6 +9,8 @@ export interface ClientSuggestion { id: string; client_name: string; date_of_bir
 export interface StudioItem { description: string; quantity: number; unit_price: number; amount: number; }
 function escapeLike(value: string): string { return value.replace(/[%_\\]/g, (match) => `\\${match}`); }
 const EDIT_REVISION_KEY = "careflow:preauth:edit-revision:";
+const CREATE_IN_FLIGHT = new Map<string, Promise<any>>();
+const UPDATE_IN_FLIGHT = new Map<string, Promise<any>>();
 
 export function storePreAuthorizationEditRevision(preauthId: string, revision: string | null | undefined): void {
   if (!preauthId || !revision || typeof window === "undefined") return;
@@ -77,19 +79,35 @@ export async function assertPreAuthorizationRevision(preauthId: string, captured
 
 export async function createPreAuthorizationAtomic(payload: Record<string, unknown>, items: StudioItem[], saveClientSuggestion: boolean) {
   if (getCareFlowDataMode() === "offline") return createOfflinePreAuthDraft(toReviewInput(withFacility(payload), items), String(payload.created_by ?? "") || null);
-  const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", { p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_save_client_suggestion: saveClientSuggestion });
-  if (error) throw error;
-  return data;
+  const preparedPayload = withFacility(payload);
+  const facilityId = String(preparedPayload.facility_id ?? "");
+  const duplicateSignature = String(preparedPayload.duplicate_signature ?? "");
+  const requestKey = `${facilityId}:${duplicateSignature || JSON.stringify([preparedPayload.patient_id, preparedPayload.insurance_company_id, preparedPayload.procedure_id, preparedPayload.procedure_date])}`;
+  const existing = CREATE_IN_FLIGHT.get(requestKey);
+  if (existing) return existing;
+  const request = (async () => {
+    const { data, error } = await (supabase.rpc as any)("create_preauthorization_atomic", { p_payload: preparedPayload, p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_save_client_suggestion: saveClientSuggestion });
+    if (error) throw error;
+    return data;
+  })();
+  CREATE_IN_FLIGHT.set(requestKey, request);
+  try { return await request; } finally { if (CREATE_IN_FLIGHT.get(requestKey) === request) CREATE_IN_FLIGHT.delete(requestKey); }
 }
 
 export async function updatePreAuthorizationAtomic(preauthId: string, payload: Record<string, unknown>, items: StudioItem[], reason = "amended") {
   if (getCareFlowDataMode() === "offline") return updateOfflinePreAuthDraft(preauthId, toReviewInput({ ...withFacility(payload), id: preauthId }, items), payload.doctor_id ? String(payload.doctor_id) : null, reason);
-  const capturedRevision = readPreAuthorizationEditRevision(preauthId);
-  await assertPreAuthorizationRevision(preauthId, capturedRevision);
-  const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
-  if (error) throw error;
-  clearPreAuthorizationEditRevision(preauthId);
-  return data;
+  const existing = UPDATE_IN_FLIGHT.get(preauthId);
+  if (existing) return existing;
+  const request = (async () => {
+    const capturedRevision = readPreAuthorizationEditRevision(preauthId);
+    await assertPreAuthorizationRevision(preauthId, capturedRevision);
+    const { data, error } = await (supabase.rpc as any)("update_preauthorization_atomic", { p_preauth_id: preauthId, p_payload: withFacility(payload), p_items: items.map(({ description, quantity, unit_price }) => ({ description, quantity, unit_price })), p_reason: reason });
+    if (error) throw error;
+    clearPreAuthorizationEditRevision(preauthId);
+    return data;
+  })();
+  UPDATE_IN_FLIGHT.set(preauthId, request);
+  try { return await request; } finally { if (UPDATE_IN_FLIGHT.get(preauthId) === request) UPDATE_IN_FLIGHT.delete(preauthId); }
 }
 
 export function getPreAuthorizationErrorMessage(error: unknown): string {
