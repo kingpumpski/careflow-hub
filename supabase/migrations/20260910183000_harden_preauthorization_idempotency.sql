@@ -18,8 +18,8 @@ DECLARE
   v_row public.pre_authorizations%rowtype;
   v_existing public.preauth_submissions%rowtype;
   v_version public.preauthorization_versions%rowtype;
-  v_document public.pre_auth_document_registry%rowtype;
-  v_handoff public.pre_auth_handoff_log%rowtype;
+  v_document public.preauth_document_registry%rowtype;
+  v_handoff public.preauth_handoff_log%rowtype;
   v_submission public.pre_auth_submissions%rowtype;
   v_version_number integer;
   v_hash text;
@@ -33,10 +33,7 @@ BEGIN
   IF jsonb_typeof(p_recipient_manifest) <> 'array' OR jsonb_array_length(p_recipient_manifest)=0 THEN RAISE EXCEPTION 'HANDOFF_RECIPIENTS_REQUIRED' USING errcode='22023'; END IF;
   IF jsonb_typeof(coalesce(p_attachment_manifest,'[]'::jsonb)) <> 'array' THEN RAISE EXCEPTION 'INVALID_ATTACHMENT_MANIFEST' USING errcode='22023'; END IF;
 
-  SELECT * INTO v_row
-  FROM public.pre_authorizations
-  WHERE id=p_preauth_id
-  FOR UPDATE;
+  SELECT * INTO v_row FROM public.pre_authorizations WHERE id=p_preauth_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'PREAUTH_NOT_FOUND' USING errcode='P0002'; END IF;
   IF v_row.facility_id IS NULL THEN RAISE EXCEPTION 'FACILITY_REQUIRED'; END IF;
   IF NOT security_internal.user_has_facility_access(v_row.facility_id) THEN RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING errcode='42501'; END IF;
@@ -46,15 +43,13 @@ BEGIN
 
   SELECT * INTO v_existing
   FROM public.preauth_submissions
-  WHERE preauth_id=p_preauth_id
-    AND idempotency_key=p_idempotency_key
+  WHERE preauth_id=p_preauth_id AND idempotency_key=p_idempotency_key
   FOR UPDATE;
 
   IF FOUND THEN
     SELECT * INTO v_document
-    FROM public.pre_auth_document_registry
-    WHERE preauth_id=p_preauth_id
-      AND version_number=v_existing.version_number;
+    FROM public.preauth_document_registry
+    WHERE preauth_id=p_preauth_id AND version_number=v_existing.version_number;
 
     IF NOT FOUND THEN
       RAISE EXCEPTION 'IDEMPOTENCY_RECORD_INCOMPLETE' USING errcode='P0001';
@@ -65,7 +60,7 @@ BEGIN
     END IF;
 
     SELECT * INTO v_handoff
-    FROM public.pre_auth_handoff_log
+    FROM public.preauth_handoff_log
     WHERE preauth_id=p_preauth_id
       AND version_number=v_existing.version_number
       AND idempotency_key=p_idempotency_key;
@@ -103,26 +98,16 @@ BEGIN
   );
 
   v_handoff := security_internal.prepare_preauth_handoff(
-    v_document.id,
-    v_document.snapshot_hash,
-    p_idempotency_key,
-    p_recipient_manifest,
-    coalesce(p_subject,''),
-    coalesce(p_message_body,''),
-    v_attachment_name
+    v_document.id,v_document.snapshot_hash,p_idempotency_key,
+    p_recipient_manifest,coalesce(p_subject,''),coalesce(p_message_body,''),v_attachment_name
   );
 
   INSERT INTO public.pre_auth_submissions(
     preauth_id,version_number,channel,status,idempotency_key,recipient,submitted_by,facility_id
   ) VALUES (
-    p_preauth_id,
-    v_version_number,
-    'email',
-    'queued',
-    p_idempotency_key,
+    p_preauth_id,v_version_number,'email','queued',p_idempotency_key,
     (SELECT elem->>'email' FROM jsonb_array_elements(p_recipient_manifest) elem WHERE elem->>'type'='to' LIMIT 1),
-    v_uid,
-    v_row.facility_id
+    v_uid,v_row.facility_id
   ) RETURNING * INTO v_submission;
 
   UPDATE public.pre_authorizations
@@ -132,12 +117,9 @@ BEGIN
   WHERE id=p_preauth_id;
 
   RETURN jsonb_build_object(
-    'version_id',v_version.id,
-    'version_number',v_version_number,
-    'submission_id',v_submission.id,
-    'document_id',v_document.id,
-    'handoff_id',v_handoff.id,
-    'idempotent',false
+    'version_id',v_version.id,'version_number',v_version_number,
+    'submission_id',v_submission.id,'document_id',v_document.id,
+    'handoff_id',v_handoff.id,'idempotent',false
   );
 END;
 $$;
