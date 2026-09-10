@@ -28,6 +28,16 @@ export async function listMyPreAuthFacilities(): Promise<FacilityMembership[]> {
   return (data ?? []) as FacilityMembership[];
 }
 
+/** System administrators are not constrained by facility membership. */
+export async function listAllActivePreAuthFacilities(): Promise<PreAuthFacility[]> {
+  const { data, error } = await ((supabase as any).from("facilities"))
+    .select("id,code,name,country_code,timezone,default_currency,date_format,active")
+    .eq("active", true)
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PreAuthFacility[];
+}
+
 export function getStoredFacilityId(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem("careflow:preauth:facility-id");
