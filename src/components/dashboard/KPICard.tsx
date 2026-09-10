@@ -57,25 +57,25 @@ export default function KPICard({ title, value, hint, description, trend = "flat
       onClick={onClick} onKeyDown={handleKeyDown}
       onMouseEnter={() => { setPaused(true); setInfoOpen(true); }} onMouseLeave={() => { setPaused(false); setInfoOpen(false); }}
       onFocus={() => setInfoOpen(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInfoOpen(false); }}
-      className={cn("kpi-card group relative text-left w-full overflow-visible", onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2")}
+      className={cn("kpi-card group relative text-left w-full min-w-0 overflow-visible", onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2")}
     >
       <span id={descriptionId} className="sr-only">{resolvedDescription}</span>
       <div className="flex items-start justify-between gap-2 sm:gap-3 min-w-0">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-semibold truncate">{title}</p>
-            {slideCount > 1 && <span key={`badge-${index}`} className={cn("text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 animate-scale-in tabular-nums", toneRing[tone])}>{active.label}</span>}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 min-h-5">
+            <p className="min-w-0 flex-1 text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-semibold leading-4 truncate">{title}</p>
+            {slideCount > 1 && <span key={`badge-${index}`} className={cn("text-[9px] sm:text-[10px] leading-4 font-bold px-1.5 py-0.5 rounded-md shrink-0 animate-scale-in tabular-nums", toneRing[tone])}>{active.label}</span>}
           </div>
-          <div key={`slide-${index}`} className="animate-fade-in min-w-0">
-            <p className="text-xl sm:text-2xl font-bold font-heading mt-1.5 tabular-nums truncate">{active.value}</p>
-            {active.hint && <p className={cn("text-[11px] sm:text-xs mt-1 font-medium truncate", trendClass)}>{active.hint}</p>}
+          <div key={`slide-${index}`} className="min-w-0 overflow-hidden animate-fade-in">
+            <p className="text-lg sm:text-2xl font-bold font-heading mt-1.5 leading-tight tabular-nums break-words whitespace-normal">{active.value}</p>
+            {active.hint && <p className={cn("text-[11px] sm:text-xs mt-1 font-medium leading-4 truncate", trendClass)}>{active.hint}</p>}
           </div>
         </div>
-        <div className="flex items-start gap-1 sm:gap-2 shrink-0">
-          <span className={cn("w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center transition-transform group-hover:scale-105", toneRing[tone])}><Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5" aria-hidden="true" /></span>
+        <div className="flex items-start gap-0.5 sm:gap-2 shrink-0">
+          <span className={cn("w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105", toneRing[tone])}><Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5" aria-hidden="true" /></span>
           <span tabIndex={0} aria-label={`What ${title} means`} aria-describedby={descriptionId} aria-expanded={infoOpen}
             onClick={(event) => { event.stopPropagation(); setInfoOpen((open) => !open); }} onMouseEnter={() => setInfoOpen(true)} onFocus={() => setInfoOpen(true)} onKeyDown={handleInfoKeyDown}
-            className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 transition-colors"
+            className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 transition-colors"
           ><Info className="w-4 h-4" aria-hidden="true" /></span>
         </div>
       </div>
