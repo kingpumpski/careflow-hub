@@ -130,5 +130,5 @@ function DocumentBranding() {
   return null;
 }
 
-const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL}><AuthProvider><DocumentBranding /><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
+const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><DocumentBranding /><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
 export default App;
