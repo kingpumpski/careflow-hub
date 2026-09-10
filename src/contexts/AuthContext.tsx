@@ -22,17 +22,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void supabase.auth.getSession().then(({ data: { session: nextSession } }) => { if (cancelled) return; setSession(nextSession); setUser(nextSession?.user ?? null); setLoading(false); if (nextSession?.user) { void fetchUserRole(nextSession.user.id); void fetchProfile(nextSession.user.id); } else setRoleLoading(false); }).catch(() => { if (!cancelled) { setUser(null); setSession(null); setUserRole(null); setProfile(null); setRoleLoading(false); setLoading(false); } });
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, [mode]);
-  const fetchUserRole = async (userId: string) => {
+  const fetchUserRole = async (_userId: string) => {
     setRoleLoading(true);
     try {
-      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-      if (error) throw error;
-      const resolved = (data ?? []).map((row) => String(row.role)).sort((a, b) => (ROLE_PRIORITY[b] ?? 0) - (ROLE_PRIORITY[a] ?? 0))[0] ?? null;
-      setUserRole(resolved);
+      // user_roles is intentionally restricted by RLS. Resolve the authenticated
+      // user's role through the existing SECURITY DEFINER helper instead of
+      // weakening the table policy or exposing other users' role rows.
+      const roles = Object.entries(ROLE_PRIORITY)
+        .sort(([, priorityA], [, priorityB]) => priorityB - priorityA)
+        .map(([role]) => role);
+
+      for (const role of roles) {
+        const { data, error } = await supabase.rpc("current_user_has_any_role", {
+          p_roles: [role],
+        });
+
+        if (error) throw error;
+        if (data === true) {
+          setUserRole(role);
+          return;
+        }
+      }
+
+      setUserRole(null);
     } catch (error) {
       console.error("Unable to resolve CareFlow user role", error);
       setUserRole(null);
-    } finally { setRoleLoading(false); }
+    } finally {
+      setRoleLoading(false);
+    }
   };
   const fetchProfile = async (userId: string) => { const { data } = await supabase.from("profiles").select("full_name, email").eq("id", userId).maybeSingle(); setProfile(data ?? null); };
   const signOut = async () => { if (isOfflineMode()) { setUser(null); return; } await supabase.auth.signOut(); };
