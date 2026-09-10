@@ -55,33 +55,35 @@ export default function UserMenu() {
   ];
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <button
         onClick={toggle}
+        aria-label="Open account menu"
+        aria-expanded={open}
         className={cn(
-          "flex items-center gap-3 pl-4 border-l border-border transition-transform outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md",
+          "flex h-9 w-9 sm:h-10 sm:w-auto items-center justify-center gap-2 sm:gap-3 sm:pl-3 md:pl-4 border-l border-border transition-transform outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md min-w-0",
           clicked && "scale-95",
         )}
       >
         <div className={cn(
-          "w-8 h-8 rounded-full bg-primary flex items-center justify-center transition-all",
+          "w-8 h-8 shrink-0 rounded-full bg-primary flex items-center justify-center transition-all",
           open && "ring-2 ring-primary/40 ring-offset-2 ring-offset-background",
           clicked && "animate-pulse",
         )}>
           <User className="w-4 h-4 text-primary-foreground" />
         </div>
-        <div className="text-sm text-left hidden sm:block">
-          <p className="font-medium leading-none">{profile?.full_name || "User"}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{roleLabel[userRole || ""] || "Viewer"}</p>
+        <div className="text-sm text-left hidden md:block min-w-0 max-w-40">
+          <p className="font-medium leading-none truncate">{profile?.full_name || "User"}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{roleLabel[userRole || ""] || "Viewer"}</p>
         </div>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border border-border bg-popover shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="p-3 border-b border-border bg-muted/40">
-            <p className="text-sm font-semibold">{profile?.full_name || "User"}</p>
+        <div className="absolute right-0 top-full mt-2 w-[min(16rem,calc(100vw-1rem))] rounded-lg border border-border bg-popover shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="p-3 border-b border-border bg-muted/40 min-w-0">
+            <p className="text-sm font-semibold truncate">{profile?.full_name || "User"}</p>
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            <p className="text-[10px] uppercase tracking-wider mt-1 text-primary font-medium">
+            <p className="text-[10px] uppercase tracking-wider mt-1 text-primary font-medium truncate">
               {roleLabel[userRole || ""] || "Viewer"}
             </p>
           </div>
@@ -90,19 +92,19 @@ export default function UserMenu() {
               <button
                 key={it.label}
                 onClick={it.action}
-                className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted transition-colors text-left"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left min-h-10"
               >
-                <it.icon className="w-4 h-4 text-muted-foreground" />
-                {it.label}
+                <it.icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{it.label}</span>
               </button>
             ))}
           </div>
           <div className="border-t border-border py-1">
             <button
               onClick={() => { signOut(); setOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-destructive/10 text-destructive transition-colors text-left min-h-10"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 shrink-0" />
               Sign Out
             </button>
           </div>
