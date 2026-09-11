@@ -37,7 +37,7 @@ export function CareFlowRuntime() {
   };
 
   return (
-    <div className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 z-40 max-w-[calc(100vw-6rem)] sm:left-auto sm:right-3 sm:max-w-[calc(100vw-1.5rem)]">
+    <div className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 z-40 max-w-[calc(100vw-6rem)] sm:max-w-[calc(100vw-1.5rem)]">
       <Badge
         variant={conflicts > 0 ? "destructive" : "outline"}
         className="group flex max-w-full items-center gap-1.5 overflow-hidden bg-background/95 px-2 py-1 text-[10px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:text-xs"
