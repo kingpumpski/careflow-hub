@@ -6,6 +6,8 @@ import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
 import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/schemaFallback";
+import { usePermissions } from "@/modules/security/usePermissions";
+import type { Permission } from "@/modules/security";
 
 type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods";
 
@@ -18,6 +20,32 @@ const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
 };
 const STALE_TIME_MS = 60_000;
 const GC_TIME_MS = 10 * 60_000;
+
+const READ_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
+  insurance_companies: ["masterdata.write", "claims.read", "payments.read", "preauth.read", "reports.read", "analytics.read"],
+  client_companies: ["masterdata.write", "claims.read"],
+  doctors: ["masterdata.write"],
+  procedures: ["masterdata.write"],
+  patients: ["claims.read", "preauth.read"],
+  pre_authorizations: ["preauth.read"],
+  preauth_items: ["preauth.read"],
+  preauth_versions: ["preauth.read"],
+  preauth_email_log: ["preauth.read"],
+  claims: ["claims.read"],
+  payments: ["payments.read"],
+  withholding_tax: ["payments.read", "ledger.read", "reports.read"],
+  system_settings: ["settings.manage"],
+  diagnosis_codes: ["preauth.read"],
+  procedure_templates: ["preauth.read"],
+  preauth_catalog_items: ["preauth.read"],
+  ledger_entries: ["ledger.read", "reports.read"],
+  audit_logs: ["audit.read"],
+  user_roles: ["users.manage"],
+  claims_settlement_periods: ["payments.read"],
+  settlement_exceptions: ["payments.read"],
+  settlement_exception_audit_events: ["payments.read"],
+  claims_outstanding_periods: ["claims.read"],
+};
 
 function scopeInsertValues(table: TableName, values: Record<string, any>) {
   if (table !== "pre_authorizations" && table !== "claims_settlement_periods" && table !== "settlement_exceptions" && table !== "settlement_exception_audit_events") return values;
@@ -43,15 +71,20 @@ async function listOfflineTable(table: TableName, options?: { orderBy?: string; 
 export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean; limit?: number }) {
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
+  const { can, loading: permissionsLoading } = usePermissions();
   const enabled = options?.enabled ?? true;
+  const requiredPermissions = READ_PERMISSIONS_BY_TABLE[table];
+  const permissionAllowed = !requiredPermissions || requiredPermissions.some((permission) => can(permission));
+  const queryEnabled = enabled && !permissionsLoading && permissionAllowed;
+
   useEffect(() => {
-    if (!enabled || offline || !REALTIME_TABLES.includes(table)) return;
+    if (!queryEnabled || offline || !REALTIME_TABLES.includes(table)) return;
     const channel = supabase.channel(`realtime-${table}`).on("postgres_changes", { event: "*", schema: "public", table }, () => queryClient.invalidateQueries({ queryKey: [table] })).subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [table, queryClient, offline, enabled]);
+  }, [table, queryClient, offline, queryEnabled]);
   return useQuery({
-    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, enabled],
-    enabled,
+    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, queryEnabled],
+    enabled: queryEnabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
