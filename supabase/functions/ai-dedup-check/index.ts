@@ -8,6 +8,7 @@ const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
 const allowedEntities = new Set(["diagnosis", "procedure", "template", "catalog", "insurance"]);
 const MAX_EXISTING = 80;
 const MAX_BODY_BYTES = 256_000;
+const MAX_CANDIDATE_FIELD_BYTES = 2_000;
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
@@ -51,6 +52,41 @@ function safeObject(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function boundedString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.slice(0, MAX_CANDIDATE_FIELD_BYTES);
+}
+
+function sanitizeCandidate(value: unknown): Record<string, unknown> | null {
+  const object = safeObject(value);
+  if (!object) return null;
+  const { id, code, item_name, procedure_name, template_name, company_name, description, name } = object;
+  return {
+    ...(typeof id === "string" ? { id: boundedString(id) } : {}),
+    ...(typeof code === "string" ? { code: boundedString(code) } : {}),
+    ...(typeof item_name === "string" ? { item_name: boundedString(item_name) } : {}),
+    ...(typeof procedure_name === "string" ? { procedure_name: boundedString(procedure_name) } : {}),
+    ...(typeof template_name === "string" ? { template_name: boundedString(template_name) } : {}),
+    ...(typeof company_name === "string" ? { company_name: boundedString(company_name) } : {}),
+    ...(typeof description === "string" ? { description: boundedString(description) } : {}),
+    ...(typeof name === "string" ? { name: boundedString(name) } : {}),
+  };
+}
+
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const contentLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+
+  const body = await req.arrayBuffer();
+  if (body.byteLength > MAX_BODY_BYTES) throw new Error("PAYLOAD_TOO_LARGE");
+  if (body.byteLength === 0) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
@@ -59,14 +95,11 @@ Deno.serve(async (req) => {
     const origin = req.headers.get("Origin");
     if (origin && !allowedOrigins.includes(origin)) return json(req, { error: "Origin not allowed" }, 403);
 
-    const contentLength = Number(req.headers.get("content-length") || 0);
-    if (contentLength > MAX_BODY_BYTES) return json(req, { error: "Request payload too large" }, 413);
-
     await requireUser(req);
 
-    const payload = await req.json().catch(() => null) as Record<string, unknown> | null;
+    const payload = await readJsonBody(req);
     const entity = typeof payload?.entity === "string" ? payload.entity : "";
-    const candidate = safeObject(payload?.candidate);
+    const candidate = sanitizeCandidate(payload?.candidate);
     const existing = Array.isArray(payload?.existing) ? payload.existing : null;
 
     if (!allowedEntities.has(entity) || !candidate || !existing) {
@@ -79,7 +112,16 @@ Deno.serve(async (req) => {
     const trimmed = existing.slice(0, MAX_EXISTING).map((entry) => {
       const object = safeObject(entry) || {};
       const { id, code, item_name, procedure_name, template_name, company_name, description, name } = object;
-      return { id, code, item_name, procedure_name, template_name, company_name, description, name };
+      return {
+        ...(typeof id === "string" ? { id: boundedString(id) } : {}),
+        ...(typeof code === "string" ? { code: boundedString(code) } : {}),
+        ...(typeof item_name === "string" ? { item_name: boundedString(item_name) } : {}),
+        ...(typeof procedure_name === "string" ? { procedure_name: boundedString(procedure_name) } : {}),
+        ...(typeof template_name === "string" ? { template_name: boundedString(template_name) } : {}),
+        ...(typeof company_name === "string" ? { company_name: boundedString(company_name) } : {}),
+        ...(typeof description === "string" ? { description: boundedString(description) } : {}),
+        ...(typeof name === "string" ? { name: boundedString(name) } : {}),
+      };
     });
 
     const prompt = `You are a healthcare data steward. Decide if the CANDIDATE is a duplicate of any item in EXISTING for entity type "${entity}".
@@ -122,6 +164,7 @@ Return: {"duplicate": boolean, "confidence": 0-1, "match_id": "<id-if-duplicate-
   } catch (cause: unknown) {
     if (cause instanceof Error && cause.message === "AUTH_REQUIRED") return json(req, { error: "Authentication required" }, 401);
     if (cause instanceof Error && cause.message === "FORBIDDEN") return json(req, { error: "Insufficient permission" }, 403);
+    if (cause instanceof Error && cause.message === "PAYLOAD_TOO_LARGE") return json(req, { error: "Request payload too large" }, 413);
     console.error("ai-dedup-check failed", cause);
     return json(req, { duplicate: false, confidence: 0, reason: "Unable to complete duplicate check" }, 500);
   }
