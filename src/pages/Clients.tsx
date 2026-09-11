@@ -12,14 +12,15 @@ import { useMasterSearch } from "@/hooks/useMasterSearch";
 import { usePermissions } from "@/modules/security/usePermissions";
 
 export default function Clients() {
-  const { data: clients, isLoading } = useSupabaseQuery("client_companies");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadMasterData = can("masterdata.write");
+  const canWriteMasterData = can("masterdata.write");
+  const { data: clients, isLoading } = useSupabaseQuery("client_companies", { enabled: canReadMasterData && !permissionsLoading });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadMasterData && !permissionsLoading });
   const insertMutation = useSupabaseInsert("client_companies");
   const updateMutation = useSupabaseUpdate("client_companies");
   const deleteMutation = useSupabaseDelete("client_companies");
   const bulkInsert = useSupabaseBulkInsert("client_companies");
-  const { can } = usePermissions();
-  const canWriteMasterData = can("masterdata.write");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -51,6 +52,9 @@ export default function Clients() {
   const searchable = useMasterSearch("client_companies", ["company_name"], search, clients as any[]);
   const filtered = (searchable || []).filter((c: any) => c.company_name?.toLowerCase().includes(search.toLowerCase()));
 
+  if (permissionsLoading) return <div className="space-y-6"><div><h1 className="page-title">Client Companies</h1><p className="page-description">Checking your access permissions…</p></div><Skeleton className="h-32 w-full" /></div>;
+  if (!canReadMasterData) return <div className="space-y-6"><div><h1 className="page-title">Client Companies</h1><p className="page-description">You do not have permission to view client master data.</p></div><div className="stat-card text-sm text-muted-foreground">Restricted access. Contact an administrator if you need master-data access.</div></div>;
+
   return (
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
@@ -60,7 +64,7 @@ export default function Clients() {
       <div className="stat-card">
         <div className="flex items-center gap-3 mb-4"><div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search clients..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
         {isLoading ? <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-8">No clients found.{canWriteMasterData ? ' Click "Add Client" to create one.' : ""}</p> : (
-          <table className="data-table"><thead><tr><th>Company</th><th>Insurance Partner</th><th>Contact</th><th>Email</th><th>Phone</th>{canWriteMasterData && <th>Actions</th>}</tr></thead><tbody>{filtered.map((c: any) => <tr key={c.id} className="hover:bg-muted/50 transition-colors"><td className="font-medium flex items-center gap-2"><Building2 className="w-4 h-4 text-muted-foreground" />{c.company_name}</td><td>{getInsurerName(c.insurance_company_id)}</td><td>{c.contact_person || "—"}</td><td className="text-muted-foreground">{c.email || "—"}</td><td className="text-muted-foreground">{c.phone || "—"}</td>{canWriteMasterData && <td><div className="flex items-center gap-1"><button onClick={() => openEdit(c)} className="p-1.5 rounded hover:bg-muted" aria-label="Edit client"><Pencil className="w-4 h-4 text-muted-foreground" /></button><button onClick={() => handleDelete(c.id)} className="p-1.5 rounded hover:bg-destructive/10" aria-label="Delete client"><Trash2 className="w-4 h-4 text-destructive" /></button></div></td>}</tr>)}</tbody></table>
+          <div className="overflow-x-auto"><table className="data-table min-w-[760px]"><thead><tr><th>Company</th><th>Insurance Partner</th><th>Contact</th><th>Email</th><th>Phone</th>{canWriteMasterData && <th>Actions</th>}</tr></thead><tbody>{filtered.map((c: any) => <tr key={c.id} className="hover:bg-muted/50 transition-colors"><td className="font-medium flex items-center gap-2"><Building2 className="w-4 h-4 text-muted-foreground" />{c.company_name}</td><td>{getInsurerName(c.insurance_company_id)}</td><td>{c.contact_person || "—"}</td><td className="text-muted-foreground">{c.email || "—"}</td><td className="text-muted-foreground">{c.phone || "—"}</td>{canWriteMasterData && <td><div className="flex items-center gap-1"><button onClick={() => openEdit(c)} className="p-1.5 rounded hover:bg-muted" aria-label="Edit client"><Pencil className="w-4 h-4 text-muted-foreground" /></button><button onClick={() => handleDelete(c.id)} className="p-1.5 rounded hover:bg-destructive/10" aria-label="Delete client"><Trash2 className="w-4 h-4 text-destructive" /></button></div></td>}</tr>)}</tbody></table></div>
         )}
       </div>
       {canWriteMasterData && <>
