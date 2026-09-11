@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppShell from "@/components/layout/AppShell";
 import { CareFlowRuntime } from "@/components/CareFlowRuntime";
 import ChunkLoadRecovery from "@/components/ChunkLoadRecovery";
+import GlobalTableSort from "@/components/shared/GlobalTableSort";
 import { usePermissions } from "@/modules/security";
 import type { Permission } from "@/modules/security";
 import { APP_BRAND } from "@/config/branding";
@@ -130,5 +131,5 @@ function DocumentBranding() {
   return null;
 }
 
-const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><DocumentBranding /><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
+const App = () => <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><DocumentBranding /><GlobalTableSort /><ChunkLoadRecovery><Routes><Route path="/auth" element={<AuthRoute />} /><Route path="/*" element={<ProtectedRoutes />} /></Routes><CareFlowRuntime /></ChunkLoadRecovery></AuthProvider></BrowserRouter></TooltipProvider></QueryClientProvider>;
 export default App;
