@@ -36,7 +36,7 @@ export default function BulkImportDialog({ open, onOpenChange, title, columns, o
     reset();
     try {
       const raw = await readTabularFile(file);
-      if (raw.length === 0) { setError("No data rows found. Keep the header row and add at least one record."); return; }
+      if (raw.length === 0) { setError("No data rows found. Keep the header row on the Data sheet and add at least one record."); return; }
       const rows = mapRows(raw, columns);
       if (rows.length === 0) { setError("Could not match any columns. Download the template and keep its header row."); return; }
       setParsed(rows);
@@ -75,6 +75,9 @@ export default function BulkImportDialog({ open, onOpenChange, title, columns, o
           <div className="mt-2 border-2 border-dashed border-border rounded-lg p-6 text-center">
             <FileSpreadsheet className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground mb-2">.xlsx, .xls or .csv — headers must match the template</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Excel template: complete the <strong>Data</strong> sheet only. The <strong>Guide</strong> sheet contains field definitions and is ignored automatically during import; you do not need to delete it.
+            </p>
             <p className="text-xs text-muted-foreground mb-3">
               Columns: {columns.map((c) => c.label + (c.required ? "*" : "")).join(", ")}
             </p>
