@@ -23,44 +23,41 @@ const GC_TIME_MS = 10 * 60_000;
 
 const READ_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
   insurance_companies: ["masterdata.write", "claims.read", "payments.read", "preauth.read", "reports.read", "analytics.read"],
-  client_companies: ["masterdata.write", "claims.read"],
-  doctors: ["masterdata.write"],
-  procedures: ["masterdata.write"],
-  patients: ["claims.read", "preauth.read"],
-  pre_authorizations: ["preauth.read"],
-  preauth_items: ["preauth.read"],
-  preauth_versions: ["preauth.read"],
-  preauth_email_log: ["preauth.read"],
-  claims: ["claims.read"],
-  payments: ["payments.read"],
-  withholding_tax: ["payments.read", "ledger.read", "reports.read"],
-  system_settings: ["settings.manage"],
-  diagnosis_codes: ["preauth.read"],
-  procedure_templates: ["preauth.read"],
-  preauth_catalog_items: ["preauth.read"],
-  ledger_entries: ["ledger.read", "reports.read"],
-  audit_logs: ["audit.read"],
-  user_roles: ["users.manage"],
-  claims_settlement_periods: ["payments.read"],
-  settlement_exceptions: ["payments.read"],
-  settlement_exception_audit_events: ["payments.read"],
+  client_companies: ["masterdata.write", "claims.read"], doctors: ["masterdata.write"], procedures: ["masterdata.write"],
+  patients: ["claims.read", "preauth.read"], pre_authorizations: ["preauth.read"], preauth_items: ["preauth.read"],
+  preauth_versions: ["preauth.read"], preauth_email_log: ["preauth.read"], claims: ["claims.read"], payments: ["payments.read"],
+  withholding_tax: ["payments.read", "ledger.read", "reports.read"], system_settings: ["settings.manage"],
+  diagnosis_codes: ["preauth.read"], procedure_templates: ["preauth.read"], preauth_catalog_items: ["preauth.read"],
+  ledger_entries: ["ledger.read", "reports.read"], audit_logs: ["audit.read"], user_roles: ["users.manage"],
+  claims_settlement_periods: ["payments.read"], settlement_exceptions: ["payments.read"], settlement_exception_audit_events: ["payments.read"],
   claims_outstanding_periods: ["claims.read"],
 };
+
+const WRITE_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
+  insurance_companies: ["masterdata.write"], client_companies: ["masterdata.write"], doctors: ["masterdata.write"], procedures: ["masterdata.write"],
+  diagnosis_codes: ["masterdata.write"], procedure_templates: ["masterdata.write"], preauth_catalog_items: ["masterdata.write"],
+  patients: ["claims.write", "preauth.write"], pre_authorizations: ["preauth.write"], preauth_items: ["preauth.write"],
+  preauth_versions: ["preauth.write"], preauth_email_log: ["preauth.write"], claims: ["claims.write"], payments: ["payments.write"],
+  withholding_tax: ["payments.write"], ledger_entries: ["ledger.write"], user_roles: ["users.manage"], system_settings: ["settings.manage"],
+  claims_settlement_periods: ["payments.write"], settlement_exceptions: ["payments.write"], settlement_exception_audit_events: ["payments.write"],
+};
+
+function assertMutationPermission(table: TableName, permissionsLoading: boolean, can: (permission: Permission) => boolean, overridePermission?: Permission) {
+  if (permissionsLoading) throw new Error("Permissions are still loading. Please try again in a moment.");
+  const required = overridePermission ? [overridePermission] : WRITE_PERMISSIONS_BY_TABLE[table];
+  if (required && !required.some((permission) => can(permission))) throw new Error("You do not have permission to modify this resource.");
+}
 
 function scopeInsertValues(table: TableName, values: Record<string, any>) {
   if (table !== "pre_authorizations" && table !== "claims_settlement_periods" && table !== "settlement_exceptions" && table !== "settlement_exception_audit_events") return values;
   const facilityId = getStoredFacilityId();
-  if (!facilityId) {
-    if (!isFacilityInfrastructureAvailable()) return values;
-    throw new Error("Facility context is required before creating a record.");
-  }
+  if (!facilityId) { if (!isFacilityInfrastructureAvailable()) return values; throw new Error("Facility context is required before creating a record."); }
   if (values.facility_id && values.facility_id !== facilityId) throw new Error("The selected facility does not match the current context.");
   return { ...values, facility_id: facilityId };
 }
 
 async function listOfflineTable(table: TableName, options?: { orderBy?: string; filters?: Record<string, any>; limit?: number }) {
-  const entity = OFFLINE_ENTITY_BY_TABLE[table];
-  if (!entity) return [];
+  const entity = OFFLINE_ENTITY_BY_TABLE[table]; if (!entity) return [];
   let rows = await listOffline<Record<string, any>>(entity);
   if (options?.filters) rows = rows.filter((row) => Object.entries(options.filters!).every(([key, value]) => row[key] === value));
   if (options?.orderBy) rows.sort((a, b) => String(b[options.orderBy!] ?? "").localeCompare(String(a[options.orderBy!] ?? "")));
@@ -69,22 +66,18 @@ async function listOfflineTable(table: TableName, options?: { orderBy?: string; 
 }
 
 export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean; limit?: number }) {
-  const queryClient = useQueryClient();
-  const offline = getCareFlowDataMode() === "offline";
-  const { can, loading: permissionsLoading } = usePermissions();
-  const enabled = options?.enabled ?? true;
+  const queryClient = useQueryClient(); const offline = getCareFlowDataMode() === "offline";
+  const { can, loading: permissionsLoading } = usePermissions(); const enabled = options?.enabled ?? true;
   const requiredPermissions = READ_PERMISSIONS_BY_TABLE[table];
   const permissionAllowed = !requiredPermissions || requiredPermissions.some((permission) => can(permission));
   const queryEnabled = enabled && !permissionsLoading && permissionAllowed;
-
   useEffect(() => {
     if (!queryEnabled || offline || !REALTIME_TABLES.includes(table)) return;
     const channel = supabase.channel(`realtime-${table}`).on("postgres_changes", { event: "*", schema: "public", table }, () => queryClient.invalidateQueries({ queryKey: [table] })).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [table, queryClient, offline, queryEnabled]);
   return useQuery({
-    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, queryEnabled],
-    enabled: queryEnabled,
+    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, queryEnabled], enabled: queryEnabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
@@ -92,187 +85,114 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : query.order("created_at", { ascending: false });
       if (options?.limit) query = query.limit(options.limit);
       const { data, error } = await query;
-      if (error) {
-        // Environments whose database is behind the app simply have no rows for
-        // these sections yet; surface an empty list instead of a hard failure.
-        if (isMissingSchemaError(error)) return [];
-        throw error;
-      }
+      if (error) { if (isMissingSchemaError(error)) return []; throw error; }
       return data;
-    },
-    staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
+    }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
   });
 }
 
 function validateOfflineSettlementUpdate(existing: Record<string, any>, values: Record<string, any>) {
-  const currentStatus = String(existing.settlement_status ?? "awaiting_payment");
-  const nextStatus = String(values.settlement_status ?? currentStatus);
+  const currentStatus = String(existing.settlement_status ?? "awaiting_payment"); const nextStatus = String(values.settlement_status ?? currentStatus);
   const allowed = (currentStatus === "awaiting_payment" && nextStatus === "payment_advice_received") || (currentStatus === "payment_advice_received" && nextStatus === "reconciled") || currentStatus === nextStatus;
   if (!allowed) throw new Error(`Invalid settlement transition: ${currentStatus} → ${nextStatus}.`);
   if (currentStatus === "reconciled") {
     const protectedFields = ["insurance_company_id", "period_start", "period_end", "period_type", "total_claims_submitted", "withholding_tax_rate", "provisional_withholding_tax", "payment_received", "rejection_amount", "actual_withholding_tax", "payment_advice_reference", "payment_advice_date", "withholding_tax_variance", "settlement_status"];
     if (protectedFields.some((field) => Object.prototype.hasOwnProperty.call(values, field))) throw new Error("A reconciled settlement is immutable and cannot be changed.");
   }
-  if (nextStatus === "payment_advice_received") {
-    const merged = { ...existing, ...values };
-    if (merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Payment advice requires payment, rejection, actual WHT, advice reference, and advice date.");
-  }
-  if (nextStatus === "reconciled") {
-    const merged = { ...existing, ...values };
-    if (!merged.confirmed_by || !merged.confirmed_at || merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Settlement reconciliation requires complete payment advice and confirmation details.");
-  }
+  if (nextStatus === "payment_advice_received") { const merged = { ...existing, ...values }; if (merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Payment advice requires payment, rejection, actual WHT, advice reference, and advice date."); }
+  if (nextStatus === "reconciled") { const merged = { ...existing, ...values }; if (!merged.confirmed_by || !merged.confirmed_at || merged.payment_received == null || merged.rejection_amount == null || merged.actual_withholding_tax == null || !String(merged.payment_advice_reference ?? "").trim() || !merged.payment_advice_date) throw new Error("Settlement reconciliation requires complete payment advice and confirmation details."); }
 }
 
 export function useSupabaseInsert(table: TableName) {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient(); const { can, loading: permissionsLoading } = usePermissions();
   return useMutation({
     mutationFn: async (values: Record<string, any>) => {
+      assertMutationPermission(table, permissionsLoading, can);
       if (getCareFlowDataMode() === "offline") {
-        const entity = OFFLINE_ENTITY_BY_TABLE[table];
-        if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
+        const entity = OFFLINE_ENTITY_BY_TABLE[table]; if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
         const record = { id: values.id || crypto.randomUUID(), ...scopeInsertValues(table, values) };
-        const { putOffline } = await import("@/modules/offline/offline-store");
-        await putOffline(entity, record);
-        await enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record });
-        return record;
+        const { putOffline } = await import("@/modules/offline/offline-store"); await putOffline(entity, record);
+        await enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record }); return record;
       }
-      const { data, error } = await ((supabase as any).from(table)).insert(scopeInsertValues(table, values)).select().single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
+      const { data, error } = await ((supabase as any).from(table)).insert(scopeInsertValues(table, values)).select().single(); if (error) throw error; return data;
+    }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
 }
 
 export function useSupabaseBulkInsert(table: TableName) {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient(); const { can, loading: permissionsLoading } = usePermissions();
   return useMutation({
     mutationFn: async (rows: Record<string, any>[]) => {
+      assertMutationPermission(table, permissionsLoading, can);
       if (getCareFlowDataMode() === "offline") {
-        const entity = OFFLINE_ENTITY_BY_TABLE[table];
-        if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
+        const entity = OFFLINE_ENTITY_BY_TABLE[table]; if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
         const { putManyOffline } = await import("@/modules/offline/offline-store");
         const scopedRows = rows.map((row) => ({ id: row.id || crypto.randomUUID(), ...scopeInsertValues(table, row) }));
-        await putManyOffline(entity, scopedRows);
-        await Promise.all(scopedRows.map((record) => enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record })));
-        return scopedRows;
+        await putManyOffline(entity, scopedRows); await Promise.all(scopedRows.map((record) => enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record }))); return scopedRows;
       }
-      const { data, error } = await ((supabase as any).from(table)).insert(rows.map((row) => scopeInsertValues(table, row))).select();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
+      const { data, error } = await ((supabase as any).from(table)).insert(rows.map((row) => scopeInsertValues(table, row))).select(); if (error) throw error; return data;
+    }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
 }
 
 function normalizePreauthTransitionState(values: Record<string, any>) {
-  const raw = String(values.current_state ?? values.status ?? "");
-  const map: Record<string, string> = {
-    draft: "Draft", pending: "PendingApproval", pendingapproval: "PendingApproval",
-    approved: "Approved", rejected: "Rejected", completed: "Completed",
-  };
+  const raw = String(values.current_state ?? values.status ?? ""); const map: Record<string, string> = { draft: "Draft", pending: "PendingApproval", pendingapproval: "PendingApproval", approved: "Approved", rejected: "Rejected", completed: "Completed" };
   return map[raw.toLowerCase()] ?? raw;
 }
-
 const PREAUTH_STATES = ["Draft", "PendingApproval", "Approved", "Rejected", "Completed"] as const;
 
 async function queueOfflinePreauthTransition(id: string, values: Record<string, any>) {
-  const entity = OFFLINE_ENTITY_BY_TABLE.pre_authorizations;
-  if (!entity) throw new Error("Offline pre-authorization storage is not configured.");
-  const { getOffline, putOffline } = await import("@/modules/offline/offline-store");
-  const existing = await getOffline<Record<string, any>>(entity, id);
+  const entity = OFFLINE_ENTITY_BY_TABLE.pre_authorizations; if (!entity) throw new Error("Offline pre-authorization storage is not configured.");
+  const { getOffline, putOffline } = await import("@/modules/offline/offline-store"); const existing = await getOffline<Record<string, any>>(entity, id);
   if (!existing) throw new Error(`Offline pre-authorization ${id} was not found.`);
-  const targetState = normalizePreauthTransitionState(values);
-  if (!PREAUTH_STATES.includes(targetState as typeof PREAUTH_STATES[number])) throw new Error(`Invalid pre-authorization state: ${targetState}`);
-  const currentRaw = String(existing.current_state ?? existing.status ?? "Draft").toLowerCase();
-  const current = currentRaw === "pending" ? "PendingApproval" : currentRaw ? currentRaw.charAt(0).toUpperCase() + currentRaw.slice(1) : "Draft";
-  const allowed: Record<string, string[]> = {
-    Draft: ["PendingApproval"], PendingApproval: ["Approved", "Rejected", "Draft"],
-    Approved: ["Completed", "Rejected"], Rejected: ["Draft"], Completed: [],
-  };
+  const targetState = normalizePreauthTransitionState(values); if (!PREAUTH_STATES.includes(targetState as typeof PREAUTH_STATES[number])) throw new Error(`Invalid pre-authorization state: ${targetState}`);
+  const currentRaw = String(existing.current_state ?? existing.status ?? "Draft").toLowerCase(); const current = currentRaw === "pending" ? "PendingApproval" : currentRaw ? currentRaw.charAt(0).toUpperCase() + currentRaw.slice(1) : "Draft";
+  const allowed: Record<string, string[]> = { Draft: ["PendingApproval"], PendingApproval: ["Approved", "Rejected", "Draft"], Approved: ["Completed", "Rejected"], Rejected: ["Draft"], Completed: [] };
   if (!allowed[current]?.includes(targetState)) throw new Error(`Invalid pre-authorization transition: ${current} → ${targetState}.`);
   if (targetState === "Rejected" && !String(values.rejection_reason ?? values.note ?? "").trim()) throw new Error("A rejection reason is required.");
-  const status = targetState === "PendingApproval" ? "pending" : targetState.toLowerCase();
-  const now = new Date().toISOString();
-  const record = {
-    ...existing,
-    current_state: targetState,
-    status,
-    ...(targetState === "PendingApproval" ? { submitted_at: existing.submitted_at ?? now } : {}),
-    ...(targetState === "Approved" ? { approved_at: now } : {}),
-    ...(targetState === "Rejected" ? { rejection_reason: String(values.rejection_reason ?? values.note).trim() } : {}),
-    updated_at: now,
-  };
-  await putOffline(entity, record);
-  await enqueueSyncOperation({
-    table: "pre_authorizations",
-    type: "rpc",
-    recordId: id,
-    rpcName: "transition_preauthorization_atomic",
-    rpcArgs: {
-      p_preauth_id: id,
-      p_target_state: targetState,
-      p_note: values.rejection_reason ?? values.note ?? null,
-    },
-    facilityId: record.facility_id,
-  });
+  const status = targetState === "PendingApproval" ? "pending" : targetState.toLowerCase(); const now = new Date().toISOString();
+  const record = { ...existing, current_state: targetState, status, ...(targetState === "PendingApproval" ? { submitted_at: existing.submitted_at ?? now } : {}), ...(targetState === "Approved" ? { approved_at: now } : {}), ...(targetState === "Rejected" ? { rejection_reason: String(values.rejection_reason ?? values.note).trim() } : {}), updated_at: now };
+  await putOffline(entity, record); await enqueueSyncOperation({ table: "pre_authorizations", type: "rpc", recordId: id, rpcName: "transition_preauthorization_atomic", rpcArgs: { p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null }, facilityId: record.facility_id });
   return record;
 }
 
 export function useSupabaseUpdate(table: TableName) {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient(); const { can, loading: permissionsLoading } = usePermissions();
   return useMutation({
     mutationFn: async ({ id, ...values }: Record<string, any>) => {
+      const targetState = table === "pre_authorizations" && (Object.prototype.hasOwnProperty.call(values, "current_state") || Object.prototype.hasOwnProperty.call(values, "status")) ? normalizePreauthTransitionState(values) : null;
+      assertMutationPermission(table, permissionsLoading, can, targetState === "Approved" ? "preauth.approve" : undefined);
       const offline = getCareFlowDataMode() === "offline";
-      if (table === "pre_authorizations" && (Object.prototype.hasOwnProperty.call(values, "current_state") || Object.prototype.hasOwnProperty.call(values, "status"))) {
+      if (targetState) {
         if (offline) return queueOfflinePreauthTransition(id, values);
-        const targetState = normalizePreauthTransitionState(values);
         if (!PREAUTH_STATES.includes(targetState as typeof PREAUTH_STATES[number])) throw new Error(`Invalid pre-authorization state: ${targetState}`);
-        const { data, error } = await (supabase.rpc as any)("transition_preauthorization_atomic", {
-          p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null,
-        });
-        if (error) throw error;
-        return data;
+        const { data, error } = await (supabase.rpc as any)("transition_preauthorization_atomic", { p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null });
+        if (error) throw error; return data;
       }
       if (offline) {
-        const entity = OFFLINE_ENTITY_BY_TABLE[table];
-        if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
-        const { getOffline, putOffline } = await import("@/modules/offline/offline-store");
-        const existing = await getOffline<Record<string, any>>(entity, id);
-        if (!existing) throw new Error(`Offline record ${id} was not found.`);
-        if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
-        const baseVersion = existing.updated_at ?? existing.updatedAt;
-        const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
-        await putOffline(entity, record);
-        await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record, ...(baseVersion != null ? { baseVersion } : {}) });
-        return record;
+        const entity = OFFLINE_ENTITY_BY_TABLE[table]; if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
+        const { getOffline, putOffline } = await import("@/modules/offline/offline-store"); const existing = await getOffline<Record<string, any>>(entity, id);
+        if (!existing) throw new Error(`Offline record ${id} was not found.`); if (table === "claims_settlement_periods") validateOfflineSettlementUpdate(existing, values);
+        const baseVersion = existing.updated_at ?? existing.updatedAt; const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
+        await putOffline(entity, record); await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record, ...(baseVersion != null ? { baseVersion } : {}) }); return record;
       }
-      const { data, error } = await ((supabase as any).from(table)).update(values).eq("id", id).select().single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
+      const { data, error } = await ((supabase as any).from(table)).update(values).eq("id", id).select().single(); if (error) throw error; return data;
+    }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
 }
 
 export function useSupabaseDelete(table: TableName) {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient(); const { can, loading: permissionsLoading } = usePermissions();
   return useMutation({
     mutationFn: async (id: string) => {
+      assertMutationPermission(table, permissionsLoading, can);
       if (getCareFlowDataMode() === "offline") {
-        const entity = OFFLINE_ENTITY_BY_TABLE[table];
-        if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
-        const { getOffline, deleteOffline } = await import("@/modules/offline/offline-store");
-        const existing = await getOffline<Record<string, any>>(entity, id);
-        if (!existing) throw new Error(`Offline record ${id} was not found.`);
-        const baseVersion = existing.updated_at ?? existing.updatedAt;
-        await deleteOffline(entity, id);
-        await enqueueSyncOperation({ table, type: "delete", recordId: id, payload: existing, ...(baseVersion != null ? { baseVersion } : {}) });
-        return;
+        const entity = OFFLINE_ENTITY_BY_TABLE[table]; if (!entity) throw new Error(`Offline storage is not configured for ${table}.`);
+        const { getOffline, deleteOffline } = await import("@/modules/offline/offline-store"); const existing = await getOffline<Record<string, any>>(entity, id);
+        if (!existing) throw new Error(`Offline record ${id} was not found.`); const baseVersion = existing.updated_at ?? existing.updatedAt;
+        await deleteOffline(entity, id); await enqueueSyncOperation({ table, type: "delete", recordId: id, payload: existing, ...(baseVersion != null ? { baseVersion } : {}) }); return;
       }
-      const { error } = await ((supabase as any).from(table)).delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
+      const { error } = await ((supabase as any).from(table)).delete().eq("id", id); if (error) throw error;
+    }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
 }
