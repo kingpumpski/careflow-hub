@@ -30,7 +30,6 @@ type LedgerEntry = {
 };
 
 type Insurer = { id: string; company_name: string };
-
 type LedgerFilters = { company?: string; month?: string; year?: string; status?: string };
 
 export default function Ledger() {
@@ -40,14 +39,6 @@ export default function Ledger() {
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadLedger && !permissionsLoading });
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LedgerFilters>({});
-
-  if (permissionsLoading) {
-    return <div className="stat-card py-12 text-center text-muted-foreground">Checking ledger access…</div>;
-  }
-
-  if (!canReadLedger) {
-    return <div className="stat-card py-12 text-center"><BookOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h1 className="font-semibold">Ledger access restricted</h1><p className="mt-1 text-sm text-muted-foreground">You do not have permission to view accounting ledger entries.</p></div>;
-  }
 
   const insurerRows = (insurers || []) as unknown as Insurer[];
   const ledgerEntries = (entries || []) as unknown as LedgerEntry[];
@@ -63,6 +54,7 @@ export default function Ledger() {
   if (filters.year) filtered = filtered.filter((e) => e.claim_year === parseInt(filters.year, 10));
   if (filters.status) filtered = filtered.filter((e) => e.entry_type === filters.status);
 
+  // Keep every hook unconditional so permission loading/restricted renders never change hook order.
   const { sorted, sort, handleSort } = useSort(filtered);
 
   const balances: Record<string, number> = {};
@@ -70,6 +62,14 @@ export default function Ledger() {
     balances[e.account_debit] = (balances[e.account_debit] || 0) + Number(e.amount);
     balances[e.account_credit] = (balances[e.account_credit] || 0) - Number(e.amount);
   });
+
+  if (permissionsLoading) {
+    return <div className="stat-card py-12 text-center text-muted-foreground">Checking ledger access…</div>;
+  }
+
+  if (!canReadLedger) {
+    return <div className="stat-card py-12 text-center"><BookOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h1 className="font-semibold">Ledger access restricted</h1><p className="mt-1 text-sm text-muted-foreground">You do not have permission to view accounting ledger entries.</p></div>;
+  }
 
   return (
     <div className="space-y-6">
