@@ -30,6 +30,15 @@ function decodeDataUrl(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+function validateDataUrlSize(dataUrl: string): void {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0 || !/;base64$/i.test(dataUrl.slice(0, comma))) throw new Error("INVALID_DOCUMENT");
+  const encoded = dataUrl.slice(comma + 1).replace(/\s/g, "");
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  const decodedBytes = Math.floor(encoded.length * 3 / 4) - padding;
+  if (decodedBytes > MAX_DOCUMENT_BYTES) throw new Error("DOCUMENT_TOO_LARGE");
+}
+
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   const loadingTask = getDocument({ data: bytes, disableWorker: true, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 });
   const pdf = await loadingTask.promise;
@@ -56,7 +65,6 @@ async function requireAuthorizedUser(req: Request) {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) throw new Error("AUTH_REQUIRED");
 
-  // Document intake can create operational records, so require at least one relevant write capability.
   const writePermissions = ["claims.write", "payments.write", "preauth.write", "masterdata.write", "ledger.write"];
   const permissionResults = await Promise.all(writePermissions.map((permission) =>
     userClient.rpc("current_user_has_permission", { p_permission_key: permission }),
@@ -70,20 +78,33 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
   try {
     if (!isAllowedOrigin(req.headers.get("Origin"))) return json(req, { error: "Origin not allowed" }, 403);
-    const contentLength = Number(req.headers.get("content-length") || 0);
-    if (contentLength > MAX_BODY_BYTES) return json(req, { error: "Document payload is too large. Please use a file below 8 MB." }, 413);
+
+    const rawBody = await req.arrayBuffer();
+    if (rawBody.byteLength > MAX_BODY_BYTES) return json(req, { error: "Document request is too large. Please use a file below 8 MB." }, 413);
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+    } catch {
+      return json(req, { error: "Invalid JSON request body." }, 400);
+    }
 
     const aiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!aiKey) return json(req, { error: "Document transcription service is not configured." }, 503);
     await requireAuthorizedUser(req);
 
-    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     const fileName = typeof body?.file_name === "string" ? body.file_name.slice(0, 180) : "uploaded document";
     const mimeType = typeof body?.mime_type === "string" ? body.mime_type.slice(0, 120).toLowerCase() : "application/octet-stream";
     const text = typeof body?.text === "string" ? body.text.slice(0, 100_000) : null;
     const dataUrl = typeof body?.data_url === "string" ? body.data_url : null;
     if (!text && !dataUrl) return json(req, { error: "No document content supplied." }, 400);
-    if (dataUrl && dataUrl.length > 11_000_000) return json(req, { error: "Document payload is too large. Please use a file below 8 MB." }, 413);
+    if (dataUrl) {
+      try {
+        validateDataUrlSize(dataUrl);
+      } catch (error) {
+        if (error instanceof Error && error.message === "DOCUMENT_TOO_LARGE") return json(req, { error: "Document exceeds the 8 MB limit." }, 413);
+        return json(req, { error: "Invalid base64 document payload." }, 400);
+      }
+    }
 
     let sourceText = text;
     let imageDataUrl: string | null = null;
