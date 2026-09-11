@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 type Direction = "asc" | "desc";
 
@@ -21,11 +20,7 @@ function parseValue(value: string): { type: "number" | "date" | "text"; value: n
   const text = normalize(value);
   if (!text || text === "—" || text === "-") return { type: "text", value: "" };
 
-  const numeric = text
-    .replace(/GH¢|GHS|USD|₵|%/gi, "")
-    .replace(/,/g, "")
-    .replace(/\s+/g, "")
-    .trim();
+  const numeric = text.replace(/GH¢|GHS|USD|₵|%/gi, "").replace(/,/g, "").replace(/\s+/g, "").trim();
   if (/^-?\d+(?:\.\d+)?$/.test(numeric)) return { type: "number", value: Number(numeric) };
 
   if (/^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}(?:,?\s+\d{1,2}:\d{2})?/.test(text) || /^\d{4}-\d{2}-\d{2}/.test(text)) {
@@ -44,17 +39,10 @@ function compareCells(a: string, b: string) {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function getRows(table: HTMLTableElement) {
-  return Array.from(table.tBodies).flatMap((tbody) => Array.from(tbody.rows));
-}
-
 function setIndicator(header: HTMLTableCellElement, direction?: Direction) {
   const indicator = header.querySelector<HTMLElement>(`[${SORT_INDICATOR}]`);
   if (!indicator) return;
-  indicator.replaceChildren();
-  if (direction === "asc") indicator.appendChild(ArrowUpDown ? document.createTextNode("↑") : document.createTextNode(""));
-  else if (direction === "desc") indicator.appendChild(document.createTextNode("↓"));
-  else indicator.appendChild(document.createTextNode("↕"));
+  indicator.textContent = direction === "asc" ? "↑" : direction === "desc" ? "↓" : "↕";
 }
 
 function sortTable(table: HTMLTableElement, state: SortState) {
@@ -62,7 +50,7 @@ function sortTable(table: HTMLTableElement, state: SortState) {
   const header = headers[state.column];
   if (!header) return;
 
-  const rows = getRows(table);
+  const rows = Array.from(table.tBodies).flatMap((tbody) => Array.from(tbody.rows));
   const decorated = rows.map((row, index) => ({ row, index }));
   decorated.sort((a, b) => {
     const left = a.row.cells[state.column]?.textContent || "";
