@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/modules/security/usePermissions";
 import PreAuthorizationStudio from "@/pages/PreAuthorizationStudio";
 import OfflinePreAuthorizationStudio from "@/pages/OfflinePreAuthorizationStudio";
 import { isOfflineMode } from "@/modules/offline/data-mode";
@@ -20,6 +21,8 @@ const SYSTEM_ADMIN_ROLES = new Set(["admin", "superuser"]);
 export default function PreAuthorizationStudioRoute() {
   const offline = isOfflineMode();
   const { userRole } = useAuth();
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadPreAuth = can("preauth.read");
   const isSystemAdministrator = SYSTEM_ADMIN_ROLES.has(userRole ?? "");
   const [memberships, setMemberships] = useState<FacilityMembership[]>([]);
   const [facilities, setFacilities] = useState<PreAuthFacility[]>([]);
@@ -28,7 +31,7 @@ export default function PreAuthorizationStudioRoute() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (offline) {
+    if (offline || permissionsLoading || !canReadPreAuth) {
       setLoading(false);
       return;
     }
@@ -79,7 +82,7 @@ export default function PreAuthorizationStudioRoute() {
       });
 
     return () => { active = false; };
-  }, [offline, isSystemAdministrator]);
+  }, [offline, permissionsLoading, canReadPreAuth, isSystemAdministrator]);
 
   const selectedMembership = useMemo(
     () => memberships.find((membership) => membership.facility_id === facilityId),
@@ -89,6 +92,16 @@ export default function PreAuthorizationStudioRoute() {
     () => facilities.find((facility) => facility.id === facilityId),
     [facilities, facilityId],
   );
+
+  if (permissionsLoading) return <div className="stat-card">Checking pre-authorization access…</div>;
+  if (!canReadPreAuth) {
+    return (
+      <div className="stat-card max-w-xl space-y-2">
+        <h1 className="page-title">Access restricted</h1>
+        <p className="text-sm text-muted-foreground">You do not have permission to view pre-authorization records.</p>
+      </div>
+    );
+  }
 
   if (offline) return <OfflinePreAuthorizationStudio />;
   if (loading) return <div className="stat-card">Loading facility access…</div>;
