@@ -15,9 +15,11 @@ alter table public.document_ingest_records
   check (status in ('inserted', 'updated', 'duplicate', 'conflict', 'invalid'));
 
 create index if not exists claims_document_ingest_lookup_idx
-  on public.claims (insurance_company_id, claim_month, claim_year);
+  on public.claims (insurance_company_id, claim_month, claim_year, claim_amount);
 create index if not exists payments_document_ingest_lookup_idx
-  on public.payments (insurance_company_id, payment_date, reference_number, claim_id);
+  on public.payments (insurance_company_id, payment_date, amount_paid);
+create index if not exists payments_document_ingest_reference_idx
+  on public.payments (insurance_company_id, lower(reference_number));
 create index if not exists withholding_tax_document_ingest_lookup_idx
   on public.withholding_tax (insurance_company_id, month, year);
 create index if not exists insurance_companies_document_ingest_lookup_idx
@@ -51,16 +53,6 @@ declare
   v_allowed boolean;
   v_changed_fields jsonb;
   v_conflict_fields jsonb;
-  v_old_text text;
-  v_new_text text;
-  v_old_numeric numeric;
-  v_new_numeric numeric;
-  v_old_date date;
-  v_new_date date;
-  v_old_bool boolean;
-  v_new_bool boolean;
-  v_old_uuid uuid;
-  v_new_uuid uuid;
   v_company_id uuid;
   v_claim_amount numeric;
   v_claim_month integer;
@@ -70,17 +62,25 @@ declare
   v_amount_paid numeric;
   v_tax_amount numeric;
   v_company_name text;
+  v_month integer;
+  v_year integer;
+  v_old_text text;
+  v_old_numeric numeric;
+  v_old_bool boolean;
+  v_old_uuid uuid;
+  v_old_date date;
+  v_old_text_2 text;
+  v_old_numeric_2 numeric;
+  v_old_array text[];
+  v_new_array text[];
   v_pre_auth_id uuid;
   v_patient_name text;
   v_procedure_name text;
   v_submission_date date;
   v_reference_number text;
   v_claim_id uuid;
-  v_month integer;
-  v_year integer;
   v_claim_total numeric;
   v_tax_rate numeric;
-  v_is_actual boolean;
 begin
   if v_user_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
@@ -112,72 +112,63 @@ begin
         values (v_batch_id, coalesce(v_entity, 'unknown'), md5(coalesce(v_record::text, '')), v_record, 'invalid');
         continue;
       end if;
-
-      v_fingerprint := md5('insurance_company|' || v_company_name);
-      select id, contact_person, email, phone, address, is_active
-        into v_match_id, v_old_text, v_old_text, v_old_text, v_old_text, v_old_bool
+      v_fingerprint := md5('insurance_company|' || v_company_name || '|' || coalesce(v_data->>'is_active', 'true'));
+      select id, contact_person, email, phone, address, additional_emails, color, is_active
+        into v_match_id, v_old_text, v_old_text_2, v_old_text, v_old_text, v_old_array, v_old_text, v_old_bool
       from public.insurance_companies
       where lower(regexp_replace(trim(company_name), '\\s+', ' ', 'g')) = v_company_name
-      order by created_at nulls last, id
-      limit 1
-      for update;
+      order by id limit 1 for update;
 
       if v_match_id is null then
-        insert into public.insurance_companies (company_name, is_active, contact_person, email, phone, address)
+        insert into public.insurance_companies (company_name, is_active, contact_person, email, phone, address, additional_emails, color)
         values (
           trim(v_data->>'company_name'),
           coalesce((v_data->>'is_active')::boolean, true),
           nullif(trim(v_data->>'contact_person'), ''),
           nullif(trim(v_data->>'email'), ''),
           nullif(trim(v_data->>'phone'), ''),
-          nullif(trim(v_data->>'address'), '')
+          nullif(trim(v_data->>'address'), ''),
+          case when jsonb_typeof(v_data->'additional_emails') = 'array' then array(select jsonb_array_elements_text(v_data->'additional_emails')) else null end,
+          nullif(trim(v_data->>'color'), '')
         )
         returning id into v_match_id;
         v_inserted := v_inserted + 1;
         insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
         values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
       else
-        select contact_person, email, phone, address, is_active
-          into v_old_text, v_new_text, v_old_text, v_old_text, v_old_bool
+        select contact_person, email, phone, address, additional_emails, color, is_active
+          into v_old_text, v_old_text_2, v_old_text, v_old_text, v_old_array, v_old_text, v_old_bool
         from public.insurance_companies where id = v_match_id for update;
 
         if nullif(trim(v_data->>'contact_person'), '') is not null then
-          if v_old_text is null then
-            v_changed_fields := v_changed_fields || jsonb_build_object('contact_person', jsonb_build_object('from', null, 'to', trim(v_data->>'contact_person')));
-          elsif lower(trim(v_old_text)) <> lower(trim(v_data->>'contact_person')) then
-            v_conflict_fields := v_conflict_fields || jsonb_build_object('contact_person', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'contact_person')));
-          end if;
+          if v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('contact_person', jsonb_build_object('from', null, 'to', trim(v_data->>'contact_person')));
+          elsif lower(trim(v_old_text)) <> lower(trim(v_data->>'contact_person')) then v_conflict_fields := v_conflict_fields || jsonb_build_object('contact_person', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'contact_person'))); end if;
         end if;
-        select email into v_old_text from public.insurance_companies where id = v_match_id;
         if nullif(trim(v_data->>'email'), '') is not null then
-          if v_old_text is null then
-            v_changed_fields := v_changed_fields || jsonb_build_object('email', jsonb_build_object('from', null, 'to', trim(v_data->>'email')));
-          elsif lower(trim(v_old_text)) <> lower(trim(v_data->>'email')) then
-            v_conflict_fields := v_conflict_fields || jsonb_build_object('email', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'email')));
-          end if;
+          if v_old_text_2 is null then v_changed_fields := v_changed_fields || jsonb_build_object('email', jsonb_build_object('from', null, 'to', trim(v_data->>'email')));
+          elsif lower(trim(v_old_text_2)) <> lower(trim(v_data->>'email')) then v_conflict_fields := v_conflict_fields || jsonb_build_object('email', jsonb_build_object('from', v_old_text_2, 'to', trim(v_data->>'email'))); end if;
         end if;
-        select phone into v_old_text from public.insurance_companies where id = v_match_id;
+        select phone, address, color into v_old_text, v_old_text_2, v_old_text from public.insurance_companies where id = v_match_id;
         if nullif(trim(v_data->>'phone'), '') is not null then
-          if v_old_text is null then
-            v_changed_fields := v_changed_fields || jsonb_build_object('phone', jsonb_build_object('from', null, 'to', trim(v_data->>'phone')));
-          elsif trim(v_old_text) <> trim(v_data->>'phone') then
-            v_conflict_fields := v_conflict_fields || jsonb_build_object('phone', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'phone')));
-          end if;
+          if v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('phone', jsonb_build_object('from', null, 'to', trim(v_data->>'phone')));
+          elsif trim(v_old_text) <> trim(v_data->>'phone') then v_conflict_fields := v_conflict_fields || jsonb_build_object('phone', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'phone'))); end if;
         end if;
-        select address into v_old_text from public.insurance_companies where id = v_match_id;
         if nullif(trim(v_data->>'address'), '') is not null then
-          if v_old_text is null then
-            v_changed_fields := v_changed_fields || jsonb_build_object('address', jsonb_build_object('from', null, 'to', trim(v_data->>'address')));
-          elsif trim(v_old_text) <> trim(v_data->>'address') then
-            v_conflict_fields := v_conflict_fields || jsonb_build_object('address', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'address')));
-          end if;
+          if v_old_text_2 is null then v_changed_fields := v_changed_fields || jsonb_build_object('address', jsonb_build_object('from', null, 'to', trim(v_data->>'address')));
+          elsif trim(v_old_text_2) <> trim(v_data->>'address') then v_conflict_fields := v_conflict_fields || jsonb_build_object('address', jsonb_build_object('from', v_old_text_2, 'to', trim(v_data->>'address'))); end if;
         end if;
-        if v_data ? 'is_active' then
-          v_new_bool := (v_data->>'is_active')::boolean;
-          select is_active into v_old_bool from public.insurance_companies where id = v_match_id;
-          if v_old_bool is distinct from v_new_bool then
-            v_conflict_fields := v_conflict_fields || jsonb_build_object('is_active', jsonb_build_object('from', v_old_bool, 'to', v_new_bool));
-          end if;
+        select color into v_old_text from public.insurance_companies where id = v_match_id;
+        if nullif(trim(v_data->>'color'), '') is not null then
+          if v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('color', jsonb_build_object('from', null, 'to', trim(v_data->>'color')));
+          elsif trim(v_old_text) <> trim(v_data->>'color') then v_conflict_fields := v_conflict_fields || jsonb_build_object('color', jsonb_build_object('from', v_old_text, 'to', trim(v_data->>'color'))); end if;
+        end if;
+        if jsonb_typeof(v_data->'additional_emails') = 'array' then
+          v_new_array := array(select jsonb_array_elements_text(v_data->'additional_emails'));
+          if v_old_array is null then v_changed_fields := v_changed_fields || jsonb_build_object('additional_emails', jsonb_build_object('from', null, 'to', v_new_array));
+          elsif v_old_array <> v_new_array then v_conflict_fields := v_conflict_fields || jsonb_build_object('additional_emails', jsonb_build_object('from', v_old_array, 'to', v_new_array)); end if;
+        end if;
+        if v_data ? 'is_active' and v_old_bool is distinct from (v_data->>'is_active')::boolean then
+          v_conflict_fields := v_conflict_fields || jsonb_build_object('is_active', jsonb_build_object('from', v_old_bool, 'to', (v_data->>'is_active')::boolean));
         end if;
 
         if jsonb_object_length(v_conflict_fields) > 0 then
@@ -189,7 +180,9 @@ begin
           set contact_person = coalesce(contact_person, nullif(trim(v_data->>'contact_person'), '')),
               email = coalesce(email, nullif(trim(v_data->>'email'), '')),
               phone = coalesce(phone, nullif(trim(v_data->>'phone'), '')),
-              address = coalesce(address, nullif(trim(v_data->>'address'), ''))
+              address = coalesce(address, nullif(trim(v_data->>'address'), '')),
+              color = coalesce(color, nullif(trim(v_data->>'color'), '')),
+              additional_emails = coalesce(additional_emails, case when jsonb_typeof(v_data->'additional_emails') = 'array' then array(select jsonb_array_elements_text(v_data->'additional_emails')) else null end)
           where id = v_match_id;
           v_updated := v_updated + 1;
           insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields)
@@ -222,19 +215,20 @@ begin
 
       if v_pre_auth_id is not null then
         v_identity := concat_ws('|', 'claim', v_company_id::text, 'preauth', v_pre_auth_id::text);
-        select id, claim_amount, claim_month, claim_year, status, patient_name, procedure_name, submission_date, expected_payment_date, denial_category, denial_notes, denial_reason, root_cause, submitted_at, approved_at, paid_at, appeal_status, appeal_outcome, appeal_filed_at
-          into v_match_id, v_old_numeric, v_old_numeric, v_old_numeric, v_old_text, v_old_text, v_old_text, v_old_date, v_old_date, v_old_text, v_old_text, v_old_text, v_old_text, v_old_date, v_old_date, v_old_date, v_old_text, v_old_text, v_old_date
-        from public.claims where insurance_company_id = v_company_id and preauth_id = v_pre_auth_id order by created_at, id limit 1 for update;
+        select id, claim_amount, claim_month, claim_year, status, patient_name, procedure_name, submission_date
+          into v_match_id, v_old_numeric, v_claim_month, v_claim_year, v_old_text, v_old_text_2, v_old_text_2, v_old_date
+        from public.claims where insurance_company_id = v_company_id and preauth_id = v_pre_auth_id order by id limit 1 for update;
       elsif v_patient_name is not null and v_procedure_name is not null and v_submission_date is not null then
         v_identity := concat_ws('|', 'claim', v_company_id::text, v_claim_month::text, v_claim_year::text, lower(v_patient_name), lower(v_procedure_name), v_submission_date::text);
-        select id, claim_amount, claim_month, claim_year, status, patient_name, procedure_name, submission_date, expected_payment_date, denial_category, denial_notes, denial_reason, root_cause, submitted_at, approved_at, paid_at, appeal_status, appeal_outcome, appeal_filed_at
-          into v_match_id, v_old_numeric, v_old_numeric, v_old_numeric, v_old_text, v_old_text, v_old_text, v_old_date, v_old_date, v_old_text, v_old_text, v_old_text, v_old_text, v_old_date, v_old_date, v_old_date, v_old_text, v_old_text, v_old_date
-        from public.claims where insurance_company_id = v_company_id and claim_month = v_claim_month and claim_year = v_claim_year and lower(coalesce(patient_name,'')) = lower(v_patient_name) and lower(coalesce(procedure_name,'')) = lower(v_procedure_name) and submission_date = v_submission_date order by created_at, id limit 1 for update;
+        select id, claim_amount, claim_month, claim_year, status, patient_name, procedure_name, submission_date
+          into v_match_id, v_old_numeric, v_claim_month, v_claim_year, v_old_text, v_old_text_2, v_old_text_2, v_old_date
+        from public.claims where insurance_company_id = v_company_id and claim_month = v_claim_month and claim_year = v_claim_year and lower(coalesce(patient_name,'')) = lower(v_patient_name) and lower(coalesce(procedure_name,'')) = lower(v_procedure_name) and submission_date = v_submission_date order by id limit 1 for update;
       else
         v_identity := concat_ws('|', 'claim', v_company_id::text, v_claim_month::text, v_claim_year::text, v_claim_amount::text);
-        select id into v_match_id from public.claims where insurance_company_id = v_company_id and claim_month = v_claim_month and claim_year = v_claim_year and claim_amount = v_claim_amount order by created_at, id limit 1 for update;
+        select id, claim_amount, status into v_match_id, v_old_numeric, v_old_text
+        from public.claims where insurance_company_id = v_company_id and claim_month = v_claim_month and claim_year = v_claim_year and claim_amount = v_claim_amount order by id limit 1 for update;
       end if;
-      v_fingerprint := md5(v_identity || '|' || lower(v_status) || '|' || coalesce(v_data::text, ''));
+      v_fingerprint := md5(v_identity || '|' || lower(v_status));
 
       if v_match_id is null then
         insert into public.claims (insurance_company_id, claim_amount, claim_month, claim_year, status, preauth_id, patient_name, procedure_name, submission_date)
@@ -244,24 +238,19 @@ begin
         insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
         values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
       else
-        select claim_amount into v_old_numeric from public.claims where id = v_match_id;
-        if v_data ? 'claim_amount' and v_old_numeric is not null and v_old_numeric <> v_claim_amount then
-          v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_amount', jsonb_build_object('from', v_old_numeric, 'to', v_claim_amount));
-        end if;
-        select status into v_old_text from public.claims where id = v_match_id;
-        if lower(coalesce(v_old_text,'')) <> lower(v_status) then
-          v_conflict_fields := v_conflict_fields || jsonb_build_object('status', jsonb_build_object('from', v_old_text, 'to', v_status));
-        end if;
-        select patient_name, procedure_name, preauth_id, submission_date into v_old_text, v_new_text, v_old_uuid, v_old_date from public.claims where id = v_match_id;
-        if v_patient_name is not null then
-          if v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('patient_name', jsonb_build_object('from', null, 'to', v_patient_name));
-          elsif lower(v_old_text) <> lower(v_patient_name) then v_conflict_fields := v_conflict_fields || jsonb_build_object('patient_name', jsonb_build_object('from', v_old_text, 'to', v_patient_name)); end if;
-        end if;
-        if v_procedure_name is not null then
-          if v_new_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('procedure_name', jsonb_build_object('from', null, 'to', v_procedure_name));
-          elsif lower(v_new_text) <> lower(v_procedure_name) then v_conflict_fields := v_conflict_fields || jsonb_build_object('procedure_name', jsonb_build_object('from', v_new_text, 'to', v_procedure_name)); end if;
-        end if;
-        if v_pre_auth_id is not null and v_old_uuid is null then v_changed_fields := v_changed_fields || jsonb_build_object('preauth_id', jsonb_build_object('from', null, 'to', v_pre_auth_id)); end if;
+        select claim_amount, claim_month, claim_year, status, patient_name, procedure_name, preauth_id, submission_date, expected_payment_date, denial_category, denial_notes, denial_reason, root_cause, submitted_at, approved_at, paid_at, appeal_status, appeal_outcome, appeal_filed_at
+          into v_old_numeric, v_claim_month, v_claim_year, v_old_text, v_old_text_2, v_old_text_2, v_old_uuid, v_old_date, v_old_date, v_old_text_2, v_old_text_2, v_old_text_2, v_old_text_2, v_old_date, v_old_date, v_old_date, v_old_text_2, v_old_text_2, v_old_date
+        from public.claims where id = v_match_id;
+        if v_old_numeric is distinct from v_claim_amount then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_amount', jsonb_build_object('from', v_old_numeric, 'to', v_claim_amount)); end if;
+        if v_claim_month is distinct from nullif(v_data->>'claim_month','')::integer then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_month', jsonb_build_object('from', v_claim_month, 'to', nullif(v_data->>'claim_month','')::integer)); end if;
+        if v_claim_year is distinct from nullif(v_data->>'claim_year','')::integer then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_year', jsonb_build_object('from', v_claim_year, 'to', nullif(v_data->>'claim_year','')::integer)); end if;
+        if lower(coalesce(v_old_text,'')) <> lower(v_status) then v_conflict_fields := v_conflict_fields || jsonb_build_object('status', jsonb_build_object('from', v_old_text, 'to', v_status)); end if;
+        select patient_name, procedure_name, preauth_id, submission_date, expected_payment_date, denial_category, denial_notes, denial_reason, root_cause, submitted_at, approved_at, paid_at, appeal_status, appeal_outcome, appeal_filed_at
+          into v_old_text, v_old_text_2, v_old_uuid, v_old_date, v_old_date, v_old_text_2, v_old_text_2, v_old_text_2, v_old_text_2, v_old_date, v_old_date, v_old_date, v_old_text_2, v_old_text_2, v_old_date
+        from public.claims where id = v_match_id;
+        if v_patient_name is not null then if v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('patient_name', jsonb_build_object('from', null, 'to', v_patient_name)); elsif lower(v_old_text) <> lower(v_patient_name) then v_conflict_fields := v_conflict_fields || jsonb_build_object('patient_name', jsonb_build_object('from', v_old_text, 'to', v_patient_name)); end if; end if;
+        if v_procedure_name is not null then if v_old_text_2 is null then v_changed_fields := v_changed_fields || jsonb_build_object('procedure_name', jsonb_build_object('from', null, 'to', v_procedure_name)); elsif lower(v_old_text_2) <> lower(v_procedure_name) then v_conflict_fields := v_conflict_fields || jsonb_build_object('procedure_name', jsonb_build_object('from', v_old_text_2, 'to', v_procedure_name)); end if; end if;
+        if v_pre_auth_id is not null and v_old_uuid is null then v_changed_fields := v_changed_fields || jsonb_build_object('preauth_id', jsonb_build_object('from', null, 'to', v_pre_auth_id)); elsif v_pre_auth_id is not null and v_old_uuid is distinct from v_pre_auth_id then v_conflict_fields := v_conflict_fields || jsonb_build_object('preauth_id', jsonb_build_object('from', v_old_uuid, 'to', v_pre_auth_id)); end if;
 
         if jsonb_object_length(v_conflict_fields) > 0 then
           v_conflicts := v_conflicts + 1;
@@ -297,60 +286,38 @@ begin
         values (v_batch_id, v_entity, md5(coalesce(v_record::text, '')), v_record, 'invalid');
         continue;
       end if;
-
       if v_reference_number is not null then
         v_identity := concat_ws('|', 'payment', v_company_id::text, 'reference', lower(v_reference_number));
-        select id, amount_paid, payment_date, claim_id, payment_method, claim_month, claim_year
-          into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text, v_claim_month, v_claim_year
-        from public.payments where insurance_company_id = v_company_id and lower(reference_number) = lower(v_reference_number) order by created_at, id limit 1 for update;
+        select id, amount_paid, payment_date, claim_id, reference_number into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text from public.payments where insurance_company_id = v_company_id and lower(reference_number) = lower(v_reference_number) order by id limit 1 for update;
       elsif v_claim_id is not null then
         v_identity := concat_ws('|', 'payment', v_company_id::text, 'claim', v_claim_id::text, v_payment_date::text);
-        select id, amount_paid, payment_date, claim_id, payment_method, claim_month, claim_year
-          into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text, v_claim_month, v_claim_year
-        from public.payments where insurance_company_id = v_company_id and claim_id = v_claim_id and payment_date = v_payment_date order by created_at, id limit 1 for update;
+        select id, amount_paid, payment_date, claim_id, reference_number into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text from public.payments where insurance_company_id = v_company_id and claim_id = v_claim_id and payment_date = v_payment_date order by id limit 1 for update;
       else
         v_identity := concat_ws('|', 'payment', v_company_id::text, v_payment_date::text, v_amount_paid::text);
-        select id, amount_paid, payment_date, claim_id, payment_method, claim_month, claim_year
-          into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text, v_claim_month, v_claim_year
-        from public.payments where insurance_company_id = v_company_id and payment_date = v_payment_date and amount_paid = v_amount_paid order by created_at, id limit 1 for update;
+        select id, amount_paid, payment_date, claim_id, reference_number into v_match_id, v_old_numeric, v_old_date, v_old_uuid, v_old_text from public.payments where insurance_company_id = v_company_id and payment_date = v_payment_date and amount_paid = v_amount_paid order by id limit 1 for update;
       end if;
-      v_fingerprint := md5(v_identity || '|' || coalesce(v_data::text, ''));
-
+      v_fingerprint := md5(v_identity);
       if v_match_id is null then
         insert into public.payments (insurance_company_id, amount_paid, payment_date, reference_number, claim_id, payment_method, claim_month, claim_year)
         values (v_company_id, v_amount_paid, v_payment_date, v_reference_number, v_claim_id, nullif(trim(v_data->>'payment_method'), ''), nullif(v_data->>'claim_month','')::integer, nullif(v_data->>'claim_year','')::integer)
         returning id into v_match_id;
         v_inserted := v_inserted + 1;
-        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
-        values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
+        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id) values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
       else
-        select amount_paid, payment_date, claim_id, payment_method, claim_month, claim_year, reference_number
-          into v_old_numeric, v_old_date, v_old_uuid, v_old_text, v_claim_month, v_claim_year, v_reference_number
-        from public.payments where id = v_match_id;
         if v_old_numeric is distinct from v_amount_paid then v_conflict_fields := v_conflict_fields || jsonb_build_object('amount_paid', jsonb_build_object('from', v_old_numeric, 'to', v_amount_paid)); end if;
         if v_old_date is distinct from v_payment_date then v_conflict_fields := v_conflict_fields || jsonb_build_object('payment_date', jsonb_build_object('from', v_old_date, 'to', v_payment_date)); end if;
-        if v_claim_id is not null and v_old_uuid is null then v_changed_fields := v_changed_fields || jsonb_build_object('claim_id', jsonb_build_object('from', null, 'to', v_claim_id));
-        elsif v_claim_id is not null and v_old_uuid is distinct from v_claim_id then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_id', jsonb_build_object('from', v_old_uuid, 'to', v_claim_id)); end if;
-        if v_reference_number is not null and nullif(trim(v_data->>'reference_number'), '') is not null and lower(v_reference_number) <> lower(trim(v_data->>'reference_number')) then v_conflict_fields := v_conflict_fields || jsonb_build_object('reference_number', jsonb_build_object('from', v_reference_number, 'to', trim(v_data->>'reference_number'))); end if;
-
+        if v_reference_number is not null and v_old_text is null then v_changed_fields := v_changed_fields || jsonb_build_object('reference_number', jsonb_build_object('from', null, 'to', v_reference_number)); elsif v_reference_number is not null and lower(coalesce(v_old_text,'')) <> lower(v_reference_number) then v_conflict_fields := v_conflict_fields || jsonb_build_object('reference_number', jsonb_build_object('from', v_old_text, 'to', v_reference_number)); end if;
+        if v_claim_id is not null and v_old_uuid is null then v_changed_fields := v_changed_fields || jsonb_build_object('claim_id', jsonb_build_object('from', null, 'to', v_claim_id)); elsif v_claim_id is not null and v_old_uuid is distinct from v_claim_id then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_id', jsonb_build_object('from', v_old_uuid, 'to', v_claim_id)); end if;
         if jsonb_object_length(v_conflict_fields) > 0 then
           v_conflicts := v_conflicts + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields, conflict_fields)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'conflict', v_match_id, v_changed_fields, v_conflict_fields);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields, conflict_fields) values (v_batch_id, v_entity, v_fingerprint, v_record, 'conflict', v_match_id, v_changed_fields, v_conflict_fields);
         elsif jsonb_object_length(v_changed_fields) > 0 then
-          update public.payments
-          set claim_id = coalesce(claim_id, v_claim_id),
-              payment_method = coalesce(payment_method, nullif(trim(v_data->>'payment_method'), '')),
-              claim_month = coalesce(claim_month, nullif(v_data->>'claim_month','')::integer),
-              claim_year = coalesce(claim_year, nullif(v_data->>'claim_year','')::integer)
-          where id = v_match_id;
+          update public.payments set reference_number = coalesce(reference_number, v_reference_number), claim_id = coalesce(claim_id, v_claim_id), payment_method = coalesce(payment_method, nullif(trim(v_data->>'payment_method'), '')), claim_month = coalesce(claim_month, nullif(v_data->>'claim_month','')::integer), claim_year = coalesce(claim_year, nullif(v_data->>'claim_year','')::integer) where id = v_match_id;
           v_updated := v_updated + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'updated', v_match_id, v_changed_fields);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields) values (v_batch_id, v_entity, v_fingerprint, v_record, 'updated', v_match_id, v_changed_fields);
         else
           v_duplicates := v_duplicates + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'duplicate', v_match_id);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id) values (v_batch_id, v_entity, v_fingerprint, v_record, 'duplicate', v_match_id);
         end if;
       end if;
 
@@ -363,74 +330,46 @@ begin
       v_claim_total := nullif(v_data->>'claim_total', '')::numeric;
       v_tax_rate := nullif(v_data->>'tax_rate', '')::numeric;
       v_tax_amount := nullif(v_data->>'tax_amount', '')::numeric;
-      v_is_actual := coalesce((v_data->>'is_actual')::boolean, false);
       if v_company_id is null or v_month is null or v_year is null or v_tax_amount is null then
         v_invalid := v_invalid + 1;
-        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status)
-        values (v_batch_id, v_entity, md5(coalesce(v_record::text, '')), v_record, 'invalid');
+        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status) values (v_batch_id, v_entity, md5(coalesce(v_record::text, '')), v_record, 'invalid');
         continue;
       end if;
-
       v_identity := concat_ws('|', 'withholding_tax', v_company_id::text, v_month::text, v_year::text);
-      v_fingerprint := md5(v_identity || '|' || coalesce(v_data::text, ''));
-      select id, claim_total, tax_rate, tax_amount, is_actual
-        into v_match_id, v_old_numeric, v_tax_rate, v_tax_amount, v_is_actual
-      from public.withholding_tax where insurance_company_id = v_company_id and month = v_month and year = v_year order by id limit 1 for update;
-
+      v_fingerprint := md5(v_identity || '|' || v_tax_amount::text);
+      select id, claim_total, tax_rate, tax_amount into v_match_id, v_old_numeric, v_tax_rate, v_tax_amount from public.withholding_tax where insurance_company_id = v_company_id and month = v_month and year = v_year order by id limit 1 for update;
       if v_match_id is null then
-        insert into public.withholding_tax (insurance_company_id, month, year, claim_total, tax_rate, tax_amount, is_actual)
-        values (v_company_id, v_month, v_year, v_claim_total, v_tax_rate, v_tax_amount, v_is_actual)
-        returning id into v_match_id;
+        insert into public.withholding_tax (insurance_company_id, month, year, claim_total, tax_rate, tax_amount) values (v_company_id, v_month, v_year, v_claim_total, v_tax_rate, v_tax_amount) returning id into v_match_id;
         v_inserted := v_inserted + 1;
-        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
-        values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
+        insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id) values (v_batch_id, v_entity, v_fingerprint, v_record, 'inserted', v_match_id);
       else
-        select claim_total, tax_rate, tax_amount, is_actual into v_old_numeric, v_tax_rate, v_tax_amount, v_is_actual from public.withholding_tax where id = v_match_id;
-        if v_claim_total is not null and v_old_numeric is null then v_changed_fields := v_changed_fields || jsonb_build_object('claim_total', jsonb_build_object('from', null, 'to', v_claim_total)); end if;
-        if v_tax_rate is not null and v_tax_rate is distinct from nullif(v_data->>'tax_rate','')::numeric then v_conflict_fields := v_conflict_fields || jsonb_build_object('tax_rate', jsonb_build_object('from', v_tax_rate, 'to', nullif(v_data->>'tax_rate','')::numeric)); end if;
-        if v_tax_amount is distinct from nullif(v_data->>'tax_amount','')::numeric then v_conflict_fields := v_conflict_fields || jsonb_build_object('tax_amount', jsonb_build_object('from', v_tax_amount, 'to', nullif(v_data->>'tax_amount','')::numeric)); end if;
-        if v_is_actual is distinct from coalesce((v_data->>'is_actual')::boolean, false) then v_conflict_fields := v_conflict_fields || jsonb_build_object('is_actual', jsonb_build_object('from', v_is_actual, 'to', coalesce((v_data->>'is_actual')::boolean, false))); end if;
-
+        select claim_total, tax_rate, tax_amount into v_old_numeric, v_old_numeric_2, v_old_numeric from public.withholding_tax where id = v_match_id;
+        if v_tax_amount is distinct from v_old_numeric then v_conflict_fields := v_conflict_fields || jsonb_build_object('tax_amount', jsonb_build_object('from', v_old_numeric, 'to', v_tax_amount)); end if;
+        if v_claim_total is not null and v_old_numeric is null then v_changed_fields := v_changed_fields || jsonb_build_object('claim_total', jsonb_build_object('from', null, 'to', v_claim_total)); elsif v_claim_total is not null and v_old_numeric is distinct from v_claim_total then v_conflict_fields := v_conflict_fields || jsonb_build_object('claim_total', jsonb_build_object('from', v_old_numeric, 'to', v_claim_total)); end if;
+        if v_tax_rate is not null and v_old_numeric_2 is null then v_changed_fields := v_changed_fields || jsonb_build_object('tax_rate', jsonb_build_object('from', null, 'to', v_tax_rate)); elsif v_tax_rate is not null and v_old_numeric_2 is distinct from v_tax_rate then v_conflict_fields := v_conflict_fields || jsonb_build_object('tax_rate', jsonb_build_object('from', v_old_numeric_2, 'to', v_tax_rate)); end if;
         if jsonb_object_length(v_conflict_fields) > 0 then
           v_conflicts := v_conflicts + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields, conflict_fields)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'conflict', v_match_id, v_changed_fields, v_conflict_fields);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields, conflict_fields) values (v_batch_id, v_entity, v_fingerprint, v_record, 'conflict', v_match_id, v_changed_fields, v_conflict_fields);
         elsif jsonb_object_length(v_changed_fields) > 0 then
-          update public.withholding_tax set claim_total = coalesce(claim_total, v_claim_total) where id = v_match_id;
+          update public.withholding_tax set claim_total = coalesce(claim_total, v_claim_total), tax_rate = coalesce(tax_rate, v_tax_rate) where id = v_match_id;
           v_updated := v_updated + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'updated', v_match_id, v_changed_fields);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id, changed_fields) values (v_batch_id, v_entity, v_fingerprint, v_record, 'updated', v_match_id, v_changed_fields);
         else
           v_duplicates := v_duplicates + 1;
-          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id)
-          values (v_batch_id, v_entity, v_fingerprint, v_record, 'duplicate', v_match_id);
+          insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status, matched_record_id) values (v_batch_id, v_entity, v_fingerprint, v_record, 'duplicate', v_match_id);
         end if;
       end if;
     else
       v_invalid := v_invalid + 1;
-      insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status)
-      values (v_batch_id, coalesce(v_entity, 'unknown'), md5(coalesce(v_record::text, '')), v_record, 'invalid');
+      insert into public.document_ingest_records (batch_id, entity, record_fingerprint, source_record, status) values (v_batch_id, coalesce(v_entity, 'unknown'), md5(coalesce(v_record::text, '')), v_record, 'invalid');
     end if;
   end loop;
 
   update public.document_ingest_batches
-  set received_count = v_received,
-      inserted_count = v_inserted,
-      updated_count = v_updated,
-      duplicate_count = v_duplicates,
-      conflict_count = v_conflicts,
-      invalid_count = v_invalid
+  set received_count = v_received, inserted_count = v_inserted, updated_count = v_updated, duplicate_count = v_duplicates, conflict_count = v_conflicts, invalid_count = v_invalid
   where id = v_batch_id;
 
-  return jsonb_build_object(
-    'batch_id', v_batch_id,
-    'received', v_received,
-    'inserted', v_inserted,
-    'updated', v_updated,
-    'duplicates', v_duplicates,
-    'conflicts', v_conflicts,
-    'invalid', v_invalid
-  );
+  return jsonb_build_object('batch_id', v_batch_id, 'received', v_received, 'inserted', v_inserted, 'updated', v_updated, 'duplicates', v_duplicates, 'conflicts', v_conflicts, 'invalid', v_invalid);
 end;
 $$;
 
