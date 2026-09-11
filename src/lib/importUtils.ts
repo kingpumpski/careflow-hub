@@ -22,7 +22,6 @@ export interface ParsedRow {
 }
 
 const normalize = (s: any) => String(s ?? "").trim().toLowerCase().replace(/[\s_\-/]+/g, "");
-
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function toNumber(raw: any): number | null {
@@ -37,7 +36,6 @@ function toDateString(raw: any): string | null {
   const str = String(raw).trim();
   if (!str) return null;
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-  // Excel serial date
   if (/^\d{5}$/.test(str)) {
     const d = new Date(Date.UTC(1899, 11, 30) as any);
     d.setUTCDate(d.getUTCDate() + Number(str));
@@ -76,7 +74,6 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
   return raw.map((source, i) => {
     const headerMap: Record<string, any> = {};
     Object.entries(source).forEach(([k, v]) => { headerMap[normalize(k)] = v; });
-
     const values: Record<string, any> = {};
     const errors: string[] = [];
 
@@ -88,7 +85,6 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
         if (hit !== undefined && String(hit).trim() !== "") { rawValue = hit; break; }
       }
       const isEmpty = rawValue === undefined || String(rawValue).trim() === "";
-
       if (isEmpty) {
         if (col.required) errors.push(`${col.label} is required`);
         return;
@@ -136,19 +132,10 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
 /** Builds a downloadable template (Excel with guide sheet, or plain CSV). */
 export function buildTemplate(columns: ImportColumn[], fileName: string, format: "csv" | "excel") {
   const headers = columns.map((c) => (c.required ? `${c.label}*` : c.label));
-  const sample = columns.map((c) => {
-    if (c.example !== undefined) return c.example;
-    if (c.type === "lookup") return c.options?.[0]?.label ?? "";
-    if (c.type === "date") return new Date().toISOString().split("T")[0];
-    if (c.type === "number") return 0;
-    if (c.type === "integer") return 1;
-    if (c.type === "boolean") return "Yes";
-    return "";
-  });
 
   if (format === "csv") {
     const esc = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [headers.map(esc).join(",")].join("\n") + "\n";
+    const csv = `${headers.map(esc).join(",")}\n`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
@@ -169,8 +156,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.label,
       c.required ? "Yes" : "No",
       c.type === "lookup"
-        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}
-`
+        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}`
         : c.type === "date" ? "YYYY-MM-DD"
         : c.type === "integer" ? "Whole number"
         : c.type === "number" ? "Amount (numbers only)"
@@ -181,7 +167,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
     [],
     ["Data sheet: Data — keep the header row and enter your records below it."],
     ["Guide sheet: Guide — contains field definitions and is ignored automatically during import."],
-    ["Do not upload the template with example/sample records. This template intentionally contains headers only."],
+    ["This template intentionally contains headers only; there are no sample records to delete."],
   ];
   const gws = XLSX.utils.aoa_to_sheet(guide);
   gws["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 52 }, { wch: 48 }];
