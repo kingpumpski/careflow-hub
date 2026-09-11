@@ -34,8 +34,8 @@ export default function DocumentIntake() {
   const canImportInsurance = can("masterdata.write");
   const canImportClaims = can("claims.write");
   const canImportPayments = can("payments.write");
-  const canImportWht = can("claims.write");
-  const canUseIntake = canImportInsurance || canImportClaims || canImportPayments;
+  const canImportWht = can("payments.write");
+  const canUseIntake = canImportInsurance || canImportClaims || canImportPayments || canImportWht;
   const canApplyRecord = (entity: IntakeEntity) => entity === "insurance_company" ? canImportInsurance : entity === "claim" ? canImportClaims : entity === "payment" ? canImportPayments : canImportWht;
 
   const processFile = async (nextFile: File) => {
