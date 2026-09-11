@@ -71,14 +71,19 @@ function sortTable(table: HTMLTableElement, state: SortState) {
 
   const tbody = table.tBodies[0];
   if (!tbody) return;
-  sortingTables.add(table);
-  const fragment = document.createDocumentFragment();
-  decorated.forEach(({ row }) => fragment.appendChild(row));
-  tbody.appendChild(fragment);
+
+  const currentRows = Array.from(tbody.rows);
+  const orderChanged = decorated.some(({ row }, index) => currentRows[index] !== row);
+  if (orderChanged) {
+    sortingTables.add(table);
+    const fragment = document.createDocumentFragment();
+    decorated.forEach(({ row }) => fragment.appendChild(row));
+    tbody.appendChild(fragment);
+    window.setTimeout(() => sortingTables.delete(table), 0);
+  }
 
   headers.forEach((cell, index) => setIndicator(cell as HTMLTableCellElement, index === state.column ? state.direction : undefined));
   table.setAttribute(SORT_STATE, `${state.column}:${state.direction}`);
-  window.setTimeout(() => sortingTables.delete(table), 0);
 }
 
 function setupTable(table: HTMLTableElement) {
