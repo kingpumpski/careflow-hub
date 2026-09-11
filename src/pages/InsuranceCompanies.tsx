@@ -22,13 +22,15 @@ const importColumns = [
 ];
 
 export default function InsuranceCompanies() {
-  const { data: insurers, isLoading } = useSupabaseQuery("insurance_companies");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canWriteMasterData = can("masterdata.write");
+  const { data: insurers, isLoading } = useSupabaseQuery("insurance_companies", {
+    enabled: !permissionsLoading && canWriteMasterData,
+  });
   const insertMutation = useSupabaseInsert("insurance_companies");
   const updateMutation = useSupabaseUpdate("insurance_companies");
   const deleteMutation = useSupabaseDelete("insurance_companies");
   const bulkInsert = useSupabaseBulkInsert("insurance_companies");
-  const { can } = usePermissions();
-  const canWriteMasterData = can("masterdata.write");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -92,6 +94,29 @@ export default function InsuranceCompanies() {
     return matchSearch && matchActive;
   });
 
+  if (permissionsLoading) {
+    return <div className="space-y-6 min-w-0"><Skeleton className="h-8 w-64" /><div className="stat-card"><Skeleton className="h-48 w-full" /></div></div>;
+  }
+
+  if (!canWriteMasterData) {
+    return (
+      <div className="space-y-6 min-w-0">
+        <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="page-title">Insurance Companies</h1>
+            <p className="page-description">Manage insurance company partners</p>
+          </div>
+          <Badge variant="secondary">RESTRICTED</Badge>
+        </div>
+        <div className="stat-card flex min-h-40 flex-col items-center justify-center text-center p-6">
+          <Shield className="mb-3 h-8 w-8 text-muted-foreground" />
+          <h2 className="font-semibold">Access restricted</h2>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">Master-data permission is required to view insurance company records.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 min-w-0">
       <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -99,13 +124,11 @@ export default function InsuranceCompanies() {
           <h1 className="page-title">Insurance Companies</h1>
           <p className="page-description">Manage insurance company partners</p>
         </div>
-        {canWriteMasterData ? (
-          <div className="flex flex-wrap gap-2">
-            <DownloadTemplate columns={importColumns} fileName="insurance-companies-template" />
-            <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
-            <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Company</Button>
-          </div>
-        ) : <Badge variant="secondary">READ ONLY</Badge>}
+        <div className="flex flex-wrap gap-2">
+          <DownloadTemplate columns={importColumns} fileName="insurance-companies-template" />
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Company</Button>
+        </div>
       </div>
 
       <div className="stat-card min-w-0">
@@ -127,7 +150,7 @@ export default function InsuranceCompanies() {
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table min-w-[760px]">
-              <thead><tr><th>Company</th><th>Status</th><th>Contact Person</th><th>Email</th><th>Phone</th>{canWriteMasterData && <th>Actions</th>}</tr></thead>
+              <thead><tr><th>Company</th><th>Status</th><th>Contact Person</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map((i: any) => (
                   <tr key={i.id} className={`hover:bg-muted/50 transition-colors ${i.is_active === false ? "opacity-50" : ""}`}>
@@ -145,7 +168,7 @@ export default function InsuranceCompanies() {
                     <td>{i.contact_person || "—"}</td>
                     <td className="text-muted-foreground">{i.email || "—"}</td>
                     <td className="text-muted-foreground">{i.phone || "—"}</td>
-                    {canWriteMasterData && <td>
+                    <td>
                       <div className="flex items-center gap-1">
                         <button onClick={() => handleToggleActive(i)} className="p-1.5 rounded hover:bg-muted min-h-9 min-w-9" title={i.is_active === false ? "Reactivate" : "Deactivate"}>
                           {i.is_active === false ? <ToggleLeft className="w-4 h-4 text-muted-foreground" /> : <ToggleRight className="w-4 h-4 text-success" />}
@@ -153,7 +176,7 @@ export default function InsuranceCompanies() {
                         <button onClick={() => openEdit(i)} className="p-1.5 rounded hover:bg-muted min-h-9 min-w-9"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
                         <button onClick={() => handleDelete(i.id)} className="p-1.5 rounded hover:bg-destructive/10 min-h-9 min-w-9"><Trash2 className="w-4 h-4 text-destructive" /></button>
                       </div>
-                    </td>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -162,40 +185,38 @@ export default function InsuranceCompanies() {
         )}
       </div>
 
-      {canWriteMasterData && <>
-        <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Insurance Company" : "Add Insurance Company"}>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div><Label>Company Name *</Label><Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} required className="mt-1" /></div>
-            <div><Label>Contact Person</Label><Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="mt-1" /></div>
-            <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" /></div>
-            <div>
-              <Label>Additional / CC Emails (comma-separated)</Label>
-              <Input value={form.additional_emails} onChange={(e) => setForm({ ...form, additional_emails: e.target.value })} placeholder="medical@ins.com, ops@ins.com" className="mt-1" />
-              <p className="text-[11px] text-muted-foreground mt-1">All addresses listed here will be CC'd on every pre-authorization email.</p>
+      <EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Insurance Company" : "Add Insurance Company"}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div><Label>Company Name *</Label><Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} required className="mt-1" /></div>
+          <div><Label>Contact Person</Label><Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="mt-1" /></div>
+          <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" /></div>
+          <div>
+            <Label>Additional / CC Emails (comma-separated)</Label>
+            <Input value={form.additional_emails} onChange={(e) => setForm({ ...form, additional_emails: e.target.value })} placeholder="medical@ins.com, ops@ins.com" className="mt-1" />
+            <p className="text-[11px] text-muted-foreground mt-1">All addresses listed here will be CC'd on every pre-authorization email.</p>
+          </div>
+          <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1" /></div>
+          <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mt-1" /></div>
+          <div>
+            <Label>Color</Label>
+            <div className="flex items-center gap-2 mt-1">
+              <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
+              <Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="flex-1" />
             </div>
-            <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1" /></div>
-            <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mt-1" /></div>
-            <div>
-              <Label>Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
-                <Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="flex-1" />
-              </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>
-              {editing ? "Update Company" : "Add Company"}
-            </Button>
-          </form>
-        </EntityDialog>
+          </div>
+          <Button type="submit" className="w-full" disabled={insertMutation.isPending || updateMutation.isPending}>
+            {editing ? "Update Company" : "Add Company"}
+          </Button>
+        </form>
+      </EntityDialog>
 
-        <BulkImportDialog
-          open={importOpen}
-          onOpenChange={setImportOpen}
-          title="Import Insurance Companies"
-          columns={importColumns}
-          onImport={async (rows) => { if (!canWriteMasterData) return denyWrite(); await bulkInsert.mutateAsync(rows); }}
-        />
-      </>}
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Insurance Companies"
+        columns={importColumns}
+        onImport={async (rows) => { if (!canWriteMasterData) return denyWrite(); await bulkInsert.mutateAsync(rows); }}
+      />
     </div>
   );
 }
