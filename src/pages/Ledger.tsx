@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const entryTypeLabels: Record<string, { label: string; color: string }> = {
   claim_submission: { label: "Claim", color: "bg-info/10 text-info border-info/20" },
@@ -14,27 +15,58 @@ const entryTypeLabels: Record<string, { label: string; color: string }> = {
   payment: { label: "Payment", color: "bg-success/10 text-success border-success/20" },
 };
 
+type LedgerEntry = {
+  id: string;
+  entry_date: string;
+  entry_type: string;
+  account_debit: string;
+  account_credit: string;
+  amount: number;
+  insurance_company_id?: string | null;
+  reference?: string | null;
+  description?: string | null;
+  claim_month?: number | null;
+  claim_year?: number | null;
+};
+
+type Insurer = { id: string; company_name: string };
+
+type LedgerFilters = { company?: string; month?: string; year?: string; status?: string };
+
 export default function Ledger() {
-  const { data: entries, isLoading } = useSupabaseQuery("ledger_entries");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadLedger = can("ledger.read");
+  const { data: entries, isLoading } = useSupabaseQuery("ledger_entries", { enabled: canReadLedger && !permissionsLoading });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadLedger && !permissionsLoading });
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<any>({});
+  const [filters, setFilters] = useState<LedgerFilters>({});
 
-  const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
+  if (permissionsLoading) {
+    return <div className="stat-card py-12 text-center text-muted-foreground">Checking ledger access…</div>;
+  }
 
-  let filtered = (entries || []).filter((e: any) => {
-    const matchSearch = !search || e.description?.toLowerCase().includes(search.toLowerCase()) || e.reference?.toLowerCase().includes(search.toLowerCase()) || getInsurerName(e.insurance_company_id).toLowerCase().includes(search.toLowerCase());
+  if (!canReadLedger) {
+    return <div className="stat-card py-12 text-center"><BookOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h1 className="font-semibold">Ledger access restricted</h1><p className="mt-1 text-sm text-muted-foreground">You do not have permission to view accounting ledger entries.</p></div>;
+  }
+
+  const insurerRows = (insurers || []) as unknown as Insurer[];
+  const ledgerEntries = (entries || []) as unknown as LedgerEntry[];
+  const getInsurerName = (id: string | null | undefined) => insurerRows.find((i) => i.id === id)?.company_name || "—";
+
+  let filtered = ledgerEntries.filter((e) => {
+    const query = search.toLowerCase();
+    const matchSearch = !query || e.description?.toLowerCase().includes(query) || e.reference?.toLowerCase().includes(query) || getInsurerName(e.insurance_company_id).toLowerCase().includes(query);
     return matchSearch;
   });
-  if (filters.company) filtered = filtered.filter((e: any) => e.insurance_company_id === filters.company);
-  if (filters.month) filtered = filtered.filter((e: any) => e.claim_month === parseInt(filters.month));
-  if (filters.year) filtered = filtered.filter((e: any) => e.claim_year === parseInt(filters.year));
-  if (filters.status) filtered = filtered.filter((e: any) => e.entry_type === filters.status);
+  if (filters.company) filtered = filtered.filter((e) => e.insurance_company_id === filters.company);
+  if (filters.month) filtered = filtered.filter((e) => e.claim_month === parseInt(filters.month, 10));
+  if (filters.year) filtered = filtered.filter((e) => e.claim_year === parseInt(filters.year, 10));
+  if (filters.status) filtered = filtered.filter((e) => e.entry_type === filters.status);
 
   const { sorted, sort, handleSort } = useSort(filtered);
 
   const balances: Record<string, number> = {};
-  (entries || []).forEach((e: any) => {
+  ledgerEntries.forEach((e) => {
     balances[e.account_debit] = (balances[e.account_debit] || 0) + Number(e.amount);
     balances[e.account_credit] = (balances[e.account_credit] || 0) - Number(e.amount);
   });
@@ -77,7 +109,7 @@ export default function Ledger() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -92,7 +124,7 @@ export default function Ledger() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((e: any) => {
+                {sorted.map((e) => {
                   const typeInfo = entryTypeLabels[e.entry_type] || { label: e.entry_type, color: "" };
                   return (
                     <tr key={e.id} className="hover:bg-muted/50 transition-colors">
