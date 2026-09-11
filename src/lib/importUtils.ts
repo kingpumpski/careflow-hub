@@ -148,7 +148,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
 
   if (format === "csv") {
     const esc = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [headers.map(esc).join(","), sample.map(esc).join(",")].join("\n") + "\n";
+    const csv = [headers.map(esc).join(",")].join("\n") + "\n";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
@@ -159,7 +159,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
   }
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
   ws["!cols"] = headers.map((h) => ({ wch: Math.max(16, h.length + 4) }));
   XLSX.utils.book_append_sheet(wb, ws, "Data");
 
@@ -169,7 +169,8 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.label,
       c.required ? "Yes" : "No",
       c.type === "lookup"
-        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}`
+        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}
+`
         : c.type === "date" ? "YYYY-MM-DD"
         : c.type === "integer" ? "Whole number"
         : c.type === "number" ? "Amount (numbers only)"
@@ -178,7 +179,9 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.hint || "",
     ]),
     [],
-    ["Keep the header row exactly as provided. Delete the sample row before importing."],
+    ["Data sheet: Data — keep the header row and enter your records below it."],
+    ["Guide sheet: Guide — contains field definitions and is ignored automatically during import."],
+    ["Do not upload the template with example/sample records. This template intentionally contains headers only."],
   ];
   const gws = XLSX.utils.aoa_to_sheet(guide);
   gws["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 52 }, { wch: 48 }];
