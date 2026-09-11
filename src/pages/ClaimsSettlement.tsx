@@ -18,11 +18,13 @@ type SettlementRow = Record<string, any>;
 
 export default function ClaimsSettlement() {
   const { user } = useAuth();
-  const { can } = usePermissions();
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadSettlements = can("payments.read");
   const canWriteSettlements = can("payments.write");
+  const settlementEnabled = !permissionsLoading && canReadSettlements;
   const facilityId = getStoredFacilityId();
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: periods, isLoading } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start" });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: settlementEnabled });
+  const { data: periods, isLoading } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled });
   const insertPeriod = useSupabaseInsert("claims_settlement_periods");
   const updatePeriod = useSupabaseUpdate("claims_settlement_periods");
   const [form, setForm] = useState(emptyForm);
@@ -78,6 +80,20 @@ export default function ClaimsSettlement() {
   };
 
   const selectedAdvicePeriod = (periods || []).find((row: SettlementRow) => row.id === adviceId);
+
+  if (permissionsLoading) {
+    return <div className="stat-card flex min-h-[240px] items-center justify-center text-muted-foreground">Checking settlement access…</div>;
+  }
+
+  if (!canReadSettlements) {
+    return (
+      <div className="stat-card flex min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
+        <h1 className="text-lg font-semibold">Claims settlement access restricted</h1>
+        <p className="max-w-md text-sm text-muted-foreground">Your account does not have the payments.read permission. No settlement history or insurer data is requested until access is granted.</p>
+      </div>
+    );
+  }
+
   return <div className="space-y-6">
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><h1 className="page-title">Claims Settlement Tracking</h1><p className="page-description">Record period-level totals from the external claims platform and reconcile confirmed payment advice. Detailed claims and advice documents remain outside CareFlow.</p></div><Badge variant="secondary">EXTERNAL SOURCE OF TRUTH</Badge></div>
     <SettlementManagementReport periods={periods || []} />
