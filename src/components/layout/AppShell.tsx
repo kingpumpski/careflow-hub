@@ -20,7 +20,7 @@ export default function AppShell() {
 
   return (
     <div className="flex min-h-screen w-full bg-background overflow-x-hidden">
-      <aside className="hidden lg:block lg:w-64 shrink-0">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 shrink-0 lg:block">
         <Sidebar />
       </aside>
 
@@ -38,7 +38,7 @@ export default function AppShell() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col lg:ml-64">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="app-main min-w-0 flex-1 overflow-x-hidden p-3 pb-20 sm:p-4 sm:pb-6 md:p-6 md:pb-6">
           <div className="shell-content mx-auto w-full min-w-0 max-w-[1600px]">
