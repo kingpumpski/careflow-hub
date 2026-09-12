@@ -8,27 +8,42 @@ function guardCellValue(value: string | number | boolean | null): string | numbe
 }
 
 /**
- * Produces a structural copy and changes only the explicitly supplied target cells.
- * Binary serialization is intentionally separated from this pure renderer so that
- * approval, audit and storage boundaries cannot be bypassed by document generation.
+ * Produces a structural copy and changes only explicitly supplied cells.
+ * When targetColumn is supplied, every mutation must remain inside that column.
+ * Binary serialization is intentionally separate so approval/audit/storage
+ * boundaries cannot be bypassed by document generation.
  */
 export function renderTargetColumn(
   document: RapTabularDocument,
   changes: readonly RapRenderChange[],
+  targetColumn?: number,
 ): RapRenderedDocument {
-  const rows = document.rows.map((row) => row.map((cell) => ({ ...cell })));
-  const normalizedChanges = changes.map((change) => ({
-    ...change,
-    value: guardCellValue(change.value),
-  }));
+  if (targetColumn !== undefined && (!Number.isInteger(targetColumn) || targetColumn < 0)) {
+    throw new Error("RAP target column must be a non-negative integer.");
+  }
 
+  const rows = document.rows.map((row) => row.map((cell) => ({ ...cell })));
+  const normalizedChanges = changes.map((change) => {
+    if (targetColumn !== undefined && change.column !== targetColumn) {
+      throw new Error(`RAP render attempted to modify non-target column ${change.column}.`);
+    }
+    return { ...change, value: guardCellValue(change.value) };
+  });
+
+  const coordinates = new Set<string>();
   for (const change of normalizedChanges) {
+    const coordinate = `${change.row}:${change.column}`;
+    if (coordinates.has(coordinate)) throw new Error(`RAP render contains duplicate target ${coordinate}.`);
+    coordinates.add(coordinate);
+
     const row = rows[change.row];
-    if (!row || !row[change.column]) throw new Error(`RAP render target ${change.row}:${change.column} is outside the source document.`);
+    if (!row || !row[change.column]) {
+      throw new Error(`RAP render target ${change.row}:${change.column} is outside the source document.`);
+    }
     row[change.column] = { ...row[change.column], value: change.value };
   }
 
-  return { format: document.format, rows, changes: normalizedChanges };
+  return { format: document.format, sheetName: document.sheetName, rows, changes: normalizedChanges };
 }
 
 export function changedCoordinates(document: RapTabularDocument, rendered: RapRenderedDocument): string[] {
