@@ -5,6 +5,7 @@ const base = {
   id: 'period-1',
   facilityId: 'facility-1',
   periodEnd: '2026-08-01',
+  totalClaimsSubmitted: 100000,
   settlementStatus: 'awaiting_payment' as const,
   paymentReceived: null,
   rejectionAmount: null,
@@ -39,6 +40,23 @@ describe('settlement exception detection', () => {
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].type).toBe('withholding_tax_variance');
     expect(exceptions[0].severity).toBe('critical');
+  });
+
+  it('flags a payment reconciliation variance even when WHT itself matches', () => {
+    const exceptions = detectSettlementExceptions({
+      ...base,
+      settlementStatus: 'payment_advice_received',
+      paymentReceived: 80000,
+      rejectionAmount: 10000,
+      actualWithholdingTax: 5000,
+      withholdingTaxVariance: 0,
+      paymentAdviceReference: 'PA-2',
+      paymentAdviceDate: '2026-09-01',
+    }, new Date('2026-09-02T12:00:00Z'));
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0].type).toBe('payment_variance');
+    expect(exceptions[0].severity).toBe('critical');
+    expect(exceptions[0].description).toContain('5,000.00');
   });
 
   it('flags incomplete advice on a confirmed status', () => {
