@@ -14,7 +14,10 @@ export default function SettlementExceptionRegister({ periods }: { periods: any[
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
-  const { data: exceptions = [], isLoading } = useSupabaseQuery("settlement_exceptions", { orderBy: "detectedAt" });
+  const { data: exceptions = [], isLoading } = useSupabaseQuery("settlement_exceptions", {
+    orderBy: "detectedAt",
+    enabled: offline,
+  });
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
