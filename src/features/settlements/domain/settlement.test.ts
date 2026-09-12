@@ -57,18 +57,26 @@ describe('claims settlement domain', () => {
 
     expect(result.residual).toBe(0);
     expect(result.outstanding).toBe(0);
+    expect(result.overSettled).toBe(0);
+    expect(result.direction).toBe('balanced');
     expect(result.balanced).toBe(true);
   });
 
-  it('preserves a signed residual while clamping outstanding at zero', () => {
-    const underSettled = calculateSettlementReconciliation(100_000, 10_000, 80_000, 5_000);
-    expect(underSettled.residual).toBe(5_000);
-    expect(underSettled.outstanding).toBe(5_000);
-    expect(underSettled.balanced).toBe(false);
+  it('preserves positive residual as an under-settlement', () => {
+    const result = calculateSettlementReconciliation(100_000, 10_000, 80_000, 5_000);
+    expect(result.residual).toBe(5_000);
+    expect(result.outstanding).toBe(5_000);
+    expect(result.overSettled).toBe(0);
+    expect(result.direction).toBe('under_settlement');
+    expect(result.balanced).toBe(false);
+  });
 
-    const overSettled = calculateSettlementReconciliation(100_000, 10_000, 90_000, 5_000);
-    expect(overSettled.residual).toBe(-5_000);
-    expect(overSettled.outstanding).toBe(0);
-    expect(overSettled.balanced).toBe(false);
+  it('preserves negative residual as an over-settlement instead of hiding it', () => {
+    const result = calculateSettlementReconciliation(100_000, 10_000, 90_000, 5_000);
+    expect(result.residual).toBe(-5_000);
+    expect(result.outstanding).toBe(0);
+    expect(result.overSettled).toBe(5_000);
+    expect(result.direction).toBe('over_settlement');
+    expect(result.balanced).toBe(false);
   });
 });
