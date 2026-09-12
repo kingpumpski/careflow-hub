@@ -3,6 +3,8 @@ export type SettlementStatus =
   | 'payment_advice_received'
   | 'reconciled';
 
+export type SettlementVarianceDirection = 'balanced' | 'under_settlement' | 'over_settlement';
+
 export interface ClaimsSettlementPeriod {
   id: string;
   facilityId: string;
@@ -31,6 +33,8 @@ export interface SettlementReconciliationResult {
   actualWithholdingTax: number;
   residual: number;
   outstanding: number;
+  overSettled: number;
+  direction: SettlementVarianceDirection;
   balanced: boolean;
 }
 
@@ -84,8 +88,8 @@ export function calculateWithholdingTaxVariance(
 /**
  * Reconciles a settlement using confirmed advice only.
  * Canonical residual = submitted - rejected - payment - actual WHT.
- * `outstanding` is clamped at zero for receivable-style reporting; `residual`
- * remains signed so under/over-settlement can be investigated rather than hidden.
+ * Positive residual means the insurer has not fully settled the eligible amount;
+ * negative residual means confirmed receipts exceed that amount and require review.
  */
 export function calculateSettlementReconciliation(
   totalClaimsSubmitted: number,
@@ -107,6 +111,7 @@ export function calculateSettlementReconciliation(
   const payment = roundCurrency(finiteAmount(paymentReceived));
   const actualWht = roundCurrency(finiteAmount(actualWithholdingTax));
   const residual = roundCurrency(submitted - rejected - payment - actualWht);
+  const balanced = Math.abs(residual) <= EPSILON;
 
   return {
     submitted,
@@ -115,7 +120,9 @@ export function calculateSettlementReconciliation(
     actualWithholdingTax: actualWht,
     residual,
     outstanding: Math.max(0, residual),
-    balanced: Math.abs(residual) <= EPSILON,
+    overSettled: Math.max(0, -residual),
+    direction: balanced ? 'balanced' : residual > 0 ? 'under_settlement' : 'over_settlement',
+    balanced,
   };
 }
 
