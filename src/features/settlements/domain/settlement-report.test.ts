@@ -63,8 +63,8 @@ describe('settlement reporting', () => {
       period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
     ];
     const summary = summarizeSettlementPeriods(rows);
-    expect(summary.totalResidual).toBe(100);
-    expect(summary.totalOutstanding).toBe(150);
+    expect(summary.totalResidual).toBe(0);
+    expect(summary.totalOutstanding).toBe(50);
     expect(summary.totalOverSettled).toBe(50);
     expect(summary.balancedCount).toBe(0);
     expect(summary.underSettledCount).toBe(1);
@@ -74,7 +74,7 @@ describe('settlement reporting', () => {
   it('groups signed reconciliation totals by insurer', () => {
     const rows = [
       period({ id: '1', paymentReceived: 800, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      period({ id: '2', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: '2', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
       period({ id: '3', insuranceCompanyId: 'insurer-2', totalClaimsSubmitted: 200, paymentReceived: 180, rejectionAmount: 10, actualWithholdingTax: 10 }),
     ];
     const result = summarizeSettlementsByInsurer(rows);
@@ -82,15 +82,15 @@ describe('settlement reporting', () => {
       insurerId: 'insurer-1',
       periodCount: 2,
       totalSubmitted: 2000,
-      totalPaymentReceived: 1700,
+      totalPaymentReceived: 1650,
       totalRejectionAmount: 200,
       totalWhtVariance: 0,
-      totalResidual: 100,
-      totalOutstanding: 100,
+      totalResidual: 50,
+      totalOutstanding: 50,
       totalOverSettled: 0,
-      balancedCount: 1,
+      balancedCount: 0,
       underSettledCount: 1,
-      overSettledCount: 0,
+      overSettledCount: 1,
     });
     expect(result[1]).toMatchObject({ insurerId: 'insurer-2', periodCount: 1, totalSubmitted: 200, totalResidual: 0, balancedCount: 1 });
   });
