@@ -48,17 +48,50 @@ describe('settlement reporting', () => {
     expect(summary.totalRejectionAmount).toBe(190);
     expect(summary.totalActualWht).toBe(80);
     expect(summary.totalWhtVariance).toBe(-20);
+    expect(summary.totalResidual).toBe(0);
+    expect(summary.totalOutstanding).toBe(0);
+    expect(summary.totalOverSettled).toBe(0);
+    expect(summary.balancedCount).toBe(2);
+    expect(summary.underSettledCount).toBe(0);
+    expect(summary.overSettledCount).toBe(0);
     expect(summary.overdueCount).toBe(1);
   });
 
-  it('groups management totals by insurer', () => {
+  it('reports signed under- and over-settlement without hiding negative residuals', () => {
     const rows = [
-      period(),
-      period({ id: '2', totalClaimsSubmitted: 500, paymentReceived: 400, rejectionAmount: 50, withholdingTaxVariance: 10 }),
-      period({ id: '3', insuranceCompanyId: 'insurer-2', totalClaimsSubmitted: 200 }),
+      period({ id: 'under', settlementStatus: 'reconciled', paymentReceived: 750, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
+    ];
+    const summary = summarizeSettlementPeriods(rows);
+    expect(summary.totalResidual).toBe(100);
+    expect(summary.totalOutstanding).toBe(150);
+    expect(summary.totalOverSettled).toBe(50);
+    expect(summary.balancedCount).toBe(0);
+    expect(summary.underSettledCount).toBe(1);
+    expect(summary.overSettledCount).toBe(1);
+  });
+
+  it('groups signed reconciliation totals by insurer', () => {
+    const rows = [
+      period({ id: '1', paymentReceived: 800, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: '2', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: '3', insuranceCompanyId: 'insurer-2', totalClaimsSubmitted: 200, paymentReceived: 180, rejectionAmount: 10, actualWithholdingTax: 10 }),
     ];
     const result = summarizeSettlementsByInsurer(rows);
-    expect(result[0]).toMatchObject({ insurerId: 'insurer-1', periodCount: 2, totalSubmitted: 1500, totalPaymentReceived: 400, totalRejectionAmount: 50, totalWhtVariance: 10 });
-    expect(result[1]).toMatchObject({ insurerId: 'insurer-2', periodCount: 1, totalSubmitted: 200 });
+    expect(result[0]).toMatchObject({
+      insurerId: 'insurer-1',
+      periodCount: 2,
+      totalSubmitted: 2000,
+      totalPaymentReceived: 1700,
+      totalRejectionAmount: 200,
+      totalWhtVariance: 0,
+      totalResidual: 100,
+      totalOutstanding: 100,
+      totalOverSettled: 0,
+      balancedCount: 1,
+      underSettledCount: 1,
+      overSettledCount: 0,
+    });
+    expect(result[1]).toMatchObject({ insurerId: 'insurer-2', periodCount: 1, totalSubmitted: 200, totalResidual: 0, balancedCount: 1 });
   });
 });
