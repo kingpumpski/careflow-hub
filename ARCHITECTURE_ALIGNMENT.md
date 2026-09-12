@@ -3,7 +3,7 @@
 **Repository:** `kingpumpski/careflow-hub`  
 **Branch:** `feature/rap-module`  
 **Target:** `v2.1.0-rap` / release `v2.1.0`  
-**Status:** Step 2 database design complete; implementation remains isolated and feature-off.
+**Status:** Step 3 deterministic core implemented and expanded; runtime activation remains feature-off.
 
 ## Architectural decision
 
@@ -39,7 +39,15 @@ RAP_AGENT_IT_ENABLED=false
 
 Diagnosis matching is pure deterministic logic. It does not call an LLM. Candidate diagnoses are gathered from approved read-only sources, filtered against RAP mappings and applicability, ranked using support type/mapping confidence/specificity/recency/partner precedence, and emitted with a `DecisionTrace`. No match becomes `UNRESOLVED` and escalates.
 
+The implementation now also enforces stable tie-breaking and duplicate candidate normalization. REQUIRED diagnoses are retained together; SUPPORTING diagnoses require explicit partner precedence. This prevents ordering-dependent decisions.
+
 AI can suggest, rank, explain, draft, and escalate. It cannot replace deterministic selection or submit to partners. Confidence below `0.85` automatically escalates to human review.
+
+## Document pipeline boundary
+
+XLSX/XLS/CSV/TSV are first-class. CSV/TSV parsing is deterministic and rejects malformed quoted fields. XLSX/XLS parsing normalizes every worksheet through the same tabular contract while retaining worksheet identity. Empty numeric values remain undefined rather than being coerced to zero.
+
+Rendering is a pure structural operation. It can be constrained to one target column, rejects duplicate cell targets, rejects out-of-bound cells, and guards string values beginning with `=`, `+`, `-`, or `@` against spreadsheet formula injection. Binary serialization, original-byte storage, style preservation, and final export remain separate adapter/storage responsibilities and are not silently claimed by the pure core renderer.
 
 ## HITL
 
@@ -55,10 +63,6 @@ All RAP objects use the `rap_` prefix within the isolated `rap` schema. RAP-owne
 
 The database design is deliberately kept out of the active production Supabase migration chain during this stage. Activation will require a separate migration review, RLS review, residency evidence, and human approval.
 
-## Document boundary
-
-XLSX/XLS/CSV/TSV are first-class. Original bytes remain immutable. Rendering changes only the target diagnosis column and applies formula-injection protection. PDF/DOCX/image processing is a fallback path. No macro execution or arbitrary code execution is permitted.
-
 ## Integration constraints
 
 1. Existing notification service must be identified and reused.
@@ -67,8 +71,16 @@ XLSX/XLS/CSV/TSV are first-class. Original bytes remain immutable. Rendering cha
 4. Supabase RLS and deployment conventions must be reviewed before activating migrations.
 5. Ghana DPC registration, Data Protection Supervisor, DPIA, CII designation, residency and CSP facts are governance gates and cannot be fabricated by code.
 
+## Test discovery reconciliation
+
+The repository's existing Vitest configuration originally discovered only `src/**` tests. RAP tests live under the intentionally isolated `modules/rap/**` boundary, so the test include was expanded to discover both existing application tests and RAP tests. No dependency upgrade was made.
+
 ## Review gates
 
 Step 1: reconnaissance — complete.  
-Step 2: database design + ERD — complete on `feature/rap-module`; **human review required before Step 3**.  
+Step 2: database design + ERD — complete.  
+Step 3: deterministic KB + parser + matcher + renderer — implemented and expanded.  
+Step 3 runtime validation — **pending execution inside the repository Codespace**.  
+Step 4: retention + existing notification-service integration — not started.
+
 No production data has been changed and no RAP feature has been enabled.
