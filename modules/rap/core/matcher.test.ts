@@ -79,4 +79,19 @@ describe("RAP deterministic diagnosis decision table", () => {
     const result = matchDiagnoses(item, [candidate("DX-001")], kb({ diagnosisCode: "DX-001", active: false }));
     expect(result.status).toBe("UNRESOLVED");
   });
+
+  it("deduplicates repeated diagnosis candidates", () => {
+    const result = matchDiagnoses(item, [candidate("DX-001"), candidate("dx-001")], kb({ diagnosisCode: "DX-001" }));
+    expect(result.selected.map((x) => x.code)).toEqual(["DX-001"]);
+    expect(result.trace.candidateCodes).toEqual(["DX-001"]);
+  });
+
+  it("uses a stable code tie-breaker for equal deterministic scores", () => {
+    const result = matchDiagnoses(
+      item,
+      [candidate("DX-002"), candidate("DX-001")],
+      kb({ diagnosisCode: "DX-002" }, { diagnosisCode: "DX-001" }),
+    );
+    expect(result.trace.rankedCodes).toEqual(["DX-001", "DX-002"]);
+  });
 });
