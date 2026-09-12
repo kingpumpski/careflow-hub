@@ -23,20 +23,33 @@ function rankCandidate(candidate: RapDiagnosisCandidate, kb?: RapKnowledgeBaseEn
   );
 }
 
+function deduplicateCandidates(candidates: readonly RapDiagnosisCandidate[]): RapDiagnosisCandidate[] {
+  const byCode = new Map<string, RapDiagnosisCandidate>();
+  for (const candidate of candidates) {
+    const code = normalize(candidate.code);
+    if (!code) continue;
+    const existing = byCode.get(code);
+    if (!existing || rankCandidate(candidate) > rankCandidate(existing)) byCode.set(code, candidate);
+  }
+  return [...byCode.values()];
+}
+
 export function matchDiagnoses(
   item: RapParsedItem,
   candidates: readonly RapDiagnosisCandidate[],
   knowledgeBase: KnowledgeBase,
 ): RapMatchResult {
-  const candidateCodes = candidates.map((candidate) => normalize(candidate.code));
+  const normalizedCandidates = deduplicateCandidates(candidates);
+  const candidateCodes = normalizedCandidates.map((candidate) => normalize(candidate.code));
   const kbEntries = knowledgeBase.findForItem(item);
   const kbCodes = new Set(kbEntries.map((entry) => normalize(entry.diagnosisCode)));
-  const filtered = candidates.filter((candidate) => kbCodes.has(normalize(candidate.code)));
+  const filtered = normalizedCandidates.filter((candidate) => kbCodes.has(normalize(candidate.code)));
 
   const ranked = [...filtered].sort((a, b) => {
     const aKb = kbEntries.find((entry) => normalize(entry.diagnosisCode) === normalize(a.code));
     const bKb = kbEntries.find((entry) => normalize(entry.diagnosisCode) === normalize(b.code));
-    return rankCandidate(b, bKb) - rankCandidate(a, aKb);
+    const scoreDifference = rankCandidate(b, bKb) - rankCandidate(a, aKb);
+    return scoreDifference || normalize(a.code).localeCompare(normalize(b.code));
   });
 
   const required = ranked.filter((candidate) => candidate.supportType === "REQUIRED");
@@ -44,10 +57,12 @@ export function matchDiagnoses(
 
   // Required diagnoses are never collapsed: all applicable REQUIRED diagnoses are retained.
   // SUPPORTING diagnoses are not auto-selected unless a partner-specific KB entry promotes them.
-  const selected = required.length > 0 ? required : supporting.filter((candidate) => {
-    const entry = kbEntries.find((kb) => normalize(kb.diagnosisCode) === normalize(candidate.code));
-    return entry?.supportType === "SUPPORTING" && entry.partnerPrecedence > 0;
-  });
+  const selected = required.length > 0
+    ? required
+    : supporting.filter((candidate) => {
+        const entry = kbEntries.find((kb) => normalize(kb.diagnosisCode) === normalize(candidate.code));
+        return entry?.supportType === "SUPPORTING" && entry.partnerPrecedence > 0;
+      });
 
   const status = selected.length ? "MATCHED" : "UNRESOLVED";
   const trace: RapDecisionTrace = {
