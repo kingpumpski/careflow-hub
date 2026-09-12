@@ -26,6 +26,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): string[][] {
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const next = text[i + 1];
+
     if (char === '"' && quoted && next === '"') {
       cell += '"';
       i += 1;
@@ -44,8 +45,12 @@ function parseDelimited(text: string, delimiter: "," | "\t"): string[][] {
       cell += char;
     }
   }
-  row.push(cell);
-  if (row.some((value) => value.length > 0)) rows.push(row);
+
+  if (quoted) throw new Error("RAP delimited document contains an unterminated quoted field.");
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    if (row.some((value) => value.length > 0)) rows.push(row);
+  }
   return rows;
 }
 
@@ -55,13 +60,32 @@ const asCell = (value: unknown, row: number, column: number): RapTableCell => ({
   column,
 });
 
-function rowsToDocument(rows: unknown[][], format: RapTabularDocument["format"]): RapTabularDocument {
+function rowsToDocument(rows: unknown[][], format: RapTabularDocument["format"], sheetName?: string): RapTabularDocument {
   const headerValues = (rows[0] ?? []).map((value) => String(value ?? ""));
   return {
     format,
+    sheetName,
     headers: headerValues,
     rows: rows.map((row, rowIndex) => row.map((value, columnIndex) => asCell(value, rowIndex, columnIndex))),
   };
+}
+
+function readWorkbook(input: Uint8Array | string): XLSX.WorkBook {
+  return XLSX.read(input, { type: "array", cellFormula: true, cellStyles: true, cellNF: true });
+}
+
+/** Parse every worksheet without mutating the source workbook. */
+export function parseTabularWorkbook(
+  input: Uint8Array | string,
+  format: Extract<RapTabularDocument["format"], "XLSX" | "XLS">,
+): RapTabularDocument[] {
+  const workbook = readWorkbook(input);
+  return workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) throw new Error(`RAP worksheet ${sheetName} could not be read.`);
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
+    return rowsToDocument(rows, format, sheetName);
+  });
 }
 
 export function parseTabularDocument(input: Uint8Array | string, format: RapTabularDocument["format"]): RapTabularDocument {
@@ -71,11 +95,15 @@ export function parseTabularDocument(input: Uint8Array | string, format: RapTabu
     return rowsToDocument(rows, format);
   }
 
-  const workbook = XLSX.read(input, { type: "array", cellFormula: true, cellStyles: true });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!firstSheet) throw new Error("RAP document has no worksheet.");
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: true, defval: null });
-  return rowsToDocument(rows, format);
+  const documents = parseTabularWorkbook(input, format);
+  if (!documents[0]) throw new Error("RAP document has no worksheet.");
+  return documents[0];
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function extractParsedItems(document: RapTabularDocument): RapParsedItem[] {
@@ -93,14 +121,19 @@ export function extractParsedItems(document: RapTabularDocument): RapParsedItem[
   return document.rows.slice(1).map((row, index) => {
     const value = (column: number) => (column >= 0 ? row[column]?.value : null);
     const diagnosisValue = value(diagnosisColumn);
+    const costItemCode = String(value(costItemCodeColumn) ?? "").trim();
+    if (!costItemCode) throw new Error(`RAP document row ${index + 2} is missing a cost item code.`);
+
     return {
       rowId: String(value(rowIdColumn) ?? index + 2),
-      costItemCode: String(value(costItemCodeColumn) ?? "").trim(),
+      costItemCode,
       costItemDescription: descriptionColumn >= 0 ? String(value(descriptionColumn) ?? "") : undefined,
-      quantity: quantityColumn >= 0 ? Number(value(quantityColumn)) : undefined,
-      amount: amountColumn >= 0 ? Number(value(amountColumn)) : undefined,
+      quantity: optionalNumber(value(quantityColumn)),
+      amount: optionalNumber(value(amountColumn)),
       rejectionReason: rejectionColumn >= 0 ? String(value(rejectionColumn) ?? "") : undefined,
-      diagnosisCodes: diagnosisValue ? String(diagnosisValue).split(/[,;\n]/).map((code) => code.trim()).filter(Boolean) : [],
+      diagnosisCodes: diagnosisValue
+        ? String(diagnosisValue).split(/[,;\n]/).map((code) => code.trim()).filter(Boolean)
+        : [],
       source: document.format,
     };
   });
