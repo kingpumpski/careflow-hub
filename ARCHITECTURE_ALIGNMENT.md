@@ -1,9 +1,9 @@
 # RAP Module — Architecture Alignment
 
 **Repository:** `kingpumpski/careflow-hub`  
-**Branch:** `feature/rap-module`  
-**Target:** `v2.1.0-rap` / release `v2.1.0`  
-**Status:** Step 3 deterministic core implemented and expanded; runtime activation remains feature-off.
+**Branch:** `feature/rap-reconciled`  
+**Target:** `main` / release `v2.1.0-rap`  
+**Status:** Reconciled onto the current `main` commit; runtime activation remains feature-off and validation remains pending.
 
 ## Architectural decision
 
@@ -81,6 +81,6 @@ Step 1: reconnaissance — complete.
 Step 2: database design + ERD — complete.  
 Step 3: deterministic KB + parser + matcher + renderer — implemented and expanded.  
 Step 3 runtime validation — **pending execution inside the repository Codespace**.  
-Step 4: retention + existing notification-service integration — not started.
+Step 4: retention + existing notification-service integration — pending architecture validation.
 
 No production data has been changed and no RAP feature has been enabled.
