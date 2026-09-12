@@ -61,6 +61,7 @@ export interface RapTableCell {
 
 export interface RapTabularDocument {
   format: "CSV" | "TSV" | "XLSX" | "XLS";
+  sheetName?: string;
   rows: RapTableCell[][];
   headers: string[];
 }
@@ -73,6 +74,7 @@ export interface RapRenderChange {
 
 export interface RapRenderedDocument {
   format: RapTabularDocument["format"];
+  sheetName?: string;
   rows: RapTableCell[][];
   changes: RapRenderChange[];
 }
