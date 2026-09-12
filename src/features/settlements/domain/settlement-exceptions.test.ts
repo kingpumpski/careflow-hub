@@ -56,7 +56,7 @@ describe('settlement exception detection', () => {
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].type).toBe('payment_variance');
     expect(exceptions[0].severity).toBe('critical');
-    expect(exceptions[0].description).toContain('5,000.00');
+    expect(exceptions[0].description).toContain('5000.00');
   });
 
   it('flags incomplete advice on a confirmed status', () => {
