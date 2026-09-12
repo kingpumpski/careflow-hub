@@ -63,7 +63,7 @@ function coerceMonth(raw: any): number | null {
   const named = monthNames.findIndex((m) => m.startsWith(str) && str.length >= 3);
   if (named !== -1) return named + 1;
   const n = toNumber(raw);
-  return n && Number.isInteger(n) && n >= 1 && n <= 12 ? n : null;
+  return n !== null && Number.isInteger(n) ? n : null;
 }
 
 /** Reads a CSV or Excel file into an array of raw header-keyed objects. */
