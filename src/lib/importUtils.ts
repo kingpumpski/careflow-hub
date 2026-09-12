@@ -27,11 +27,7 @@ export interface ParsedRow {
   errors: string[];
 }
 
-/**
- * Normalizes both human-entered headers and headers emitted by our templates.
- * Required template headers intentionally end with `*`; that marker is
- * presentation-only and must not make an otherwise exact header invisible.
- */
+/** Normalizes template and human-entered headers, including required `*` markers and BOMs. */
 const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_\-/]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
@@ -67,7 +63,7 @@ function coerceMonth(raw: any): number | null {
   const named = monthNames.findIndex((m) => m.startsWith(str) && str.length >= 3);
   if (named !== -1) return named + 1;
   const n = toNumber(raw);
-  return n && n >= 1 && n <= 12 ? Math.round(n) : null;
+  return n && Number.isInteger(n) && n >= 1 && n <= 12 ? n : null;
 }
 
 /** Reads a CSV or Excel file into an array of raw header-keyed objects. */
@@ -171,7 +167,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.label,
       c.required ? "Yes" : "No",
       c.type === "lookup"
-        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}
+        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}`
         : c.type === "date" ? "YYYY-MM-DD"
         : c.type === "integer" ? "Whole number"
         : c.type === "number" ? "Amount (numbers only)"
