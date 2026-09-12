@@ -7,10 +7,16 @@ export interface ImportColumn {
   label: string;
   required?: boolean;
   type?: ImportColumnType;
+  /** Accepted header aliases for files prepared outside our template. */
+  aliases?: string[];
   /** Accepted values for lookup columns: user supplies the label, we store the value. */
   options?: { label: string; value: string }[];
   /** Example value shown in the downloadable template. */
   example?: string | number;
+  /** Inclusive numeric lower bound for number/integer columns. */
+  min?: number;
+  /** Inclusive numeric upper bound for number/integer columns. */
+  max?: number;
   /** Extra guidance shown in the template guide. */
   hint?: string;
 }
@@ -83,7 +89,7 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
     const errors: string[] = [];
 
     columns.forEach((col) => {
-      const candidates = [col.key, col.label, col.label.replace(/\*/g, ""), `${col.label.replace(/\*/g, "")}*`];
+      const candidates = [col.key, col.label, ...(col.aliases || []), col.label.replace(/\*/g, ""), `${col.label.replace(/\*/g, "")}*`];
       let rawValue: any = "";
       for (const c of candidates) {
         const hit = headerMap[normalize(c)];
@@ -99,13 +105,17 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
         case "number": {
           const n = toNumber(rawValue);
           if (n === null) errors.push(`${col.label} must be a number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
           else values[col.key] = n;
           break;
         }
         case "integer": {
           const n = /month/i.test(col.key) ? coerceMonth(rawValue) : toNumber(rawValue);
-          if (n === null) errors.push(`${col.label} is not valid`);
-          else values[col.key] = Math.round(n);
+          if (n === null || !Number.isInteger(n)) errors.push(`${col.label} must be a whole number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
+          else values[col.key] = n;
           break;
         }
         case "date": {
@@ -161,7 +171,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.label,
       c.required ? "Yes" : "No",
       c.type === "lookup"
-        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}`
+        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}
         : c.type === "date" ? "YYYY-MM-DD"
         : c.type === "integer" ? "Whole number"
         : c.type === "number" ? "Amount (numbers only)"
