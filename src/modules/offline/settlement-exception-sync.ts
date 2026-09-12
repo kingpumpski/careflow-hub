@@ -6,10 +6,16 @@ import { createOfflineSettlementException, listOfflineSettlementExceptions } fro
  * operating offline. The detection input must contain the same financial
  * fields used by the online reconciliation path so offline and online
  * exception decisions cannot drift.
+ *
+ * A detection signature includes the severity and description so a resolved
+ * exception can be re-raised when the underlying facts materially change,
+ * while repeated refreshes of the same unchanged exception remain idempotent.
  */
 export async function syncOfflineSettlementExceptions(periods: Array<any>, asOf = new Date()): Promise<number> {
   const existing = await listOfflineSettlementExceptions();
-  const keys = new Set(existing.map((item) => `${item.settlementPeriodId}:${item.type}`));
+  const signature = (item: { settlementPeriodId: string; type: string; severity: string; description: string }) =>
+    `${item.settlementPeriodId}:${item.type}:${item.severity}:${item.description}`;
+  const keys = new Set(existing.map(signature));
   let created = 0;
 
   for (const period of periods) {
@@ -30,7 +36,7 @@ export async function syncOfflineSettlementExceptions(periods: Array<any>, asOf 
     }, asOf);
 
     for (const candidate of detected) {
-      const key = `${candidate.settlementPeriodId}:${candidate.type}`;
+      const key = signature(candidate);
       if (keys.has(key)) continue;
       await createOfflineSettlementException({
         facilityId: period.facility_id,
