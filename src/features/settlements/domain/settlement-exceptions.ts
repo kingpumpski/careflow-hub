@@ -1,4 +1,5 @@
 import type { ClaimsSettlementPeriod } from './settlement';
+import { calculateSettlementReconciliation } from './settlement';
 
 export type SettlementExceptionType =
   | 'payment_variance'
@@ -25,7 +26,7 @@ export type SettlementException = {
   resolutionNote: string | null;
   resolvedAt: string | null;
   resolvedBy: string | null;
-}
+};
 
 const EPSILON = 0.005;
 export const SETTLEMENT_OVERDUE_DAYS = 30;
@@ -37,7 +38,7 @@ function daysSincePeriodEnd(periodEnd: string, asOf: Date): number {
 }
 
 export function detectSettlementExceptions(
-  period: Pick<ClaimsSettlementPeriod, 'id' | 'facilityId' | 'periodEnd' | 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'withholdingTaxVariance' | 'paymentAdviceReference' | 'paymentAdviceDate'>,
+  period: Pick<ClaimsSettlementPeriod, 'id' | 'facilityId' | 'periodEnd' | 'totalClaimsSubmitted' | 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'withholdingTaxVariance' | 'paymentAdviceReference' | 'paymentAdviceDate'>,
   asOf = new Date(),
 ): Array<Omit<SettlementException, 'id' | 'status' | 'assignedTo' | 'resolutionNote' | 'resolvedAt' | 'resolvedBy'>> {
   const detectedAt = asOf.toISOString();
@@ -59,6 +60,29 @@ export function detectSettlementExceptions(
 
   if (period.withholdingTaxVariance !== null && Math.abs(period.withholdingTaxVariance) > EPSILON) {
     exceptions.push({ facilityId: period.facilityId, settlementPeriodId: period.id, type: 'withholding_tax_variance', severity: Math.abs(period.withholdingTaxVariance) >= 100 ? 'critical' : 'warning', title: 'WHT variance detected', description: `Confirmed actual WHT differs from provisional WHT by ${period.withholdingTaxVariance.toFixed(2)}.`, detectedAt });
+  }
+
+  if (period.paymentReceived !== null && period.rejectionAmount !== null && period.actualWithholdingTax !== null) {
+    const reconciliation = calculateSettlementReconciliation(
+      period.totalClaimsSubmitted,
+      period.rejectionAmount,
+      period.paymentReceived,
+      period.actualWithholdingTax,
+    );
+
+    if (!reconciliation.balanced) {
+      const direction = reconciliation.residual > 0 ? 'under-settlement' : 'over-settlement';
+      const magnitude = Math.abs(reconciliation.residual);
+      exceptions.push({
+        facilityId: period.facilityId,
+        settlementPeriodId: period.id,
+        type: 'payment_variance',
+        severity: magnitude >= 100 ? 'critical' : 'warning',
+        title: `Settlement ${direction} detected`,
+        description: `Confirmed submitted, rejection, payment and actual WHT figures leave a signed residual of ${reconciliation.residual.toFixed(2)}.`,
+        detectedAt,
+      });
+    }
   }
 
   return exceptions;
