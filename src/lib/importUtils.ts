@@ -11,7 +11,7 @@ export interface ImportColumn {
   options?: { label: string; value: string }[];
   /** Example value shown in the downloadable template. */
   example?: string | number;
-  /** Extra guidance shown in the template guide sheet. */
+  /** Extra guidance shown in the template guide. */
   hint?: string;
 }
 
@@ -21,7 +21,12 @@ export interface ParsedRow {
   errors: string[];
 }
 
-const normalize = (s: any) => String(s ?? "").trim().toLowerCase().replace(/[\s_\-/]+/g, "");
+/**
+ * Normalizes both human-entered headers and headers emitted by our templates.
+ * Required template headers intentionally end with `*`; that marker is
+ * presentation-only and must not make an otherwise exact header invisible.
+ */
+const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_\-/]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function toNumber(raw: any): number | null {
@@ -78,7 +83,7 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
     const errors: string[] = [];
 
     columns.forEach((col) => {
-      const candidates = [col.key, col.label, col.label.replace(/\*/g, "")];
+      const candidates = [col.key, col.label, col.label.replace(/\*/g, ""), `${col.label.replace(/\*/g, "")}*`];
       let rawValue: any = "";
       for (const c of candidates) {
         const hit = headerMap[normalize(c)];
