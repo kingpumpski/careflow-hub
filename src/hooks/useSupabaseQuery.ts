@@ -82,7 +82,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
       if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
-      query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : query.order("created_at", { ascending: false });
+      query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : table === "system_settings" ? query.order("updated_at", { ascending: false }) : table === "preauth_items" ? query.order("id", { ascending: false }) : query.order("created_at", { ascending: false });
       if (options?.limit) query = query.limit(options.limit);
       const { data, error } = await query;
       if (error) { if (isMissingSchemaError(error)) return []; throw error; }
