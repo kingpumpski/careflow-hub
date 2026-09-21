@@ -18,21 +18,3 @@ begin
   end if;
 end $$;
 
-
--- Runtime facility policy correction: avoid direct self-reference in facility membership RLS.
-drop policy if exists facilities_select_member on public.facilities;
-create policy facilities_select_member on public.facilities
-for select to authenticated
-using (
-  public.user_has_facility_access(facilities.id)
-  or exists (select 1 from public.user_roles ur where ur.user_id=(select auth.uid()) and ur.role in ('superuser','admin'))
-);
-
-drop policy if exists facility_memberships_select_member on public.facility_memberships;
-create policy facility_memberships_select_member on public.facility_memberships
-for select to authenticated
-using (
-  user_id=(select auth.uid())
-  or public.user_has_facility_access(facility_memberships.facility_id)
-  or exists (select 1 from public.user_roles ur where ur.user_id=(select auth.uid()) and ur.role in ('superuser','admin'))
-);
