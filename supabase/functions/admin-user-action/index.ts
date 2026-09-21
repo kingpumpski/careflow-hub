@@ -64,8 +64,8 @@ Deno.serve(async (req) => {
       const [{ data: profiles, error: profilesError }, { data: roleRows, error: roleRowsError }, { data: overrides, error: overridesError }, { data: catalog, error: catalogError }] = await Promise.all([
         admin.from("profiles").select("id, full_name, email"),
         admin.from("user_roles").select("id, user_id, role"),
-        admin.from("user_permission_overrides").select("user_id, permission_key, granted"),
-        admin.from("app_permissions").select("key, label, category, description").order("category").order("label"),
+        admin.from("user_permission_overrides").select("user_id, permission_key, allowed"),
+        admin.from("app_permissions").select("permission_key, label, category, description").order("category").order("label"),
       ]);
       if (profilesError || roleRowsError || overridesError || catalogError) throw profilesError || roleRowsError || overridesError || catalogError;
       await audit("list_users");
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
       if (targetUserId === user.id && role !== currentRole) return json(req, { error: "You cannot change your own administrative role." }, 400);
       const rawOverrides = body.overrides;
       if (!Array.isArray(rawOverrides) || rawOverrides.length > MAX_PERMISSION_KEYS) return json(req, { error: "Invalid permission overrides" }, 400);
-      const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), granted: item.granted }));
+      const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), allowed: item.granted }));
       if (overrides.some((item) => !item.permission_key || item.permission_key.length > 100)) return json(req, { error: "Invalid permission key" }, 400);
       const { data: validPermissions, error: permissionError } = await admin.from("app_permissions").select("key");
       if (permissionError) throw permissionError;
