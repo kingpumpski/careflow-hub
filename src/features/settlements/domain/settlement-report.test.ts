@@ -60,7 +60,7 @@ describe('settlement reporting', () => {
   it('reports signed under- and over-settlement without hiding negative residuals', () => {
     const rows = [
       period({ id: 'under', settlementStatus: 'reconciled', paymentReceived: 750, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
     ];
     const summary = summarizeSettlementPeriods(rows);
     expect(summary.totalResidual).toBe(50);
@@ -74,7 +74,7 @@ describe('settlement reporting', () => {
   it('groups signed reconciliation totals by insurer', () => {
     const rows = [
       period({ id: '1', paymentReceived: 800, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      period({ id: '2', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: '2', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
       period({ id: '3', insuranceCompanyId: 'insurer-2', totalClaimsSubmitted: 200, paymentReceived: 180, rejectionAmount: 10, actualWithholdingTax: 10 }),
     ];
     const result = summarizeSettlementsByInsurer(rows);
@@ -82,7 +82,7 @@ describe('settlement reporting', () => {
       insurerId: 'insurer-1',
       periodCount: 2,
       totalSubmitted: 2000,
-      totalPaymentReceived: 1650,
+      totalPaymentReceived: 1700,
       totalRejectionAmount: 200,
       totalWhtVariance: 0,
       totalResidual: 50,
