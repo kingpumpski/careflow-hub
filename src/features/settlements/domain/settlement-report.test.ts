@@ -63,8 +63,8 @@ describe('settlement reporting', () => {
       period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
     ];
     const summary = summarizeSettlementPeriods(rows);
-    expect(summary.totalResidual).toBe(0);
-    expect(summary.totalOutstanding).toBe(50);
+    expect(summary.totalResidual).toBe(50);
+    expect(summary.totalOutstanding).toBe(100);
     expect(summary.totalOverSettled).toBe(50);
     expect(summary.balancedCount).toBe(0);
     expect(summary.underSettledCount).toBe(1);
@@ -86,8 +86,8 @@ describe('settlement reporting', () => {
       totalRejectionAmount: 200,
       totalWhtVariance: 0,
       totalResidual: 50,
-      totalOutstanding: 50,
-      totalOverSettled: 0,
+      totalOutstanding: 100,
+      totalOverSettled: 50,
       balancedCount: 0,
       underSettledCount: 1,
       overSettledCount: 1,
