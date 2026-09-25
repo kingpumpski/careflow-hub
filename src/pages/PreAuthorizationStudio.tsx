@@ -9,7 +9,7 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
-import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
+import { createPreAuthorizationAtomic, searchClientSuggestions, type ClientSuggestion } from "@/features/preauth/services/preauthStudio.service";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { buildPreAuthEmail, buildRequestNumber, buildDuplicateSignature, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
 import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
@@ -32,14 +32,29 @@ export default function PreAuthorizationStudio() {
 
   const [patientId, setPatientId] = useState("");
   const [insurerId, setInsurerId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientDateOfBirth, setClientDateOfBirth] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientAddress, setClientAddress] = useState("");
+  const [clientIdentifier, setClientIdentifier] = useState("");
+  const [membershipNumber, setMembershipNumber] = useState("");
+  const [insurerName, setInsurerName] = useState("");
+  const [insurerMemberNumber, setInsurerMemberNumber] = useState("");
+  const [insurerPlanName, setInsurerPlanName] = useState("");
+  const [insurerPhone, setInsurerPhone] = useState("");
+  const [insurerEmail, setInsurerEmail] = useState("");
+  const [insurerPolicyReference, setInsurerPolicyReference] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientSuggestions, setClientSuggestions] = useState<ClientSuggestion[]>([]);
   const [doctorId, setDoctorId] = useState("");
   const [procedureId, setProcedureId] = useState("");
+  const [procedureName, setProcedureName] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [procedureDate, setProcedureDate] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
-  const [format, setFormat] = useState<"ghana" | "international">("ghana");
-  const [currency, setCurrency] = useState("GH¢");
+  const [format, setFormat] = useState<"ghana" | "international">("international");
+  const [currency, setCurrency] = useState("USD");
   const [items, setItems] = useState<PreAuthStudioItem[]>([blankItem()]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -54,17 +69,34 @@ export default function PreAuthorizationStudio() {
   const selectedDoctor = (doctors || []).find((d: any) => d.id === doctorId);
   const selectedProcedure = (procedures || []).find((p: any) => p.id === procedureId);
   const getSetting = (key: string) => settings?.find?.((s: any) => s.key === key)?.value || "";
-  const providerName = getSetting("provider_name") || "MT. CARMEL HOSPITAL AND FERTILITY CENTER";
-  const providerAddress = getSetting("provider_address") || "Loc: Community 25 Tema. P.O. Box 3618 Tema comm 1.";
-  const providerPhone = getSetting("provider_phone") || "+233 242 160 557 / +233 303 939 896";
+  const providerName = getSetting("provider_name") || "Healthcare Provider";
+  const providerAddress = getSetting("provider_address") || "";
+  const providerPhone = getSetting("provider_phone") || "";
   const providerLogoUrl = getSetting("provider_logo_url");
-  const effectivePatientName = selectedPatient?.patient_name || "Patient";
-  const membershipNumber = selectedPatient?.membership_number || "";
-  const effectiveProcedure = selectedProcedure?.procedure_name || "Procedure";
+  const effectiveClientName = clientName.trim() || selectedPatient?.patient_name || "";
+  const effectiveInsurerName = insurerName.trim() || selectedInsurer?.company_name || "";
+  const effectivePatientName = effectiveClientName || "Client";
+  const effectiveMembershipNumber = membershipNumber || selectedPatient?.membership_number || "";
+  const effectiveProcedure = procedureName.trim() || selectedProcedure?.procedure_name || "";
   const today = new Date().toISOString().slice(0, 10);
   const issuedDate = new Date().toLocaleDateString("en-GB");
   const requestNumber = savedId ? buildRequestNumber(savedId) : "Generated on save";
   const total = useMemo(() => totalItems(items), [items]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = clientSearch.trim();
+    if (!query) { setClientSuggestions([]); return () => { cancelled = true; }; }
+    void searchClientSuggestions(query, 8).then((rows) => { if (!cancelled) setClientSuggestions(rows); }).catch(() => { if (!cancelled) setClientSuggestions([]); });
+    return () => { cancelled = true; };
+  }, [clientSearch]);
+
+  const applyClientSuggestion = (suggestion: ClientSuggestion) => {
+    setClientName(suggestion.client_name || ""); setClientDateOfBirth(suggestion.date_of_birth || "");
+    setPatientPhone(suggestion.phone || ""); setClientEmail(suggestion.email || ""); setClientAddress(suggestion.address || "");
+    setClientIdentifier(suggestion.identifier || ""); setMembershipNumber(suggestion.membership_number || "");
+    setPatientId(suggestion.id || ""); setClientSearch(""); setClientSuggestions([]);
+  };
 
   const getTariff = (procedureRef?: string, catalogRef?: string) => {
     const match = (tariffs || []).find((t: any) => t.insurance_company_id === insurerId && (procedureRef ? t.procedure_id === procedureRef : t.catalog_item_id === catalogRef) && t.is_active !== false && (!t.effective_from || t.effective_from <= (procedureDate || today)) && (!t.effective_to || t.effective_to >= (procedureDate || today)));
@@ -75,6 +107,7 @@ export default function PreAuthorizationStudio() {
     setProcedureId(id);
     const procedure = (procedures || []).find((p: any) => p.id === id);
     if (!procedure) return;
+    setProcedureName(procedure.procedure_name || "");
     const override = getTariff(id);
     setItems([{ ...blankItem(), description: procedure.procedure_name, unitPrice: override ?? (Number(procedure.default_tariff) || 0) }]);
   };
@@ -86,24 +119,24 @@ export default function PreAuthorizationStudio() {
     setItems((current) => current.map((row) => row.id === id ? { ...row, description: item.item_name, unitPrice: override ?? (Number(item.unit_price) || 0) } : row));
   };
 
-  const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({ requestNumber: savedId ? finalRequestNumber : undefined, issuedDate, patientName: effectivePatientName, membershipNumber, patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || selectedInsurer?.company_name || "", providerName, providerAddress, providerPhone, doctorName: selectedDoctor?.doctor_name || "", procedureName: effectiveProcedure, procedureDate, diagnosis, currency, format, logoUrl: providerLogoUrl || undefined });
+  const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({ requestNumber: savedId ? finalRequestNumber : undefined, issuedDate, patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || effectiveInsurerName || "", providerName, providerAddress, providerPhone, doctorName: selectedDoctor?.doctor_name || "", procedureName: effectiveProcedure, procedureDate, diagnosis, currency, format, logoUrl: providerLogoUrl || undefined });
 
-  const email = useMemo(() => buildPreAuthEmail({ patientName: effectivePatientName, membershipNumber, procedureName: effectiveProcedure, procedureDate, diagnosis, insurerName: selectedInsurer?.company_name || "Insurance Partner", insurerContactPerson: selectedInsurer?.contact_person, providerName, providerEmail: getSetting("provider_email"), officerName: getSetting("officer_name"), officerPosition: getSetting("officer_position"), officerPhone: getSetting("officer_phone"), senderEmail: getSetting("claims_sender_email") }), [effectivePatientName, membershipNumber, effectiveProcedure, procedureDate, diagnosis, selectedInsurer, providerName, settings]);
+  const email = useMemo(() => buildPreAuthEmail({ patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, procedureName: effectiveProcedure, procedureDate, diagnosis, insurerName: effectiveInsurerName || "Insurance Partner", insurerContactPerson: selectedInsurer?.contact_person, providerName, providerEmail: getSetting("provider_email"), officerName: getSetting("officer_name"), officerPosition: getSetting("officer_position"), officerPhone: getSetting("officer_phone"), senderEmail: getSetting("claims_sender_email") }), [effectivePatientName, membershipNumber, effectiveProcedure, procedureDate, diagnosis, selectedInsurer, providerName, settings]);
 
-  const reviewInput = useMemo<PreAuthReviewInput>(() => ({ patientId, patientName: effectivePatientName, membershipNumber, insurerId, insurerName: selectedInsurer?.company_name || "", procedureId, procedureName: effectiveProcedure, procedureDate, diagnosis, doctorName: selectedDoctor?.doctor_name || "", patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || selectedInsurer?.company_name || "", insurerEmail: selectedInsurer?.email || "", providerEmail: getSetting("provider_email"), providerName, providerAddress, providerPhone, providerLogoUrl: providerLogoUrl || undefined, issuedDate, currency, format, items }), [patientId, effectivePatientName, membershipNumber, insurerId, selectedInsurer, procedureId, effectiveProcedure, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, providerName, providerAddress, providerPhone, providerLogoUrl, issuedDate, currency, format, items, settings]);
+  const reviewInput = useMemo<PreAuthReviewInput>(() => ({ patientId, patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, insurerId, insurerName: effectiveInsurerName, procedureId, procedureName: effectiveProcedure, procedureDate, diagnosis, doctorName: selectedDoctor?.doctor_name || "", patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || "", insurerEmail: insurerEmail || selectedInsurer?.email || "", providerEmail: getSetting("provider_email"), providerName, providerAddress, providerPhone, providerLogoUrl: providerLogoUrl || undefined, issuedDate, currency, format, items }), [patientId, effectivePatientName, membershipNumber, insurerId, selectedInsurer, procedureId, effectiveProcedure, procedureDate, diagnosis, selectedDoctor, patientPhone, selectedPatient, companyName, providerName, providerAddress, providerPhone, providerLogoUrl, issuedDate, currency, format, items, settings]);
   const review = useMemo(() => validatePreAuthReview(reviewInput), [reviewInput]);
-  const duplicateSignature = buildDuplicateSignature({ patientId, membershipNumber, procedureId, procedureDate, insurerId });
+  const duplicateSignature = buildDuplicateSignature({ patientId: patientId || effectiveClientName, membershipNumber: effectiveMembershipNumber, procedureId: procedureId || effectiveProcedure, procedureDate, insurerId: insurerId || effectiveInsurerName });
 
   const saveDraft = async (): Promise<string | null> => {
-    if (!patientId || !insurerId || !procedureDate || !procedureId) {
-      toast({ title: "Required information missing", description: "Patient, procedure, insurer, and procedure date are required.", variant: "destructive" });
+    if (!effectiveClientName || !effectiveInsurerName || !procedureDate || !effectiveProcedure) {
+      toast({ title: "Required information missing", description: "Client name, insurer name, procedure/service, and procedure date are required.", variant: "destructive" });
       return null;
     }
     setSaving(true);
     try {
       const rows = items.filter((item) => item.description.trim()).map((item) => ({ description: item.description.trim(), quantity: Math.max(0, Number(item.quantity) || 0), unit_price: Math.max(0, Number(item.unitPrice) || 0), amount: itemAmount(item) }));
       if (!rows.length) throw new Error("PREAUTH_ITEMS_REQUIRED");
-      const created = await createPreAuthorizationAtomic({ patient_id: patientId, insurance_company_id: insurerId, doctor_id: doctorId || null, procedure_id: procedureId, procedure_date: procedureDate, diagnosis: diagnosis || null, total_cost: total, provider_name: providerName, provider_address: providerAddress, provider_phone: providerPhone, status: "draft", current_state: "Draft", created_by: user?.id || null, client_company_name: companyName || selectedInsurer?.company_name || null, patient_phone: patientPhone || selectedPatient?.phone || null, clinical_notes: notes || null, document_format: format, document_currency: currency, duplicate_signature: duplicateSignature }, rows, true);
+      const created = await createPreAuthorizationAtomic({ patient_id: patientId || null, client_name: effectiveClientName, client_date_of_birth: clientDateOfBirth || null, client_phone: patientPhone || selectedPatient?.phone || null, client_email: clientEmail || null, client_address: clientAddress || null, client_identifier: clientIdentifier || null, client_membership_number: effectiveMembershipNumber || null, insurance_company_id: insurerId || null, insurer_name: effectiveInsurerName, insurer_member_number: insurerMemberNumber || null, insurer_plan_name: insurerPlanName || null, insurer_phone: insurerPhone || null, insurer_email: insurerEmail || selectedInsurer?.email || null, insurer_policy_reference: insurerPolicyReference || null, doctor_id: doctorId || null, procedure_id: procedureId || null, procedure_name: effectiveProcedure, procedure_date: procedureDate, diagnosis: diagnosis || null, total_cost: total, provider_name: providerName, provider_address: providerAddress, provider_phone: providerPhone, status: "draft", current_state: "Draft", created_by: user?.id || null, clinical_notes: notes || null, document_format: format, document_currency: currency, duplicate_signature: duplicateSignature }, rows, true);
       const id = String(created?.id || created?.preauth_id || created?.[0]?.id || "");
       if (!id) throw new Error("The server did not return the new pre-authorization ID.");
       setSavedId(id);
@@ -181,10 +214,10 @@ export default function PreAuthorizationStudio() {
         <div className="min-w-0 space-y-5">
           <section className="stat-card space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><h2 className="font-heading font-semibold">1. Request information</h2><p className="text-xs text-muted-foreground">Only information that changes per request is entered here.</p></div><select className="h-9 max-w-full rounded-md border bg-background px-3 text-sm" value={format} onChange={(e) => setFormat(e.target.value as "ghana" | "international")}><option value="ghana">Ghana facility format</option><option value="international">International request format</option></select></div>
             <div className="grid min-w-0 gap-3 md:grid-cols-2">
-              <div className="min-w-0"><Label>Patient / Client *</Label><select className="mt-1 h-9 w-full min-w-0 rounded-md border bg-background px-3 text-sm" value={patientId} onChange={(e) => setPatientId(e.target.value)}><option value="">Select patient</option>{(patients || []).map((p: any) => <option key={p.id} value={p.id}>{p.patient_name} {p.membership_number ? `— ${p.membership_number}` : ""}</option>)}</select></div>
-              <div className="min-w-0"><Label>Insurance partner *</Label><select className="mt-1 h-9 w-full min-w-0 rounded-md border bg-background px-3 text-sm" value={insurerId} onChange={(e) => setInsurerId(e.target.value)}><option value="">Select insurer</option>{(insurers || []).filter((i: any) => i.is_active !== false).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}</select></div>
+              <div className="min-w-0"><Label>Client / Patient *</Label><Input className="mt-1" value={clientName} onChange={(e) => { setClientName(e.target.value); setClientSearch(e.target.value); }} placeholder="Enter client name" />{clientSuggestions.length > 0 && <div className="mt-1 rounded-md border bg-background p-1 shadow-sm">{clientSuggestions.map((suggestion) => <button type="button" key={suggestion.id} className="block w-full rounded px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => applyClientSuggestion(suggestion)}>{suggestion.client_name}{suggestion.membership_number ? ` — ${suggestion.membership_number}` : ""}</button>)}</div>}</div>
+              <div className="min-w-0"><Label>Insurance partner / payer *</Label><Input className="mt-1" value={insurerName} onChange={(e) => setInsurerName(e.target.value)} placeholder="Enter insurer / payer name" /><p className="mt-1 text-xs text-muted-foreground">The payer belongs to this request; reusable client information is never permanently tied to one insurer.</p></div>
               <div className="min-w-0"><Label>Doctor / Surgeon</Label><select className="mt-1 h-9 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">Select provider</option>{(doctors || []).map((d: any) => <option key={d.id} value={d.id}>{d.doctor_name}</option>)}</select></div>
-              <div className="min-w-0"><Label>Procedure *</Label><select className="mt-1 h-9 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Select procedure</option>{(procedures || []).map((p: any) => <option key={p.id} value={p.id}>{p.procedure_name}</option>)}</select></div>
+              <div className="min-w-0"><Label>Procedure / requested service *</Label><Input className="mt-1" value={procedureName} onChange={(e) => { setProcedureName(e.target.value); setProcedureId(""); }} placeholder="Enter procedure or service name" /><select className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs" value={procedureId} onChange={(e) => selectProcedure(e.target.value)}><option value="">Optional procedure catalogue</option>{(procedures || []).map((p: any) => <option key={p.id} value={p.id}>{p.procedure_name}</option>)}</select></div>
               <div><Label>Procedure date *</Label><Input className="mt-1" type="date" value={procedureDate} onChange={(e) => setProcedureDate(e.target.value)} /></div>
               <div><Label>Patient telephone</Label><Input className="mt-1" value={patientPhone} onChange={(e) => setPatientPhone(e.target.value)} placeholder="Optional override" /></div>
               <div><Label>Company / employer</Label><Input className="mt-1" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="As shown on card / policy" /></div>
