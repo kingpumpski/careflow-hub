@@ -57,10 +57,10 @@ export function validatePreAuthReview(input: PreAuthReviewInput): PreAuthReviewR
   const errors: PreAuthReviewIssue[] = [];
   const warnings: PreAuthReviewIssue[] = [];
 
-  if (!input.patientId.trim() || !input.patientName.trim()) errors.push(issue("patient", "Select a patient/client before submission.", "error"));
+  if (!input.patientName.trim()) errors.push(issue("patient", "Client name is required before submission.", "error"));
   if (!input.membershipNumber.trim()) warnings.push(issue("membershipNumber", "Membership number is missing; confirm that the insurer can process the request without it.", "warning"));
-  if (!input.insurerId.trim() || !input.insurerName.trim()) errors.push(issue("insurer", "Select an active insurance partner.", "error"));
-  if (!input.procedureId.trim() || !input.procedureName.trim()) errors.push(issue("procedure", "Select the requested procedure.", "error"));
+  if (!input.insurerName.trim()) errors.push(issue("insurer", "Insurer / payer name is required.", "error"));
+  if (!input.procedureName.trim()) errors.push(issue("procedure", "Procedure / requested service is required.", "error"));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.procedureDate)) errors.push(issue("procedureDate", "A valid procedure date is required.", "error"));
   if (!input.currency.trim()) errors.push(issue("currency", "Currency is required.", "error"));
 
