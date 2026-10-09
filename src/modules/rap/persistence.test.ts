@@ -32,6 +32,15 @@ describe("RAP persistence audit contract", () => {
     expect(validateRapAuditEventInput(event({ correlationId: "" }))).toBe(false);
   });
 
+  it("fails closed for malformed runtime metadata, enum values, and non-finite numbers", () => {
+    expect(validateRapAuditEventInput(event({ metadata: null as never }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: [] as never }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: { assessmentVersion: Number.NaN } }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ action: "EXECUTE_SQL" as never }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ resourceType: "patient" as never }))).toBe(false);
+    expect(validateRapAuditEventInput(null as never)).toBe(false);
+  });
+
   it("rejects arbitrary metadata keys that could leak clinical or claim text", () => {
     expect(validateRapAuditEventInput(event({
       metadata: { diagnosis: "free text diagnosis" },
