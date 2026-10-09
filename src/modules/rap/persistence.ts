@@ -152,3 +152,42 @@ export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
     return typeof value !== "string" || value.length <= 256;
   });
 }
+
+
+/**
+ * Validate the shape of a consume command before calling the persistence port.
+ * This is defense in depth only: atomic single-use, scope and idempotency
+ * guarantees must still be enforced by the database transaction.
+ */
+export function validateConsumeRapApprovalCommand(
+  command: ConsumeRapApprovalCommand,
+): boolean {
+  if (!command || typeof command !== "object" || Array.isArray(command)) return false;
+
+  const candidate = command as unknown as Record<string, unknown>;
+  const requiredText = [
+    "tenantId",
+    "facilityId",
+    "approvalId",
+    "actorUserId",
+    "expectedPayloadHash",
+    "now",
+    "idempotencyKey",
+  ];
+
+  if (requiredText.some((key) =>
+    typeof candidate[key] !== "string" || !(candidate[key] as string).trim()
+  )) return false;
+
+  const timestamp = candidate.now as string;
+  if (!Number.isFinite(Date.parse(timestamp))) return false;
+
+  const idempotencyKey = candidate.idempotencyKey as string;
+  if (idempotencyKey.length < 8 || idempotencyKey.length > 200) return false;
+
+  // SHA-256 hex digest only; accepting arbitrary strings weakens payload binding.
+  const payloadHash = candidate.expectedPayloadHash as string;
+  if (!/^[a-f0-9]{64}$/i.test(payloadHash)) return false;
+
+  return true;
+}
