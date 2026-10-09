@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { RapDocumentExporter } from "../adapters/contracts";
 import { validateRenderedDocument } from "../core/renderer";
 
-const FORMULA_PREFIX = /^[=+\-@]/;
+const FORMULA_PREFIX = /^[\u0000-\u0020]*[=+\-@]/;
 
 function safeCell(value: string | number | boolean | null): string {
   if (value === null) return "";
