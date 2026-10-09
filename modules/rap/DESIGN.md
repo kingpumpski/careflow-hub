@@ -75,7 +75,7 @@ The migration suite remains a CI-only test fixture; these design migrations are 
 
 ### Approval issuance and concurrency checkpoint
 
-- `governance/issuance.ts` now provides a server-side issuance service contract: host authorization is checked for approver, requester, action and facility; requester/approver separation is enforced; TTL is capped at 15 minutes; the signed token is built before persistence; persistence and audit must succeed before a token is returned.
+- `governance/issuance.ts` provides a server-side issuance service contract: host authorization is checked for approver, requester, action and facility; requester/approver separation is enforced; TTL is capped at 15 minutes; the signed token is built before persistence; the host adapter must persist the ISSUED token and immutable audit event in one atomic transaction/RPC before a token is returned. Separate insert/audit calls are intentionally disallowed because audit failure after insert could strand a usable token.
 - `governance/issuance.test.ts` covers authorization denial, separation of duties, TTL validation, secret misconfiguration, persistence/audit failures and successful token binding.
 - The PostgreSQL smoke script now races two independent database sessions against the same approval token and asserts exactly one consumption succeeds. This is a useful regression test, not a full concurrency/load or production RLS test.
 - The issuance module remains an adapter-driven server service, not a deployed Supabase Edge Function. The host must supply authenticated identity, role/facility authorization, the concrete insert/audit adapters and server-only secret configuration before endpoint exposure.
