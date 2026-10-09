@@ -71,17 +71,17 @@ describe("RAP approval consumption command guard", () => {
   });
 
   it("rejects missing scope, identity, operation key, and invalid timestamp", () => {
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ tenantId: "" } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ facilityId: " " } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ actorUserId: "" } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "tomorrow" } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "short" } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "k".repeat(201) } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ tenantId: "" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ facilityId: " " }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ actorUserId: "" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "tomorrow" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "short" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "k".repeat(201) }))).toBe(false);
   });
 
   it("rejects non-SHA-256 or malformed runtime payload hashes", () => {
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "sha256:abc" } )).toBe(false);
-    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "g".repeat(64) } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "sha256:abc" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "g".repeat(64) }))).toBe(false);
     expect(validateConsumeRapApprovalCommand(null as never)).toBe(false);
   });
 });
