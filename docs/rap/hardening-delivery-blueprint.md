@@ -1,6 +1,6 @@
 # RAP Hardening & Delivery Blueprint
 
-Status: design/implementation guide. This document does not enable RAP, add production migrations, or permit production writes.
+Status: design guide plus isolated deterministic domain/pipeline implementation in progress. Current code is under src/modules/rap and has dedicated unit tests and a branch-scoped CI workflow. CI results must be green before considering this stage verified. This work does not enable RAP, add production migrations, or permit production writes.
 
 ## 1. Integration boundaries
 
@@ -107,15 +107,16 @@ Do not add unpinned `@master` security actions or a signing job that assumes a c
 
 ## 9. Delivery sequence
 
-1. **Reconcile contracts:** inspect current main and RAP branch; record actual paths, exports, test commands and ownership.
-2. **Deterministic domain core:** transition matrix, findings schema, canonicalization, risk aggregation and pure unit tests.
-3. **Persistence boundary:** tenant-scoped repository contracts, optimistic concurrency, append-only audit and isolated migration tests.
-4. **Host integration:** permission catalogue, feature flag, host audit/notification interfaces and UI route gate.
-5. **Validation stages 0–5:** structural, semantic, clinical, financial and temporal rules using versioned reference data.
-6. **Signing and exports:** immutable revisions, signature verification CLI, safe formats and CSV injection defenses.
-7. **Handoff:** mock adapter first, durable idempotency and reconciliation, then payer-specific adapters under explicit approval.
-8. **Hardening:** tenant isolation, adversarial tests, accessibility, observability, backup/restore and load testing.
-9. **Controlled launch:** keep disabled by default; enable only in an isolated test tenant after all release gates pass.
+1. **Reconcile contracts:** continue inspecting host authorization, tenancy, reference data, audit, and persistence interfaces before connecting RAP to live host services.
+2. **Deterministic domain core:** initial lifecycle matrix, findings schema, canonical JSON helper, risk indicator and pure unit tests are implemented in src/modules/rap/domain.ts.
+3. **Allow-listed validation pipeline:** initial deterministic tenant-context, diagnosis, service, currency and amount rules are implemented in src/modules/rap/pipeline.ts. Cross-tenant mismatches fail closed before detail rules run.
+4. **Persistence boundary:** tenant-scoped repository contracts, optimistic concurrency, append-only audit and isolated migration tests.
+5. **Host integration:** permission catalogue, feature flag, host audit/notification interfaces and UI route gate.
+6. **Expand validation stages:** semantic coding checks, approved clinical/financial/temporal reference data, rule provenance and bounded inputs.
+7. **Signing and exports:** immutable revisions, signature verification CLI, safe formats and CSV injection defenses.
+8. **Handoff:** mock adapter first, durable idempotency and reconciliation, then payer-specific adapters under explicit approval.
+9. **Hardening:** tenant isolation, adversarial tests, accessibility, observability, backup/restore and load testing.
+10. **Controlled launch:** keep disabled by default; enable only in an isolated test tenant after all release gates pass.
 
 ## 10. Explicit non-goals until separately approved
 
