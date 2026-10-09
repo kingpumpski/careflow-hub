@@ -72,7 +72,7 @@ export function stableSerialize(value: unknown): string {
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
           throw new Error("RAP approval payload must contain only enumerable data properties.");
         }
-        serialized.push(`${JSON.stringify(key)}:${serialize(record[key])}`);
+        serialized.push(`${JSON.stringify(key)}:${serialize(descriptor.value)}`);
       }
       return `{${serialized.join(",")}}`;
     } finally {
