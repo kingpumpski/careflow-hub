@@ -29,6 +29,7 @@ describe("RAP deterministic validation pipeline", () => {
     expect(result.outcome).toBe("BLOCKED");
     expect(result.summary.blockerCount).toBe(1);
     expect(result.findings[0].code).toBe("TENANT_CONTEXT_MISMATCH");
+    expect(result.findings).toHaveLength(1);
     expect(result.findings[0].message).not.toContain("tenant-b");
   });
 
@@ -41,8 +42,8 @@ describe("RAP deterministic validation pipeline", () => {
     }, context);
     expect(result.outcome).toBe("REVIEW_REQUIRED");
     expect(result.findings.map((item) => item.code)).toEqual([
-      "UNSUPPORTED_CURRENCY",
       "CONFIRMED_DIAGNOSIS_REQUIRED",
+      "UNSUPPORTED_CURRENCY",
       "SERVICE_REQUIRED",
     ]);
   });
@@ -56,7 +57,7 @@ describe("RAP deterministic validation pipeline", () => {
       ],
     }, context);
     expect(result.summary.errorCount).toBe(2);
-    expect(result.findings.map((item) => item.entityRef)).toEqual(["infinite", "negative"]);
+    expect(result.findings.map((item) => item.entityRef)).toEqual(["negative", "infinite"]);
   });
 
   it("requires each service to link to a confirmed diagnosis", () => {
