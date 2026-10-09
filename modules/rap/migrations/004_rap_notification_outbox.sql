@@ -54,6 +54,7 @@ set search_path = pg_catalog, rap
 as $$
 declare
   new_id uuid;
+  existing rap.rap_notification_outbox%rowtype;
 begin
   if p_tenant_id is null or p_facility_id is null or p_recipient_user_id is null
      or nullif(trim(p_idempotency_key), '') is null then
@@ -75,13 +76,27 @@ begin
     return;
   end if;
 
-  return query
-    select n.id, false
-      from rap.rap_notification_outbox n
-     where n.tenant_id = p_tenant_id
-       and n.facility_id = p_facility_id
-       and n.idempotency_key = p_idempotency_key
-       and n.recipient_user_id = p_recipient_user_id;
+  select n.* into existing
+    from rap.rap_notification_outbox n
+   where n.tenant_id = p_tenant_id
+     and n.facility_id = p_facility_id
+     and n.idempotency_key = p_idempotency_key
+     and n.recipient_user_id = p_recipient_user_id;
+
+  if not found then
+    raise exception 'RAP notification idempotency conflict could not be resolved';
+  end if;
+
+  -- Reusing a key for different content can silently suppress a legitimate
+  -- notification. Treat it as a caller bug instead of acknowledging it.
+  if existing.category is distinct from p_category
+     or existing.title is distinct from p_title
+     or existing.message is distinct from p_message
+     or existing.deep_link is distinct from p_deep_link then
+    raise exception 'RAP notification idempotency key reused with different content';
+  end if;
+
+  return query select existing.id, false;
 end;
 $$;
 
