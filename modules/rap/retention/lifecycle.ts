@@ -12,6 +12,7 @@ export interface RapRetentionRecord {
 }
 
 export interface RapRetentionRepository {
+  /** Must claim rows atomically (for example SELECT ... FOR UPDATE SKIP LOCKED). */
   lockBatch(limit: number): Promise<RapRetentionRecord[]>;
   saveCompression(record: RapRetentionRecord, compressedBytes: Uint8Array, checksum: string): Promise<void>;
   markDeleted(adviceId: string, certificateId: string): Promise<void>;
@@ -24,7 +25,14 @@ export interface RapRetentionNotifier {
 
 export interface RapBinaryStore {
   read(adviceId: string): Promise<Uint8Array>;
+  /** Implementations must treat deleting an already-absent object as success. */
   delete(adviceId: string): Promise<void>;
+}
+
+function assertBatchLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5000) {
+    throw new Error("RAP retention batch limit must be an integer between 1 and 5000.");
+  }
 }
 
 export async function compressRetentionBatch(
@@ -34,6 +42,7 @@ export async function compressRetentionBatch(
   checksum: (input: Uint8Array) => string,
   limit = 500,
 ): Promise<number> {
+  assertBatchLimit(limit);
   const records = await repository.lockBatch(limit);
   let processed = 0;
   for (const record of records) {
@@ -54,16 +63,25 @@ export async function deleteExpiredBatch(
   certificateId: (adviceId: string) => string,
   limit = 500,
 ): Promise<number> {
+  assertBatchLimit(limit);
   const records = await repository.lockBatch(limit);
   let deleted = 0;
   const now = Date.now();
   for (const record of records) {
-    if (record.legalHold || record.status === "DELETED" || new Date(record.retentionExpiresAt).getTime() > now) continue;
-    const eventKey = `${record.adviceId}:DELETED:${record.retentionExpiresAt}`;
-    const inserted = await repository.appendEvent({ adviceId: record.adviceId, eventType: "DELETED", idempotencyKey: eventKey });
-    if (!inserted) continue;
+    if (record.legalHold || record.status === "DELETED") continue;
+    const expiresAt = new Date(record.retentionExpiresAt).getTime();
+    // Invalid timestamps must never be interpreted as expired.
+    if (!Number.isFinite(expiresAt) || expiresAt > now) continue;
+
+    // Keep the idempotency event last: recording DELETED before storage deletion
+    // could strand a binary if deletion fails and retries see the existing event.
     await binaryStore.delete(record.adviceId);
     await repository.markDeleted(record.adviceId, certificateId(record.adviceId));
+    await repository.appendEvent({
+      adviceId: record.adviceId,
+      eventType: "DELETED",
+      idempotencyKey: `${record.adviceId}:DELETED:${record.retentionExpiresAt}`,
+    });
     deleted += 1;
   }
   return deleted;
