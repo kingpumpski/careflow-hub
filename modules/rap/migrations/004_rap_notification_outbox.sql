@@ -185,6 +185,15 @@ revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, te
 revoke all on function rap.claim_notification_batch(integer) from public;
 revoke all on function rap.complete_notification_delivery(uuid, boolean, text, integer) from public;
 
+-- Do not rely on PUBLIC revocation alone: explicitly remove common Supabase
+-- role grants. A reviewed trusted worker role must be granted later by deployment.
+revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, text, text, text)
+  from anon, authenticated, service_role;
+revoke all on function rap.claim_notification_batch(integer)
+  from anon, authenticated, service_role;
+revoke all on function rap.complete_notification_delivery(uuid, boolean, text, integer)
+  from anon, authenticated, service_role;
+
 comment on table rap.rap_notification_outbox is
   'Durable idempotent RAP notification queue; stores minimal notification content, not PHI.';
 comment on function rap.claim_notification_batch(integer) is
