@@ -147,9 +147,28 @@ export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
 
   return Object.entries(metadata as Record<string, unknown>).every(([key, value]) => {
     if (!allowedMetadataKeys.has(key)) return false;
-    if (value !== null && !["string", "number", "boolean"].includes(typeof value)) return false;
-    if (typeof value === "number" && !Number.isFinite(value)) return false;
-    return typeof value !== "string" || value.length <= 256;
+
+    // Enforce semantics per key, not merely a generic string length limit.
+    // This prevents allow-listed fields from becoming a free-text PHI channel.
+    if (key === "payloadHash") {
+      return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+    }
+    if (key === "assessmentVersion") {
+      return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+    }
+    if (key === "ruleSetVersion" || key === "pipelineVersion") {
+      return typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,63}$/.test(value);
+    }
+    if (key === "reasonCode") {
+      return typeof value === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(value);
+    }
+    if (key === "approvalId") {
+      return typeof value === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+    }
+    if (key === "idempotencyKey") {
+      return typeof value === "string" && /^[a-zA-Z0-9._:-]{8,200}$/.test(value);
+    }
+    return false;
   });
 }
 
