@@ -5,6 +5,7 @@ on:
     branches: [feature/rap-module]
     paths:
       - "src/modules/rap/**"
+      - "modules/rap/**"
       - "docs/rap/**"
       - "package.json"
       - "package-lock.json"
