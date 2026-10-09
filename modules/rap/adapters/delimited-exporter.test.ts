@@ -33,13 +33,14 @@ describe("RAP delimited exporter", () => {
       { value: "=1+1", row: 0, column: 0 },
       { value: "+SUM(A1:A2)", row: 0, column: 1 },
       { value: "@cmd", row: 0, column: 2 },
+      { value: "  =2+2", row: 0, column: 3 },
     ]] };
     const result = await rapDelimitedExporter.exportDraft({
       source,
       rendered: { ...source, changes: [] },
       approvedChanges: [],
     });
-    expect(new TextDecoder().decode(result.bytes)).toContain("'=1+1,'+SUM(A1:A2),'@cmd");
+    expect(new TextDecoder().decode(result.bytes)).toContain("'=1+1,'+SUM(A1:A2),'@cmd,'  =2+2");
   });
 
   it("uses tab delimiters for TSV", async () => {
