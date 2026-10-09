@@ -9,7 +9,7 @@ export interface RapApprovalClaims {
 }
 
 export interface RapApprovalStore {
-  consume(tokenId: string): Promise<boolean>;
+  consume(input: { tokenId: string; actorId: string; action: string; payloadHash: string }): Promise<boolean>;
 }
 
 export interface RapApprovalAudit {
@@ -134,7 +134,7 @@ async function enforceApprovalClaims(
     throw new Error("RAP approval token is invalid or expired.");
   }
 
-  const consumed = await store.consume(claims.tokenId);
+  const consumed = await store.consume({ tokenId: claims.tokenId, actorId: claims.userId, action: claims.action, payloadHash: claims.payloadHash });
   if (!consumed) {
     await audit.rejected({ userId: expected.userId, action: expected.action, tokenId: claims.tokenId, reason: "REPLAYED_APPROVAL_TOKEN" });
     throw new Error("RAP approval token has already been consumed.");
