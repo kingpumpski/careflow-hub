@@ -117,7 +117,16 @@ export function authorizeRapOperation(
     return { allowed: false, reason: "SUBMISSION_DISABLED" };
   }
 
-  if (request.operation === "APPROVE") {\n    if (!nonEmpty(request.requestedBy)) {\n      return { allowed: false, reason: "APPROVAL_REQUIRED" };\n    }\n    if (request.requestedBy === context.userId) {\n      return { allowed: false, reason: "SEPARATION_OF_DUTIES" };\n    }\n  }\n\n  if (APPROVAL_REQUIRED.has(request.operation)) {
+  if (request.operation === "APPROVE") {
+    if (!nonEmpty(request.requestedBy)) {
+      return { allowed: false, reason: "APPROVAL_REQUIRED" };
+    }
+    if (request.requestedBy === context.userId) {
+      return { allowed: false, reason: "SEPARATION_OF_DUTIES" };
+    }
+  }
+
+  if (APPROVAL_REQUIRED.has(request.operation)) {
     const approval = request.approval;
     if (!approval) return { allowed: false, reason: "APPROVAL_REQUIRED" };
     if (approval.approvedBy === context.userId
