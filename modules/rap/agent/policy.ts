@@ -46,14 +46,21 @@ export interface RapAiSuggestion<T = unknown> {
   requiresHumanReview: boolean;
 }
 
+/** Invalid or uncalibrated confidence must never bypass human review. */
 export function enforceAiConfidence<T>(suggestion: RapAiSuggestion<T>, minimum = 0.85): RapAiSuggestion<T> {
-  if (suggestion.confidence < minimum) return { ...suggestion, requiresHumanReview: true };
+  if (!Number.isFinite(minimum) || minimum < 0 || minimum > 1) {
+    throw new Error("RAP minimum AI confidence must be a finite number between 0 and 1.");
+  }
+  const confidenceIsValid = Number.isFinite(suggestion.confidence) && suggestion.confidence >= 0 && suggestion.confidence <= 1;
+  if (!confidenceIsValid || suggestion.confidence < minimum) {
+    return { ...suggestion, requiresHumanReview: true };
+  }
   return suggestion;
 }
 
 export function assertPersonaToolAllowed(persona: RapPersona, tool: string): void {
   const policy = RAP_PERSONA_POLICIES[persona];
-  if (!policy.tools.includes(tool as never)) {
+  if (!policy || !policy.tools.includes(tool as never)) {
     throw new Error(`RAP persona ${persona} is not permitted to use ${tool}.`);
   }
 }
