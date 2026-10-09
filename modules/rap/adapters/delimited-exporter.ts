@@ -2,13 +2,17 @@ import { createHash } from "node:crypto";
 import type { RapDocumentExporter } from "./contracts";
 import { validateRenderedDocument } from "../core/renderer";
 
-const FORMULA_PREFIX = /^[\u0000-\u0020]*[=+\-@]/;
+function hasFormulaPrefix(value: string): boolean {
+  let index = 0;
+  while (index < value.length && value.charCodeAt(index) <= 0x20) index += 1;
+  return value[index] === "=" || value[index] === "+" || value[index] === "-" || value[index] === "@";
+}
 
 function safeCell(value: string | number | boolean | null): string {
   if (value === null) return "";
   if (typeof value === "string") {
     // Neutralize spreadsheet formula injection even in unchanged source cells.
-    const safe = FORMULA_PREFIX.test(value) ? `'${value}` : value;
+    const safe = hasFormulaPrefix(value) ? `'${value}` : value;
     return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   }
   return String(value);
