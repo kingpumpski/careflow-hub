@@ -124,3 +124,15 @@ Do not add unpinned `@master` security actions or a signing job that assumes a c
 - Do not claim legal admissibility, HIPAA/GDPR/Act 843 compliance, SLSA Level 3, 99.95% availability, or stated latency targets without independent validation.
 - Do not add Kafka, Redis, Vault, Keycloak, OPA, OpenSearch, MinIO, or Cloudflare solely to match a reference diagram. Introduce infrastructure only when deployment architecture, cost, operational ownership and recovery procedures are defined.
 - Do not enable RAP in production, wire its migration into the default migration chain, submit to real payers, or modify the main branch as part of this blueprint.
+
+
+## 11. Persistence contract implementation status
+
+The isolated module now defines server-adapter interfaces in `src/modules/rap/persistence.ts`:
+
+- `consumeApproval` is specified as one atomic database operation with tenant/facility checks, expiry and payload-hash validation, single-use consumption, and idempotency committed together.
+- `appendAuditEvent` is specified as append-only and hash-linked; the database adapter must deny UPDATE/DELETE through privileges and policies.
+- `verifyScope` requires tenant and facility scope to be checked at the database boundary.
+- Audit metadata is allow-listed to hashes, version identifiers, reason codes, approval IDs and idempotency keys. The guard rejects arbitrary keys and oversized strings to reduce accidental clinical-text leakage.
+
+The current implementation is **a typed port contract plus a pure input guard**, not a connected persistence adapter. Atomicity, append-only enforcement, RLS, hash-chain verification and concurrent replay safety remain unverified until database migrations/RPCs and integration tests implement them. Do not represent the interface alone as a security control. The associated unit tests are in `src/modules/rap/persistence.test.ts`.
