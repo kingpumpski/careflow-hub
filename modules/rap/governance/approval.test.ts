@@ -28,6 +28,12 @@ describe("RAP approval boundary", () => {
     expect(() => signApprovalToken(claims, "short")).toThrow(/32 UTF-8 bytes/i);
   });
 
+  it("rejects non-UUID actor and token identifiers", () => {
+    const secret = "test-only-secret-with-at-least-32-bytes";
+    const claims = { userId: "not-a-uuid", action: "export", payloadHash: hashApprovalPayload({ id: 1 }), expiresAt: "2030-01-01T00:00:00Z", tokenId: "also-not-a-uuid" };
+    expect(() => signApprovalToken(claims, secret)).toThrow(/claims are malformed/i);
+  });
+
   it("rejects a tampered signature before consuming a token", async () => {
     const secret = "test-only-secret-with-at-least-32-bytes";
     const claims = { userId: "11111111-1111-4111-8111-111111111111", action: "export", payloadHash: hashApprovalPayload({ id: 1 }), expiresAt: "2030-01-01T00:00:00Z", tokenId: "22222222-2222-4222-8222-222222222222" };
@@ -46,6 +52,6 @@ describe("RAP approval boundary", () => {
     const audit = { rejected: vi.fn().mockResolvedValue(undefined) };
     const store = { consume: vi.fn().mockResolvedValue(true) };
     await expect(requireSignedApproval(token, secret, { userId: "11111111-1111-4111-8111-111111111111", action: "export", payload }, store, audit, new Date("2029-01-01T00:00:00Z"))).resolves.toBeUndefined();
-    expect(store.consume).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
+    expect(store.consume).toHaveBeenCalledWith({ tokenId: "22222222-2222-4222-8222-222222222222", actorId: "11111111-1111-4111-8111-111111111111", action: "export", payloadHash: hashApprovalPayload(payload) });
   });
 });
