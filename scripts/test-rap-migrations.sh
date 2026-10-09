@@ -29,6 +29,27 @@ psql -v ON_ERROR_STOP=1 -f modules/rap/migrations/004_rap_notification_outbox.sq
 psql -v ON_ERROR_STOP=1 <<'SQL'
 do $$
 declare
+  fn text;
+  role_name text;
+begin
+  foreach fn in array array[
+    'rap.consume_approval_token(uuid,uuid,text,text)',
+    'rap.enqueue_notification(uuid,uuid,uuid,text,text,text,text,text)',
+    'rap.claim_notification_batch(integer)',
+    'rap.complete_notification_delivery(uuid,boolean,text,integer)'
+  ] loop
+    foreach role_name in array array['anon', 'authenticated', 'service_role'] loop
+      if has_function_privilege(role_name, fn, 'EXECUTE') then
+        raise exception 'untrusted role % can execute privileged RAP function %', role_name, fn;
+      end if;
+    end loop;
+  end loop;
+end $$;
+SQL
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+declare
   first_id uuid;
   duplicate_id uuid;
   inserted boolean;
