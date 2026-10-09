@@ -1,4 +1,4 @@
-import type { RapParsedItem, RapRenderedDocument } from "../core/types";
+import type { RapParsedItem, RapRenderChange, RapRenderedDocument, RapTabularDocument } from "../core/types";
 
 export interface RapClaimReader {
   getClaim(claimId: string): Promise<unknown>;
@@ -20,7 +20,16 @@ export interface RapNotificationService {
 }
 
 export interface RapDocumentExporter {
-  exportDraft(document: RapRenderedDocument): Promise<{ bytes: Uint8Array; checksum: string }>;
+  /**
+   * Must preserve workbook sheets/styles/metadata where the source format supports
+   * it, serialize to bytes, reload/validate the serialized result against the
+   * approved change set, and return a checksum of the final bytes.
+   */
+  exportDraft(input: {
+    source: RapTabularDocument;
+    rendered: RapRenderedDocument;
+    approvedChanges: readonly RapRenderChange[];
+  }): Promise<{ bytes: Uint8Array; checksum: string }>;
 }
 
 /**
