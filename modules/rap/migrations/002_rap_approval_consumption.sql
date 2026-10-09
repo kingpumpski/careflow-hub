@@ -1,5 +1,6 @@
 -- RAP approval consumption hardening (design migration only).
 -- Intentionally not wired into the production Supabase migration chain.
+-- Apply after 001_rap_schema.sql and before 003_rap_facility_rls.sql.
 -- Deploy only after the host's trusted server role and RLS/grants are reviewed.
 
 create table if not exists rap.rap_ai_approval_event (
@@ -50,14 +51,15 @@ declare
   consumed_id uuid;
   consumed_facility_id uuid;
 begin
-  if p_token_id is null or p_actor_id is null
+  if p_token_id is null
+     or p_actor_id is null
      or nullif(trim(p_action), '') is null
      or p_payload_hash is null
-     or p_payload_hash !~ '^[0-9a-fA-F]{64}
+     or p_payload_hash !~ '^[0-9a-fA-F]{64}$' then
     return false;
   end if;
 
-  update rap.rap_ai_approval_token token
+  update rap.rap_ai_approval_token as token
      set status = 'USED',
          used_at = clock_timestamp()
    where token.id = p_token_id
@@ -67,7 +69,8 @@ begin
      and token.status = 'ISSUED'
      and token.used_at is null
      and token.expires_at > clock_timestamp()
-   returning token.id, token.facility_id into consumed_id, consumed_facility_id;
+   returning token.id, token.facility_id
+        into consumed_id, consumed_facility_id;
 
   if consumed_id is null then
     return false;
@@ -87,40 +90,6 @@ $$;
 -- remove that default. A deployment-specific trusted server role must be granted
 -- EXECUTE only after its identity and RLS posture have been reviewed.
 revoke all on function rap.consume_approval_token(uuid, uuid, text, text) from public;
-
-comment on function rap.consume_approval_token(uuid, uuid, text, text) is
-  'Atomic single-use approval consumption. Call only from a trusted server adapter after HMAC verification; do not grant EXECUTE to anon/authenticated clients.';
-comment on table rap.rap_ai_approval_event is
-  'Append-only immutable audit events for RAP approval token lifecycle.';
- then
-    return false;
-  end if;
-
-  update rap.rap_ai_approval_token token
-     set status = 'USED',
-         used_at = clock_timestamp()
-   where token.id = p_token_id
-     and token.requested_by = p_actor_id
-     and token.action = p_action
-     and lower(token.payload_hash) = lower(p_payload_hash)
-     and token.status = 'ISSUED'
-     and token.used_at is null
-     and token.expires_at > clock_timestamp()
-   returning token.id into consumed_id;
-
-  if consumed_id is null then
-    return false;
-  end if;
-
-  insert into rap.rap_ai_approval_event (
-    token_id, event_type, actor_id, action, payload_hash
-  ) values (
-    consumed_id, 'CONSUMED', p_actor_id, p_action, lower(p_payload_hash)
-  );
-
-  return true;
-end;
-$$;
 
 comment on function rap.consume_approval_token(uuid, uuid, text, text) is
   'Atomic single-use approval consumption. Call only from a trusted server adapter after HMAC verification; do not grant EXECUTE to anon/authenticated clients.';
