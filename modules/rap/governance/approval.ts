@@ -47,7 +47,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const claims = value as Record<string, unknown>;
   return (
-    typeof claims.userId === "string" && claims.userId.length > 0 &&
+    typeof claims.userId === "string" && UUID_PATTERN.test(claims.userId) &&
     typeof claims.action === "string" && claims.action.length > 0 &&
     typeof claims.payloadHash === "string" && /^[a-f0-9]{64}$/i.test(claims.payloadHash) &&
     typeof claims.expiresAt === "string" && Number.isFinite(Date.parse(claims.expiresAt)) &&
