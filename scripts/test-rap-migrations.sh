@@ -153,4 +153,39 @@ begin
 end $$;
 SQL
 
-echo "RAP PostgreSQL migrations and smoke assertions passed."
+
+# Race two independent PostgreSQL sessions against the same single-use token.
+# Exactly one must transition ISSUED -> USED; the other must observe replay.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into rap.rap_ai_approval_token(
+  id, action, payload_hash, requested_by, approved_by, approved_at, expires_at, status, facility_id
+) values (
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  'concurrent_export', repeat('b', 64),
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+  clock_timestamp(), clock_timestamp() + interval '5 minutes', 'ISSUED',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+);
+SQL
+
+race_dir="$(mktemp -d)"
+trap 'rm -rf "$race_dir"' EXIT
+(
+  psql -At -v ON_ERROR_STOP=1 -c "select rap.consume_approval_token('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111', 'concurrent_export', repeat('b', 64));" >"$race_dir/first"
+) &
+first_pid=$!
+(
+  psql -At -v ON_ERROR_STOP=1 -c "select rap.consume_approval_token('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111', 'concurrent_export', repeat('b', 64));" >"$race_dir/second"
+) &
+second_pid=$!
+wait "$first_pid"
+wait "$second_pid"
+successful_consumptions="$(cat "$race_dir/first" "$race_dir/second" | grep -xc 't' || true)"
+if [[ "$successful_consumptions" != "1" ]]; then
+  echo "Expected exactly one successful concurrent approval consumption; got $successful_consumptions." >&2
+  cat "$race_dir/first" "$race_dir/second" >&2
+  exit 1
+fi
+
+echo "RAP PostgreSQL migrations, smoke assertions, and concurrent approval replay test passed."
