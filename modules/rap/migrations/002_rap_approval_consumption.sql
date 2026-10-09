@@ -91,6 +91,11 @@ $$;
 -- EXECUTE only after its identity and RLS posture have been reviewed.
 revoke all on function rap.consume_approval_token(uuid, uuid, text, text) from public;
 
+-- Explicitly remove Supabase client/service defaults too. A reviewed backend
+-- role must receive a narrowly scoped grant in the deployment overlay.
+revoke all on function rap.consume_approval_token(uuid, uuid, text, text)
+  from anon, authenticated, service_role;
+
 comment on function rap.consume_approval_token(uuid, uuid, text, text) is
   'Atomic single-use approval consumption. Call only from a trusted server adapter after HMAC verification; do not grant EXECUTE to anon/authenticated clients.';
 comment on table rap.rap_ai_approval_event is
