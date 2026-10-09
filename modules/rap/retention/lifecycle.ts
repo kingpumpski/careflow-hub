@@ -12,7 +12,7 @@ export interface RapRetentionRecord {
 }
 
 export interface RapRetentionRepository {
-  /** Must claim rows atomically (for example SELECT ... FOR UPDATE SKIP LOCKED). */
+  /** Must claim rows atomically (for example SELECT ... FOR UPDATE SKIP LOCKED), including COMPRESSED/DELETED rows whose idempotent lifecycle event is still missing. */
   lockBatch(limit: number): Promise<RapRetentionRecord[]>;
   saveCompression(record: RapRetentionRecord, compressedBytes: Uint8Array, checksum: string): Promise<void>;
   markDeleted(adviceId: string, certificateId: string): Promise<void>;
@@ -88,15 +88,17 @@ export async function deleteExpiredBatch(
     // Invalid timestamps must never be interpreted as expired.
     if (!Number.isFinite(expiresAt) || expiresAt > now) continue;
 
-    // Keep the idempotency event last: recording DELETED before storage deletion
-    // could strand a binary if deletion fails and retries see the existing event.
+    // Delete storage first. Append the idempotent event before marking the row
+    // DELETED so an event-store failure leaves the row eligible for retry.
+    // If markDeleted fails after the event append, the retry repeats the
+    // idempotent binary delete/event append and completes the row transition.
     await binaryStore.delete(record.adviceId);
-    await repository.markDeleted(record.adviceId, certificateId(record.adviceId));
     await repository.appendEvent({
       adviceId: record.adviceId,
       eventType: "DELETED",
       idempotencyKey: `${record.adviceId}:DELETED:${record.retentionExpiresAt}`,
     });
+    await repository.markDeleted(record.adviceId, certificateId(record.adviceId));
     deleted += 1;
   }
   return deleted;
