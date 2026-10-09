@@ -29,6 +29,8 @@ describe("RAP persistence audit contract", () => {
     expect(validateRapAuditEventInput(event({ actorUserId: "" }))).toBe(false);
     expect(validateRapAuditEventInput(event({ resourceId: "" }))).toBe(false);
     expect(validateRapAuditEventInput(event({ occurredAt: "not-a-date" }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ occurredAt: "2026-10-09T12:00:00" }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ occurredAt: "2026-10-09 12:00:00Z" }))).toBe(false);
     expect(validateRapAuditEventInput(event({ correlationId: "" }))).toBe(false);
   });
 
@@ -83,6 +85,8 @@ describe("RAP approval consumption command guard", () => {
     expect(validateConsumeRapApprovalCommand(consumeCommand({ facilityId: " " }))).toBe(false);
     expect(validateConsumeRapApprovalCommand(consumeCommand({ actorUserId: "" }))).toBe(false);
     expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "tomorrow" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "2026-10-09T12:00:00" }))).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "2026-10-09 12:00:00Z" }))).toBe(false);
     expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "short" }))).toBe(false);
     expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "k".repeat(201) }))).toBe(false);
   });
