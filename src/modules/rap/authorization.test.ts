@@ -89,9 +89,12 @@ describe("authorizeRapOperation", () => {
   it("enforces separation of duties for high-impact operations", () => {
     expect(authorizeRapOperation(context(), request({
       operation: "APPROVE",
-      approval: { ...approval, approvedBy: "user-1" },
-      now: "2029-01-01T00:00:00.000Z",
+      requestedBy: "user-1",
     }))).toEqual({ allowed: false, reason: "SEPARATION_OF_DUTIES" });
+    expect(authorizeRapOperation(context(), request({
+      operation: "APPROVE",
+      requestedBy: "requester-7",
+    }))).toEqual({ allowed: true, permission: "rap.approve" });
   });
 
   it("allows an in-scope read with the matching permission", () => {
