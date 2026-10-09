@@ -55,11 +55,17 @@ export function buildRetentionSchedule(
   if (!Number.isFinite(expiresAt.getTime())) {
     throw new Error("RAP retention expiration date is outside the supported date range.");
   }
+  // Short retention windows must not schedule notifications before the record
+  // exists. Clamp early notice offsets to creation time while preserving order.
+  const createdTime = createdAt.getTime();
+  const noticeTime = (daysBeforeExpiry: number) => new Date(
+    Math.max(createdTime, expiresAt.getTime() - daysBeforeExpiry * 86_400_000),
+  );
   return {
     expiresAt,
     notifyAt: [
-      new Date(expiresAt.getTime() - notifyLeadDays * 86_400_000),
-      new Date(expiresAt.getTime() - reminderDays * 86_400_000),
+      noticeTime(notifyLeadDays),
+      noticeTime(reminderDays),
       expiresAt,
     ],
   };
