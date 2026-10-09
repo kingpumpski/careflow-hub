@@ -6,6 +6,17 @@ describe("RAP approval boundary", () => {
     expect(hashApprovalPayload({ b: 2, a: 1 })).toBe(hashApprovalPayload({ a: 1, b: 2 }));
   });
 
+  it("rejects ambiguous or non-JSON approval payloads", () => {
+    expect(() => hashApprovalPayload({ value: undefined })).toThrow(/JSON-compatible/i);
+    expect(() => hashApprovalPayload({ value: Number.NaN })).toThrow(/non-finite/i);
+    expect(() => hashApprovalPayload(new Date("2026-01-01T00:00:00Z"))).toThrow(/plain objects/i);
+    const sparse = new Array(1);
+    expect(() => hashApprovalPayload(sparse)).toThrow(/JSON-compatible/i);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => hashApprovalPayload(circular)).toThrow(/circular/i);
+  });
+
   it("rejects missing approval and audits it", async () => {
     const audit = { rejected: vi.fn().mockResolvedValue(undefined) };
     const store = { consume: vi.fn() };
