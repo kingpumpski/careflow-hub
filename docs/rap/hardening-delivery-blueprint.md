@@ -135,4 +135,6 @@ The isolated module now defines server-adapter interfaces in `src/modules/rap/pe
 - `verifyScope` requires tenant and facility scope to be checked at the database boundary.
 - Audit metadata is allow-listed to hashes, version identifiers, reason codes, approval IDs and idempotency keys. The guard rejects arbitrary keys and oversized strings to reduce accidental clinical-text leakage.
 
+Audit-event and approval-consumption guards now require ISO-8601 timestamps with an explicit UTC marker or numeric timezone offset; timezone-less date strings are rejected. This is input hygiene only and does not establish trusted server time or prevent a caller from supplying a manipulated timestamp. The server adapter must derive authoritative time at the transaction boundary.
+
 The current implementation is **a typed port contract plus a pure input guard**, not a connected persistence adapter. Atomicity, append-only enforcement, RLS, hash-chain verification and concurrent replay safety remain unverified until database migrations/RPCs and integration tests implement them. Do not represent the interface alone as a security control. The associated unit tests are in `src/modules/rap/persistence.test.ts`.
