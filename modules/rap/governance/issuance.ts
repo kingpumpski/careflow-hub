@@ -103,6 +103,9 @@ export async function issueRapApprovalToken(
     facilityId: input.facilityId,
   };
 
+  // Validate the signing secret and construct the token before creating durable
+  // state, so a misconfigured server cannot strand an unusable ISSUED row.
+  const token = signApprovalToken(claims, secret);
   await dependencies.insertIssuedToken(record);
   await dependencies.auditIssued({
     tokenId,
@@ -114,5 +117,5 @@ export async function issueRapApprovalToken(
     expiresAt,
   });
 
-  return { token: signApprovalToken(claims, secret), claims };
+  return { token, claims };
 }
