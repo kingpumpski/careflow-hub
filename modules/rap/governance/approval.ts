@@ -43,7 +43,7 @@ function assertApprovalSecret(secret: string): void {
   }
 }
 
-function isApprovalClaims(value: unknown): value is RapApprovalClaims {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nfunction isApprovalClaims(value: unknown): value is RapApprovalClaims {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const claims = value as Record<string, unknown>;
   return (
@@ -51,7 +51,7 @@ function isApprovalClaims(value: unknown): value is RapApprovalClaims {
     typeof claims.action === "string" && claims.action.length > 0 &&
     typeof claims.payloadHash === "string" && /^[a-f0-9]{64}$/i.test(claims.payloadHash) &&
     typeof claims.expiresAt === "string" && Number.isFinite(Date.parse(claims.expiresAt)) &&
-    typeof claims.tokenId === "string" && claims.tokenId.length > 0
+    typeof claims.tokenId === "string" && UUID_PATTERN.test(claims.tokenId)
   );
 }
 
@@ -95,7 +95,7 @@ export async function requireSignedApproval(
   now = new Date(),
 ): Promise<void> {
   if (!token) {
-    await requireApproval(null, expected, store, audit, now);
+    await enforceApprovalClaims(null, expected, store, audit, now);
     return;
   }
   let claims: RapApprovalClaims;
@@ -105,10 +105,10 @@ export async function requireSignedApproval(
     await audit.rejected({ userId: expected.userId, action: expected.action, reason: "INVALID_APPROVAL_SIGNATURE" });
     throw new Error("RAP approval token signature is invalid.");
   }
-  await requireApproval(claims, expected, store, audit, now);
+  await enforceApprovalClaims(claims, expected, store, audit, now);
 }
 
-export async function requireApproval(
+async function enforceApprovalClaims(
   claims: RapApprovalClaims | null | undefined,
   expected: { userId: string; action: string; payload: unknown },
   store: RapApprovalStore,
