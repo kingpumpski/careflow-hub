@@ -10,13 +10,12 @@ const secret = "test-only-secret-with-at-least-32-bytes";
 function dependencies(authorized = true) {
   return {
     canApprove: vi.fn().mockResolvedValue(authorized),
-    insertIssuedToken: vi.fn().mockResolvedValue(undefined),
-    auditIssued: vi.fn().mockResolvedValue(undefined),
+    persistIssuedTokenAndAuditAtomically: vi.fn().mockResolvedValue(undefined),
   };
 }
 
 describe("RAP approval issuance", () => {
-  it("authorizes, persists and audits before returning a short-lived signed token", async () => {
+  it("authorizes and atomically persists token plus audit before returning a short-lived signed token", async () => {
     const deps = dependencies();
     const now = new Date("2026-01-01T00:00:00.000Z");
     const result = await issueRapApprovalToken({
@@ -25,9 +24,23 @@ describe("RAP approval issuance", () => {
     }, secret, deps);
 
     expect(deps.canApprove).toHaveBeenCalledWith({ approverId, requesterId, facilityId, action: "export" });
-    expect(deps.insertIssuedToken).toHaveBeenCalledTimes(1);
-    expect(deps.auditIssued).toHaveBeenCalledTimes(1);
-    expect(deps.insertIssuedToken.mock.invocationCallOrder[0]).toBeLessThan(deps.auditIssued.mock.invocationCallOrder[0]);
+    expect(deps.persistIssuedTokenAndAuditAtomically).toHaveBeenCalledTimes(1);
+    const persisted = deps.persistIssuedTokenAndAuditAtomically.mock.calls[0][0];
+    expect(persisted.token).toMatchObject({
+      id: result.claims.tokenId,
+      requestedBy: requesterId,
+      approvedBy: approverId,
+      facilityId,
+      status: "ISSUED",
+    });
+    expect(persisted.audit).toMatchObject({
+      tokenId: result.claims.tokenId,
+      requesterId,
+      approverId,
+      facilityId,
+      action: "export",
+      payloadHash: result.claims.payloadHash,
+    });
     expect(verifyApprovalToken(result.token, secret)).toMatchObject({
       userId: requesterId,
       action: "export",
@@ -35,12 +48,6 @@ describe("RAP approval issuance", () => {
       payloadHash: result.claims.payloadHash,
       tokenId: result.claims.tokenId,
     });
-    expect(deps.insertIssuedToken).toHaveBeenCalledWith(expect.objectContaining({
-      id: result.claims.tokenId,
-      requestedBy: requesterId,
-      approvedBy: approverId,
-      facilityId,
-    }));
   });
 
   it("fails closed when the host denies approval", async () => {
@@ -48,8 +55,7 @@ describe("RAP approval issuance", () => {
     await expect(issueRapApprovalToken({
       requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 5,
     }, secret, deps)).rejects.toThrow(/not authorized/i);
-    expect(deps.insertIssuedToken).not.toHaveBeenCalled();
-    expect(deps.auditIssued).not.toHaveBeenCalled();
+    expect(deps.persistIssuedTokenAndAuditAtomically).not.toHaveBeenCalled();
   });
 
   it("enforces separation of duties and bounded TTL", async () => {
@@ -63,26 +69,20 @@ describe("RAP approval issuance", () => {
     expect(deps.canApprove).not.toHaveBeenCalled();
   });
 
-  it("rejects a misconfigured signing secret before creating a database row", async () => {
+  it("rejects a misconfigured signing secret before persistence", async () => {
     const deps = dependencies();
     await expect(issueRapApprovalToken({
       requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 5,
     }, "short", deps)).rejects.toThrow(/32 UTF-8 bytes/i);
-    expect(deps.insertIssuedToken).not.toHaveBeenCalled();
+    expect(deps.persistIssuedTokenAndAuditAtomically).not.toHaveBeenCalled();
   });
 
-  it("does not return a token if persistence or audit fails", async () => {
-    const persistenceFailure = dependencies();
-    persistenceFailure.insertIssuedToken.mockRejectedValueOnce(new Error("database unavailable"));
+  it("does not return a token when the atomic token-and-audit transaction fails", async () => {
+    const deps = dependencies();
+    deps.persistIssuedTokenAndAuditAtomically.mockRejectedValueOnce(new Error("transaction rolled back"));
     await expect(issueRapApprovalToken({
       requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 5,
-    }, secret, persistenceFailure)).rejects.toThrow(/database unavailable/);
-    expect(persistenceFailure.auditIssued).not.toHaveBeenCalled();
-
-    const auditFailure = dependencies();
-    auditFailure.auditIssued.mockRejectedValueOnce(new Error("audit unavailable"));
-    await expect(issueRapApprovalToken({
-      requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 5,
-    }, secret, auditFailure)).rejects.toThrow(/audit unavailable/);
+    }, secret, deps)).rejects.toThrow(/transaction rolled back/);
+    expect(deps.persistIssuedTokenAndAuditAtomically).toHaveBeenCalledTimes(1);
   });
 });
