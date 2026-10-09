@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateRapAuditEventInput, type RapAuditEventInput } from "./persistence";
+import { validateConsumeRapApprovalCommand, validateRapAuditEventInput, type ConsumeRapApprovalCommand, type RapAuditEventInput } from "./persistence";
 
 const event = (overrides: Partial<RapAuditEventInput> = {}): RapAuditEventInput => ({
   tenantId: "tenant-a",
@@ -48,5 +48,40 @@ describe("RAP persistence audit contract", () => {
     expect(validateRapAuditEventInput(event({
       metadata: { payloadHash: "x".repeat(257) },
     }))).toBe(false);
+  });
+});
+
+
+const consumeCommand = (
+  overrides: Partial<ConsumeRapApprovalCommand> = {},
+): ConsumeRapApprovalCommand => ({
+  tenantId: "tenant-a",
+  facilityId: "facility-a",
+  approvalId: "approval-a",
+  actorUserId: "reviewer-a",
+  expectedPayloadHash: "a".repeat(64),
+  now: "2026-10-09T12:00:00.000Z",
+  idempotencyKey: "rap-operation-001",
+  ...overrides,
+});
+
+describe("RAP approval consumption command guard", () => {
+  it("accepts a well-formed command with a SHA-256 payload digest", () => {
+    expect(validateConsumeRapApprovalCommand(consumeCommand())).toBe(true);
+  });
+
+  it("rejects missing scope, identity, operation key, and invalid timestamp", () => {
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ tenantId: "" } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ facilityId: " " } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ actorUserId: "" } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ now: "tomorrow" } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "short" } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ idempotencyKey: "k".repeat(201) } )).toBe(false);
+  });
+
+  it("rejects non-SHA-256 or malformed runtime payload hashes", () => {
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "sha256:abc" } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(consumeCommand({ expectedPayloadHash: "g".repeat(64) } )).toBe(false);
+    expect(validateConsumeRapApprovalCommand(null as never)).toBe(false);
   });
 });
