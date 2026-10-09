@@ -59,3 +59,13 @@ Still requires host-owned implementation and deployment verification:
 - PostgreSQL integration tests for concurrent approval replay, RLS isolation, trigger enforcement, retention lock contention, and transaction rollback.
 
 Do not activate the SQL designs until host adapters, permissions, tenant backfill, and deployment review are complete.
+
+
+### Additional hardening checkpoint
+
+- `migrations/004_rap_notification_outbox.sql` defines a durable, idempotent outbox with bounded retries, dead-lettering, atomic `FOR UPDATE SKIP LOCKED` claims, and recovery of expired worker leases. It stores only minimal notification text and has no direct client RLS policies.
+- `scripts/test-rap-migrations.sh` applies design migrations 001–004 to an ephemeral PostgreSQL instance and exercises notification idempotency, claim/delivery transitions, approval consumption, and replay rejection.
+- CI now provisions PostgreSQL 16 and runs this smoke suite. This validates SQL execution and core state transitions, but does not replace concurrency stress tests, production RLS tests with real identities, or a reviewed deployment grant model.
+- Approval payload canonicalization rejects sparse/custom arrays, symbol keys, accessor properties, non-enumerable properties, non-finite numbers, non-plain objects, and circular values before signing or hashing.
+
+The migration suite remains a CI-only test fixture; these design migrations are not deployed to production.
