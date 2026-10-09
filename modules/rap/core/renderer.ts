@@ -57,3 +57,52 @@ export function changedCoordinates(document: RapTabularDocument, rendered: RapRe
   }
   return coordinates;
 }
+
+/**
+ * Reconcile a serialized/reloaded draft against its source and the approved
+ * change list. Export adapters should call this after round-trip serialization
+ * and before returning bytes to a caller.
+ */
+export function validateRenderedDocument(
+  source: RapTabularDocument,
+  rendered: RapRenderedDocument,
+  approvedChanges: readonly RapRenderChange[],
+): void {
+  if (source.format !== rendered.format || source.sheetName !== rendered.sheetName) {
+    throw new Error("RAP rendered document changed source format or worksheet identity.");
+  }
+  if (source.rows.length !== rendered.rows.length) {
+    throw new Error("RAP rendered document changed the source row count.");
+  }
+
+  for (let row = 0; row < source.rows.length; row += 1) {
+    if (source.rows[row].length !== rendered.rows[row]?.length) {
+      throw new Error(`RAP rendered document changed the column count at row ${row}.`);
+    }
+  }
+
+  const expected = new Map<string, string | number | boolean | null>();
+  for (const change of approvedChanges) {
+    const key = `${change.row}:${change.column}`;
+    if (expected.has(key)) throw new Error(`RAP approved change list contains duplicate target ${key}.`);
+    if (!source.rows[change.row]?.[change.column]) {
+      throw new Error(`RAP approved target ${key} is outside the source document.`);
+    }
+    expected.set(key, guardCellValue(change.value));
+  }
+
+  for (let row = 0; row < source.rows.length; row += 1) {
+    for (let column = 0; column < source.rows[row].length; column += 1) {
+      const key = `${row}:${column}`;
+      const actual = rendered.rows[row][column].value;
+      const original = source.rows[row][column].value;
+      if (expected.has(key)) {
+        if (actual !== expected.get(key)) {
+          throw new Error(`RAP rendered value at approved target ${key} does not match the approved draft.`);
+        }
+      } else if (actual !== original) {
+        throw new Error(`RAP rendered document contains an unapproved change at ${key}.`);
+      }
+    }
+  }
+}
