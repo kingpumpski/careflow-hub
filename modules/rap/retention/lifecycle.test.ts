@@ -45,7 +45,7 @@ describe("RAP retention deletion", () => {
   it("records deletion only after the binary and repository are updated", async () => {
     const deps = dependencies([expired()]);
     await expect(deleteExpiredBatch(deps.repository, deps.binaryStore, () => "cert-1")).resolves.toBe(1);
-    expect(deps.calls).toEqual(["delete:advice-1", "mark:advice-1", "event"]);
+    expect(deps.calls).toEqual(["delete:advice-1", "event", "mark:advice-1"]);
   });
 
   it("does not record a completed deletion if binary deletion fails", async () => {
@@ -56,11 +56,11 @@ describe("RAP retention deletion", () => {
     expect(deps.repository.markDeleted).not.toHaveBeenCalled();
   });
 
-  it("retries the deletion event after row deletion committed but event append failed", async () => {
+  it("retries deletion and audit append when the audit store fails", async () => {
     const deps = dependencies([expired()]);
     vi.mocked(deps.repository.lockBatch)
       .mockResolvedValueOnce([expired()])
-      .mockResolvedValueOnce([expired({ status: "DELETED" })]);
+      .mockResolvedValueOnce([expired()]);
     vi.mocked(deps.repository.appendEvent)
       .mockRejectedValueOnce(new Error("audit store unavailable"))
       .mockResolvedValueOnce(true);
