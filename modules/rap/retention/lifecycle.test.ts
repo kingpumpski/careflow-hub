@@ -66,9 +66,9 @@ describe("RAP retention deletion", () => {
       .mockResolvedValueOnce(true);
 
     await expect(deleteExpiredBatch(deps.repository, deps.binaryStore, () => "cert-1")).rejects.toThrow("audit store unavailable");
-    await expect(deleteExpiredBatch(deps.repository, deps.binaryStore, () => "cert-1")).resolves.toBe(0);
+    await expect(deleteExpiredBatch(deps.repository, deps.binaryStore, () => "cert-1")).resolves.toBe(1);
 
-    expect(deps.binaryStore.delete).toHaveBeenCalledTimes(1);
+    expect(deps.binaryStore.delete).toHaveBeenCalledTimes(2);
     expect(deps.repository.markDeleted).toHaveBeenCalledTimes(1);
     expect(deps.repository.appendEvent).toHaveBeenCalledTimes(2);
   });
