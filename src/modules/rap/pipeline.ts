@@ -150,7 +150,19 @@ export function runRapValidation(
     pipelineVersion: context.pipelineVersion,
   };
 
-  const findings = sortFindings(RULES.flatMap((rule) => rule(input, safeContext)));
+  // Fail closed before evaluating any tenant payload if the verified scope is missing
+  // or does not match. This avoids producing detail findings for a cross-tenant request.
+  const tenantMismatch = !safeContext.verifiedTenantId.trim()
+    || input.tenantId !== safeContext.verifiedTenantId;
+  const findings = tenantMismatch
+    ? [finding(
+        "RAP-SEC-001",
+        "TENANT_CONTEXT_MISMATCH",
+        "BLOCKER",
+        "The assessment tenant does not match the verified access context.",
+        safeContext.ruleSetVersion,
+      )]
+    : sortFindings(RULES.slice(1).flatMap((rule) => rule(input, safeContext)));
   const count = (severity: RapFinding["severity"]) =>
     findings.filter((item) => item.severity === severity && item.resolved !== true).length;
   const blockerCount = count("BLOCKER");
