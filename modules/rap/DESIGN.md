@@ -71,3 +71,11 @@ Do not activate the SQL designs until host adapters, permissions, tenant backfil
 The migration suite remains a CI-only test fixture; these design migrations are not deployed to production.
 
 - A concrete CSV/TSV exporter now validates the exact approved change set, applies formula-injection neutralization to all exported string cells, serializes quoted fields with CRLF line endings, and computes SHA-256 over final output bytes. XLS/XLSX intentionally fail closed until the host provides original workbook bytes and a binary-preserving exporter.
+
+
+### Approval issuance and concurrency checkpoint
+
+- `governance/issuance.ts` now provides a server-side issuance service contract: host authorization is checked for approver, requester, action and facility; requester/approver separation is enforced; TTL is capped at 15 minutes; the signed token is built before persistence; persistence and audit must succeed before a token is returned.
+- `governance/issuance.test.ts` covers authorization denial, separation of duties, TTL validation, secret misconfiguration, persistence/audit failures and successful token binding.
+- The PostgreSQL smoke script now races two independent database sessions against the same approval token and asserts exactly one consumption succeeds. This is a useful regression test, not a full concurrency/load or production RLS test.
+- The issuance module remains an adapter-driven server service, not a deployed Supabase Edge Function. The host must supply authenticated identity, role/facility authorization, the concrete insert/audit adapters and server-only secret configuration before endpoint exposure.
