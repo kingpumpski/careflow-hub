@@ -60,11 +60,12 @@ describe('settlement reporting', () => {
   it('reports signed under- and over-settlement without hiding negative residuals', () => {
     const rows = [
       period({ id: 'under', settlementStatus: 'reconciled', paymentReceived: 750, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      // 900 + 100 rejected + 50 WHT exceeds 1,000 submitted by 50.
+      period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
     ];
     const summary = summarizeSettlementPeriods(rows);
-    expect(summary.totalResidual).toBe(0);
-    expect(summary.totalOutstanding).toBe(50);
+    expect(summary.totalResidual).toBe(50);
+    expect(summary.totalOutstanding).toBe(100);
     expect(summary.totalOverSettled).toBe(50);
     expect(summary.balancedCount).toBe(0);
     expect(summary.underSettledCount).toBe(1);
@@ -74,7 +75,7 @@ describe('settlement reporting', () => {
   it('groups signed reconciliation totals by insurer', () => {
     const rows = [
       period({ id: '1', paymentReceived: 800, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      period({ id: '2', paymentReceived: 850, rejectionAmount: 100, actualWithholdingTax: 50 }),
+      period({ id: '2', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
       period({ id: '3', insuranceCompanyId: 'insurer-2', totalClaimsSubmitted: 200, paymentReceived: 180, rejectionAmount: 10, actualWithholdingTax: 10 }),
     ];
     const result = summarizeSettlementsByInsurer(rows);
@@ -82,12 +83,12 @@ describe('settlement reporting', () => {
       insurerId: 'insurer-1',
       periodCount: 2,
       totalSubmitted: 2000,
-      totalPaymentReceived: 1650,
+      totalPaymentReceived: 1700,
       totalRejectionAmount: 200,
       totalWhtVariance: 0,
       totalResidual: 50,
-      totalOutstanding: 50,
-      totalOverSettled: 0,
+      totalOutstanding: 100,
+      totalOverSettled: 50,
       balancedCount: 0,
       underSettledCount: 1,
       overSettledCount: 1,
