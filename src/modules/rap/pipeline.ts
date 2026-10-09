@@ -44,6 +44,39 @@ export interface RapPipelineResult {
 }
 
 type Rule = (input: RapCaseInput, context: RapExecutionContext) => RapFinding[];
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isDiagnosis = (value: unknown): value is RapDiagnosisInput =>
+  isRecord(value) && typeof value.code === "string" && typeof value.confirmed === "boolean";
+
+const isService = (value: unknown): value is RapServiceInput =>
+  isRecord(value)
+  && typeof value.id === "string"
+  && typeof value.amount === "number"
+  && Array.isArray(value.diagnosisCodes)
+  && value.diagnosisCodes.every((code) => typeof code === "string");
+
+const isRapCaseInput = (value: unknown): value is RapCaseInput =>
+  isRecord(value)
+  && typeof value.tenantId === "string"
+  && typeof value.facilityId === "string"
+  && typeof value.currency === "string"
+  && Array.isArray(value.diagnoses)
+  && value.diagnoses.every(isDiagnosis)
+  && Array.isArray(value.services)
+  && value.services.every(isService);
+
+const isExecutionContext = (value: unknown): value is RapExecutionContext =>
+  isRecord(value)
+  && typeof value.verifiedTenantId === "string"
+  && typeof value.ruleSetVersion === "string"
+  && typeof value.pipelineVersion === "string";
 
 const finding = (
   ruleId: string,
@@ -61,20 +94,20 @@ const finding = (
   ...(entityRef ? { entityRef } : {}),
 });
 
+const invalidPayloadFinding = (ruleSetVersion: string): RapFinding =>
+  finding(
+    "RAP-SEC-002",
+    "INVALID_INPUT_SHAPE",
+    "BLOCKER",
+    "The assessment payload or verified execution context is invalid.",
+    ruleSetVersion,
+  );
+
 /**
  * Allow-listed deterministic rules. Do not load executable rules from the
  * request, database text fields, or remote bundles.
  */
 const RULES: readonly Rule[] = [
-  (input, context) => input.tenantId === context.verifiedTenantId
-    ? []
-    : [finding(
-        "RAP-SEC-001",
-        "TENANT_CONTEXT_MISMATCH",
-        "BLOCKER",
-        "The assessment tenant does not match the verified access context.",
-        context.ruleSetVersion,
-      )],
   (input, context) => input.facilityId.trim()
     ? []
     : [finding(
@@ -112,6 +145,24 @@ const RULES: readonly Rule[] = [
         "At least one service item is required.",
         context.ruleSetVersion,
       )],
+  (input, context) => {
+    const seen = new Set<string>();
+    return input.services
+      .filter((service) => {
+        const key = service.id.trim();
+        if (!key || seen.has(key)) return true;
+        seen.add(key);
+        return false;
+      })
+      .map((service) => finding(
+        "RAP-STRUCT-003",
+        "INVALID_OR_DUPLICATE_SERVICE_ID",
+        "ERROR",
+        "Each service requires a unique, non-empty identifier.",
+        context.ruleSetVersion,
+        isNonEmptyString(service.id) ? service.id : undefined,
+      ));
+  },
   (input, context) => input.services
     .filter((service) => !Number.isFinite(service.amount) || service.amount < 0)
     .map((service) => finding(
@@ -120,7 +171,7 @@ const RULES: readonly Rule[] = [
       "ERROR",
       "A service amount must be a finite, non-negative number.",
       context.ruleSetVersion,
-      service.id,
+      isNonEmptyString(service.id) ? service.id : undefined,
     )),
   (input, context) => {
     const confirmedCodes = new Set(input.diagnoses
@@ -135,34 +186,46 @@ const RULES: readonly Rule[] = [
         "ERROR",
         "Each service must link to at least one confirmed diagnosis.",
         context.ruleSetVersion,
-        service.id,
+        isNonEmptyString(service.id) ? service.id : undefined,
       ));
   },
 ];
 
 export function runRapValidation(
-  input: RapCaseInput,
-  context: RapExecutionContext,
+  input: unknown,
+  context: unknown,
 ): RapPipelineResult {
-  const safeContext: RapExecutionContext = {
-    verifiedTenantId: context.verifiedTenantId,
-    ruleSetVersion: context.ruleSetVersion,
-    pipelineVersion: context.pipelineVersion,
-  };
+  const safeContext: RapExecutionContext = isExecutionContext(context)
+    ? context
+    : {
+        verifiedTenantId: "",
+        ruleSetVersion: "unavailable",
+        pipelineVersion: "unavailable",
+      };
 
-  // Fail closed before evaluating any tenant payload if the verified scope is missing
-  // or does not match. This avoids producing detail findings for a cross-tenant request.
-  const tenantMismatch = !safeContext.verifiedTenantId.trim()
-    || input.tenantId !== safeContext.verifiedTenantId;
-  const findings = tenantMismatch
-    ? [finding(
-        "RAP-SEC-001",
-        "TENANT_CONTEXT_MISMATCH",
-        "BLOCKER",
-        "The assessment tenant does not match the verified access context.",
-        safeContext.ruleSetVersion,
-      )]
-    : sortFindings(RULES.slice(1).flatMap((rule) => rule(input, safeContext)));
+  let findings: RapFinding[];
+
+  // Validate the envelope before touching nested properties. Missing or malformed
+  // authorization context must never degrade to a successful empty assessment.
+  if (!isExecutionContext(context) || !isNonEmptyString(safeContext.ruleSetVersion)
+    || !isNonEmptyString(safeContext.pipelineVersion)) {
+    findings = [invalidPayloadFinding(safeContext.ruleSetVersion || "unavailable")];
+  } else if (!isRapCaseInput(input)) {
+    findings = [invalidPayloadFinding(safeContext.ruleSetVersion)];
+  } else if (!isNonEmptyString(safeContext.verifiedTenantId)
+    || input.tenantId !== safeContext.verifiedTenantId) {
+    // Fail closed before evaluating tenant payload details.
+    findings = [finding(
+      "RAP-SEC-001",
+      "TENANT_CONTEXT_MISMATCH",
+      "BLOCKER",
+      "The assessment tenant does not match the verified access context.",
+      safeContext.ruleSetVersion,
+    )];
+  } else {
+    findings = sortFindings(RULES.flatMap((rule) => rule(input, safeContext)));
+  }
+
   const count = (severity: RapFinding["severity"]) =>
     findings.filter((item) => item.severity === severity && item.resolved !== true).length;
   const blockerCount = count("BLOCKER");
