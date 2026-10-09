@@ -46,7 +46,9 @@ export async function compressRetentionBatch(
   const records = await repository.lockBatch(limit);
   let processed = 0;
   for (const record of records) {
-    if (record.status === "DELETED" || record.legalHold) continue;
+    // Status is authoritative as well as the flag: inconsistent legacy rows
+    // must not bypass legal holds or cause expired/deleted material to be rewritten.
+    if (record.status === "DELETED" || record.status === "EXPIRED" || record.status === "LEGAL_HOLD" || record.legalHold) continue;
     if (record.compressedAt) {
       // Retry an event append that may have failed after compression was saved.
       await repository.appendEvent({ adviceId: record.adviceId, eventType: "COMPRESSED", idempotencyKey: `${record.adviceId}:COMPRESSED` });
@@ -73,7 +75,8 @@ export async function deleteExpiredBatch(
   let deleted = 0;
   const now = Date.now();
   for (const record of records) {
-    if (record.legalHold) continue;
+    // Honor either representation of a hold to fail closed on inconsistent rows.
+    if (record.legalHold || record.status === "LEGAL_HOLD") continue;
     if (record.status === "DELETED") {
       // A prior attempt may have committed storage/row deletion but failed to
       // append the event. Retry the idempotent append without deleting again.
