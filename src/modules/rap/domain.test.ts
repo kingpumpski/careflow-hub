@@ -58,14 +58,14 @@ describe("RAP deterministic domain primitives", () => {
     expect(hasBlockingFindings([finding({ resolved: true })])).toBe(false);
     expect(() => transitionAssessment(
       assessment({ findings: [finding()] }), "READY", 3,
-    )).toThrowError(expect.objectContaining({ code: "BLOCKING_FINDINGS" }));
+    )).toThrowError(/Resolve all ERROR and BLOCKER findings/);
   });
 
   it("rejects stale versions and undocumented transitions", () => {
     expect(() => transitionAssessment(assessment(), "READY", 2))
-      .toThrowError(expect.objectContaining({ code: "STALE_VERSION" }));
+      .toThrowError(/assessment changed/);
     expect(() => transitionAssessment(assessment({ status: "SUBMITTED" }), "DRAFT", 3))
-      .toThrowError(expect.objectContaining({ code: "INVALID_TRANSITION" }));
+      .toThrowError(/Transition from SUBMITTED to DRAFT is not permitted/);
   });
 
   it("increments the version for a permitted transition", () => {
