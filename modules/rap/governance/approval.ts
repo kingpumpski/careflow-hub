@@ -39,14 +39,42 @@ export function stableSerialize(value: unknown): string {
     ancestors.add(current);
     try {
       if (Array.isArray(current)) {
-        return `[${Array.from(current, (entry) => serialize(entry)).join(",")}]`;
+        const ownKeys = Reflect.ownKeys(current);
+        if (ownKeys.some((key) => typeof key === "symbol" || (key !== "length" && !/^(0|[1-9]\\d*)$/.test(key)))) {
+          throw new Error("RAP approval arrays must not contain custom properties.");
+        }
+        if (ownKeys.length !== current.length + 1) {
+          throw new Error("RAP approval payload must not contain sparse arrays.");
+        }
+        const entries: string[] = [];
+        for (let index = 0; index < current.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(current, String(index));
+          if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+            throw new Error("RAP approval payload must not contain sparse arrays or accessor properties.");
+          }
+          entries.push(serialize(descriptor.value));
+        }
+        return `[${entries.join(",")}]`;
       }
+
       const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error("RAP approval payload must contain only plain objects.");
       }
+      const keys = Reflect.ownKeys(current);
+      if (keys.some((key) => typeof key === "symbol")) {
+        throw new Error("RAP approval payload must not contain symbol keys.");
+      }
       const record = current as Record<string, unknown>;
-      return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${serialize(record[key])}`).join(",")}}`;
+      const serialized: string[] = [];
+      for (const key of (keys as string[]).sort()) {
+        const descriptor = Object.getOwnPropertyDescriptor(current, key);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new Error("RAP approval payload must contain only enumerable data properties.");
+        }
+        serialized.push(`${JSON.stringify(key)}:${serialize(record[key])}`);
+      }
+      return `{${serialized.join(",")}}`;
     } finally {
       ancestors.delete(current);
     }
