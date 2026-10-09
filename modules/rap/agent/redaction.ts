@@ -1,5 +1,9 @@
 const SENSITIVE_KEYS = /^(patient|member|claim|medical|diagnosis|dob|phone|email|address|national|nhis|secret|token|password|authorization|internal.?id)/i;
-const SECRET_PATTERNS = [/sk-[A-Za-z0-9_-]+/g, /Bearer\s+[A-Za-z0-9._-]+/gi, /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g];
+const SECRET_PATTERNS = [
+  /sk-[A-Za-z0-9_-]+/gi,
+  /Bearer\s+[A-Za-z0-9._-]+/gi,
+  /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g,
+];
 
 export interface RapRedactionResult {
   value: unknown;
@@ -13,11 +17,14 @@ export function redactOutbound(value: unknown): RapRedactionResult {
     if (typeof input === "string") {
       let output = input;
       for (const pattern of SECRET_PATTERNS) {
+        // Reset regex state before each test because global regexes are stateful.
+        pattern.lastIndex = 0;
         if (pattern.test(output)) {
           reasons.add("SECRET_PATTERN");
-          output = output.replace(pattern, "[REDACTED]");
           pattern.lastIndex = 0;
+          output = output.replace(pattern, "[REDACTED]");
         }
+        pattern.lastIndex = 0;
       }
       return output;
     }
