@@ -76,6 +76,21 @@ begin
     );
   if inserted or duplicate_id <> first_id then raise exception 'notification enqueue is not idempotent'; end if;
 
+  -- A repeated key may be acknowledged only when the payload is identical.
+  begin
+    perform rap.enqueue_notification(
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      actor_id, 'RETENTION', 'Retention notice', 'Different message under same key',
+      'rap-test-idempotency-key', '/rap/retention'
+    );
+    raise exception 'conflicting notification idempotency key was accepted';
+  exception when others then
+    if sqlerrm not like '%idempotency key reused with different content%' then
+      raise;
+    end if;
+  end;
+
   if (select count(*) from rap.claim_notification_batch(10)) <> 1 then
     raise exception 'notification claim did not return exactly one ready row';
   end if;
