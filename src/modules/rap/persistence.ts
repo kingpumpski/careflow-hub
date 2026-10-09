@@ -92,6 +92,15 @@ export interface RapPersistencePort {
   verifyScope(scope: RapScope, actorUserId: string): Promise<boolean>;
 }
 
+const ISO_TIMESTAMP_WITH_ZONE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function isExplicitTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || !ISO_TIMESTAMP_WITH_ZONE.test(value)) return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed);
+}
+
 /**
  * Conservative input guard for audit writes. This does not replace database
  * constraints or validate identity; it rejects empty scope/identity and
@@ -107,15 +116,12 @@ export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
     "actorUserId",
     "resourceId",
     "correlationId",
-    "occurredAt",
   ];
 
   if (requiredText.some((key) => typeof candidate[key] !== "string" || !(candidate[key] as string).trim())) {
     return false;
   }
-
-  const occurredAt = candidate.occurredAt as string;
-  if (!Number.isFinite(Date.parse(occurredAt))) return false;
+  if (!isExplicitTimestamp(candidate.occurredAt)) return false;
 
   const allowedActions = new Set<RapAuditAction>([
     "ASSESSMENT_CREATED",
@@ -172,7 +178,6 @@ export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
   });
 }
 
-
 /**
  * Validate the shape of a consume command before calling the persistence port.
  * This is defense in depth only: atomic single-use, scope and idempotency
@@ -190,16 +195,13 @@ export function validateConsumeRapApprovalCommand(
     "approvalId",
     "actorUserId",
     "expectedPayloadHash",
-    "now",
     "idempotencyKey",
   ];
 
   if (requiredText.some((key) =>
     typeof candidate[key] !== "string" || !(candidate[key] as string).trim()
   )) return false;
-
-  const timestamp = candidate.now as string;
-  if (!Number.isFinite(Date.parse(timestamp))) return false;
+  if (!isExplicitTimestamp(candidate.now)) return false;
 
   const idempotencyKey = candidate.idempotencyKey as string;
   if (idempotencyKey.length < 8 || idempotencyKey.length > 200) return false;
