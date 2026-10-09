@@ -1,0 +1,51 @@
+name: RAP Isolated CI
+
+on:
+  push:
+    branches: [feature/rap-module]
+    paths:
+      - "src/modules/rap/**"
+      - "docs/rap/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - ".github/workflows/rap-ci.yml"
+  pull_request:
+    branches: [feature/rap-module, development]
+    paths:
+      - "src/modules/rap/**"
+      - "docs/rap/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - ".github/workflows/rap-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rap-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit --pretty false
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build
