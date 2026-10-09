@@ -118,6 +118,65 @@ begin
 end;
 $$;
 
+
+create or replace function rap.complete_notification_delivery(
+  p_outbox_id uuid,
+  p_succeeded boolean,
+  p_error_code text default null,
+  p_retry_delay_seconds integer default 60
+)
+returns text
+language plpgsql
+security definer
+set search_path = pg_catalog, rap
+as $
+declare
+  next_status text;
+begin
+  if p_outbox_id is null or p_succeeded is null then
+    raise exception 'RAP notification delivery result is required';
+  end if;
+  if p_retry_delay_seconds is null or p_retry_delay_seconds < 1 or p_retry_delay_seconds > 86400 then
+    raise exception 'RAP retry delay must be between 1 and 86400 seconds';
+  end if;
+  if p_error_code is not null and p_error_code !~ '^[A-Z0-9_:-]{1,80}
+revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, text, text, text) from public;
+revoke all on function rap.claim_notification_batch(integer) from public;
+revoke all on function rap.complete_notification_delivery(uuid, boolean, text, integer) from public;
+
+comment on table rap.rap_notification_outbox is
+  'Durable idempotent RAP notification queue; stores minimal notification content, not PHI.';
+comment on function rap.claim_notification_batch(integer) is
+  'Atomically claims ready notifications with SKIP LOCKED. Worker must mark success or schedule bounded retry/dead-letter.';
+ then
+    raise exception 'RAP error code must be a short non-sensitive code';
+  end if;
+
+  update rap.rap_notification_outbox n
+     set status = case
+           when p_succeeded then 'SENT'
+           when n.attempt_count >= n.max_attempts then 'DEAD'
+           else 'RETRY'
+         end,
+         sent_at = case when p_succeeded then clock_timestamp() else n.sent_at end,
+         available_at = case
+           when p_succeeded or n.attempt_count >= n.max_attempts then n.available_at
+           else clock_timestamp() + make_interval(secs => p_retry_delay_seconds)
+         end,
+         locked_at = null,
+         last_error_code = case when p_succeeded then null else p_error_code end,
+         updated_at = clock_timestamp()
+   where n.id = p_outbox_id
+     and n.status = 'PROCESSING'
+  returning n.status into next_status;
+
+  if next_status is null then
+    raise exception 'RAP notification is missing or not currently processing';
+  end if;
+  return next_status;
+end;
+$;
+
 -- Worker-only operations: no client role can call these functions by default.
 revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, text, text, text) from public;
 revoke all on function rap.claim_notification_batch(integer) from public;
@@ -126,3 +185,6 @@ comment on table rap.rap_notification_outbox is
   'Durable idempotent RAP notification queue; stores minimal notification content, not PHI.';
 comment on function rap.claim_notification_batch(integer) is
   'Atomically claims ready notifications with SKIP LOCKED. Worker must mark success or schedule bounded retry/dead-letter.';
+
+comment on function rap.complete_notification_delivery(uuid, boolean, text, integer) is
+  'Marks a claimed notification sent, schedules bounded retry, or dead-letters after max attempts.';
