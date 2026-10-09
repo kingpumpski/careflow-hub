@@ -28,3 +28,54 @@ export interface RapDocumentExporter {
  * the host application owns the concrete adapters and RAP never imports host UI,
  * auth, notification, or persistence implementations.
  */
+
+/** Identity and tenancy must be resolved by the host auth layer, never from document input. */
+export interface RapTenantContext {
+  tenantId: string;
+  facilityId: string;
+  userId: string;
+}
+
+export interface RapScopedPersistence {
+  /** Every read/write must enforce both tenant and facility scope at the storage boundary. */
+  withScope<T>(context: RapTenantContext, operation: () => Promise<T>): Promise<T>;
+}
+
+/**
+ * Implement with one atomic database statement/RPC (e.g. UPDATE ... WHERE status='ISSUED'
+ * RETURNING). A read-then-write implementation is not safe under concurrent replay.
+ */
+export interface RapAtomicApprovalStore {
+  consume(input: {
+    tokenId: string;
+    actorId: string;
+    action: string;
+    payloadHash: string;
+  }): Promise<boolean>;
+}
+
+export interface RapImmutableAuditWriter {
+  append(event: {
+    tenantId: string;
+    facilityId: string;
+    actorId: string;
+    eventType: string;
+    correlationId: string;
+    payloadHash: string;
+    occurredAt: string;
+  }): Promise<void>;
+}
+
+/** Queue implementations must enforce a unique idempotency key at enqueue time. */
+export interface RapNotificationOutbox {
+  enqueue(input: {
+    tenantId: string;
+    facilityId: string;
+    recipientUserIds: readonly string[];
+    category: "RETENTION" | "CLAIM_REJECTION" | "PREAUTH" | "AUDIT_FINDING" | "IT_REPORT" | "AI_ESCALATION" | "CSA_INCIDENT" | "DPC_BREACH";
+    title: string;
+    message: string;
+    idempotencyKey: string;
+    deepLink?: string;
+  }): Promise<"ENQUEUED" | "ALREADY_EXISTS">;
+}
