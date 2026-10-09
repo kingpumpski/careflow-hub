@@ -17,40 +17,61 @@ function findHeader(headers: string[], aliases: readonly string[]): number {
   return headers.findIndex((header) => aliases.includes(normalizeHeader(header)));
 }
 
-function parseDelimited(text: string, delimiter: "," | "\t"): string[][] {
+function parseDelimited(text: string, delimiter: "," | "\\t"): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
   let quoted = false;
+  let quoteClosed = false;
+
+  const finishRow = () => {
+    row.push(cell);
+    if (row.some((value) => value.length > 0)) rows.push(row);
+    row = [];
+    cell = "";
+    quoteClosed = false;
+  };
 
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const next = text[i + 1];
 
-    if (char === '"' && quoted && next === '"') {
-      cell += '"';
-      i += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        cell += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+        quoteClosed = true;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (quoteClosed && char !== delimiter && char !== "\\r" && char !== "\\n") {
+      throw new Error("RAP delimited document contains characters after a closing quote.");
+    }
+
+    if (char === '"') {
+      if (cell.length > 0 || quoteClosed) {
+        throw new Error("RAP delimited document contains a quote inside an unquoted field.");
+      }
+      quoted = true;
+    } else if (char === delimiter) {
       row.push(cell);
       cell = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(cell);
-      if (row.some((value) => value.length > 0)) rows.push(row);
-      row = [];
-      cell = "";
+      quoteClosed = false;
+    } else if (char === "\\n" || char === "\\r") {
+      if (char === "\\r" && next === "\\n") i += 1;
+      finishRow();
     } else {
       cell += char;
     }
   }
 
   if (quoted) throw new Error("RAP delimited document contains an unterminated quoted field.");
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell);
-    if (row.some((value) => value.length > 0)) rows.push(row);
-  }
+  if (cell.length > 0 || row.length > 0 || quoteClosed) finishRow();
   return rows;
 }
 
