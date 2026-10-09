@@ -11,7 +11,7 @@ const event = (overrides: Partial<RapAuditEventInput> = {}): RapAuditEventInput 
   occurredAt: "2026-10-09T12:00:00.000Z",
   correlationId: "correlation-a",
   metadata: {
-    payloadHash: "sha256:abc",
+    payloadHash: "a".repeat(64),
     assessmentVersion: 3,
     ruleSetVersion: "1.0.0",
   },
@@ -39,6 +39,14 @@ describe("RAP persistence audit contract", () => {
     expect(validateRapAuditEventInput(event({ action: "EXECUTE_SQL" as never }))).toBe(false);
     expect(validateRapAuditEventInput(event({ resourceType: "patient" as never }))).toBe(false);
     expect(validateRapAuditEventInput(null as never)).toBe(false);
+  });
+
+  it("rejects malformed hashes and free-text values in allow-listed metadata", () => {
+    expect(validateRapAuditEventInput(event({ metadata: { payloadHash: "sha256:abc" } }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: { reasonCode: "Patient has a chronic condition" } }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: { assessmentVersion: 1.5 } }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: { idempotencyKey: "tiny" } }))).toBe(false);
+    expect(validateRapAuditEventInput(event({ metadata: { reasonCode: "INVALID_PAYLOAD" } }))).toBe(true);
   });
 
   it("rejects arbitrary metadata keys that could leak clinical or claim text", () => {
