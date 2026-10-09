@@ -75,6 +75,43 @@ begin
   if (select count(*) from rap.rap_ai_approval_event where token_id = approval_id and event_type = 'CONSUMED') <> 1 then
     raise exception 'approval consumption event missing or duplicated';
   end if;
+
+  -- A failed final delivery attempt must dead-letter rather than loop forever.
+  select outbox_id into first_id
+    from rap.enqueue_notification(
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      actor_id, 'RETENTION', 'Retry test', 'Retry test message',
+      'rap-test-dead-letter-key', null
+    );
+  update rap.rap_notification_outbox set max_attempts = 1 where id = first_id;
+  if (select count(*) from rap.claim_notification_batch(10)) <> 1 then
+    raise exception 'dead-letter test notification was not claimed';
+  end if;
+  delivery_status := rap.complete_notification_delivery(first_id, false, 'PROVIDER_DOWN', 1);
+  if delivery_status <> 'DEAD' then raise exception 'final failed delivery was not dead-lettered'; end if;
+
+  -- An expired worker lease is reclaimable, with attempts bounded by max_attempts.
+  select outbox_id into first_id
+    from rap.enqueue_notification(
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      actor_id, 'RETENTION', 'Lease test', 'Lease test message',
+      'rap-test-worker-lease-key', null
+    );
+  if (select count(*) from rap.claim_notification_batch(10)) <> 1 then
+    raise exception 'lease test notification was not claimed';
+  end if;
+  update rap.rap_notification_outbox
+     set locked_at = clock_timestamp() - interval '10 minutes'
+   where id = first_id;
+  if (select count(*) from rap.claim_notification_batch(10)) <> 1 then
+    raise exception 'expired worker lease was not reclaimed';
+  end if;
+  if (select attempt_count from rap.rap_notification_outbox where id = first_id) <> 2 then
+    raise exception 'worker lease recovery did not increment attempt count';
+  end if;
+  perform rap.complete_notification_delivery(first_id, true, null, 1);
 end $$;
 SQL
 
