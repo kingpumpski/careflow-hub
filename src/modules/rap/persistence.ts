@@ -98,16 +98,42 @@ export interface RapPersistencePort {
  * free-form metadata keys that could accidentally carry clinical text.
  */
 export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
-  if (
-    !input.tenantId.trim() ||
-    !input.facilityId.trim() ||
-    !input.actorUserId.trim() ||
-    !input.resourceId.trim() ||
-    !input.correlationId.trim() ||
-    !Number.isFinite(Date.parse(input.occurredAt))
-  ) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+
+  const candidate = input as unknown as Record<string, unknown>;
+  const requiredText = [
+    "tenantId",
+    "facilityId",
+    "actorUserId",
+    "resourceId",
+    "correlationId",
+    "occurredAt",
+  ];
+
+  if (requiredText.some((key) => typeof candidate[key] !== "string" || !(candidate[key] as string).trim())) {
     return false;
   }
+
+  const occurredAt = candidate.occurredAt as string;
+  if (!Number.isFinite(Date.parse(occurredAt))) return false;
+
+  const allowedActions = new Set<RapAuditAction>([
+    "ASSESSMENT_CREATED",
+    "ASSESSMENT_VALIDATED",
+    "APPROVAL_GRANTED",
+    "APPROVAL_CONSUMED",
+    "EXPORT_REQUESTED",
+    "SUBMISSION_REQUESTED",
+    "ACCESS_DENIED",
+  ]);
+  const allowedResourceTypes = new Set(["assessment", "approval", "export", "submission"]);
+  if (!allowedActions.has(candidate.action as RapAuditAction)) return false;
+  if (!allowedResourceTypes.has(candidate.resourceType as string)) return false;
+
+  const metadata = candidate.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  const prototype = Object.getPrototypeOf(metadata);
+  if (prototype !== Object.prototype && prototype !== null) return false;
 
   const allowedMetadataKeys = new Set([
     "payloadHash",
@@ -119,9 +145,10 @@ export function validateRapAuditEventInput(input: RapAuditEventInput): boolean {
     "idempotencyKey",
   ]);
 
-  return Object.entries(input.metadata).every(([key, value]) =>
-    allowedMetadataKeys.has(key) &&
-    (value === null || ["string", "number", "boolean"].includes(typeof value)) &&
-    (typeof value !== "string" || value.length <= 256)
-  );
+  return Object.entries(metadata as Record<string, unknown>).every(([key, value]) => {
+    if (!allowedMetadataKeys.has(key)) return false;
+    if (value !== null && !["string", "number", "boolean"].includes(typeof value)) return false;
+    if (typeof value === "number" && !Number.isFinite(value)) return false;
+    return typeof value !== "string" || value.length <= 256;
+  });
 }
