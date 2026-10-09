@@ -42,6 +42,7 @@ describe("RAP deterministic domain primitives", () => {
   it("rejects unsupported values and cycles during canonicalization", () => {
     expect(() => canonicalizeJson({ value: undefined })).toThrow(TypeError);
     expect(() => canonicalizeJson(Number.NaN)).toThrow(TypeError);
+    expect(() => canonicalizeJson(new Array(2))).toThrow(/Sparse arrays/);
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
     expect(() => canonicalizeJson(cyclic)).toThrow(/Circular references/);
@@ -66,6 +67,9 @@ describe("RAP deterministic domain primitives", () => {
       .toThrowError(/assessment changed/);
     expect(() => transitionAssessment(assessment({ status: "SUBMITTED" }), "DRAFT", 3))
       .toThrowError(/Transition from SUBMITTED to DRAFT is not permitted/);
+    expect(() => transitionAssessment(
+      assessment({ status: "UNRECOGNIZED" as RapAssessment["status"] }), "READY", 3,
+    )).toThrowError(/Transition from UNRECOGNIZED to READY is not permitted/);
   });
 
   it("increments the version for a permitted transition", () => {
