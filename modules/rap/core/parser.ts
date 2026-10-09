@@ -17,7 +17,7 @@ function findHeader(headers: string[], aliases: readonly string[]): number {
   return headers.findIndex((header) => aliases.includes(normalizeHeader(header)));
 }
 
-function parseDelimited(text: string, delimiter: "," | "\\t"): string[][] {
+function parseDelimited(text: string, delimiter: "," | "\t"): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -49,7 +49,7 @@ function parseDelimited(text: string, delimiter: "," | "\\t"): string[][] {
       continue;
     }
 
-    if (quoteClosed && char !== delimiter && char !== "\\r" && char !== "\\n") {
+    if (quoteClosed && char !== delimiter && char !== "\r" && char !== "\n") {
       throw new Error("RAP delimited document contains characters after a closing quote.");
     }
 
@@ -62,8 +62,8 @@ function parseDelimited(text: string, delimiter: "," | "\\t"): string[][] {
       row.push(cell);
       cell = "";
       quoteClosed = false;
-    } else if (char === "\\n" || char === "\\r") {
-      if (char === "\\r" && next === "\\n") i += 1;
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && next === "\n") i += 1;
       finishRow();
     } else {
       cell += char;
