@@ -69,3 +69,5 @@ Do not activate the SQL designs until host adapters, permissions, tenant backfil
 - Approval payload canonicalization rejects sparse/custom arrays, symbol keys, accessor properties, non-enumerable properties, non-finite numbers, non-plain objects, and circular values before signing or hashing.
 
 The migration suite remains a CI-only test fixture; these design migrations are not deployed to production.
+
+- A concrete CSV/TSV exporter now validates the exact approved change set, applies formula-injection neutralization to all exported string cells, serializes quoted fields with CRLF line endings, and computes SHA-256 over final output bytes. XLS/XLSX intentionally fail closed until the host provides original workbook bytes and a binary-preserving exporter.
