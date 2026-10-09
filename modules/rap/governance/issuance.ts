@@ -101,6 +101,7 @@ export async function issueRapApprovalToken(
     approvedAt: now.toISOString(),
     expiresAt,
     facilityId: input.facilityId,
+    status: "ISSUED",
   };
 
   // Validate the signing secret and construct the token before creating durable
