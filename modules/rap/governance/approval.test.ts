@@ -14,7 +14,12 @@ describe("RAP approval boundary", () => {
     expect(() => hashApprovalPayload(sparse)).toThrow(/JSON-compatible/i);
     const circular: Record<string, unknown> = {};
     circular.self = circular;
-    expect(() => hashApprovalPayload(circular)).toThrow(/circular/i);\n    expect(() => hashApprovalPayload(Object.defineProperty({}, "value", { enumerable: true, get: () => 1 }))).toThrow(/data properties/i);\n    expect(() => hashApprovalPayload({ [Symbol("hidden")]: "value" })).toThrow(/symbol keys/i);\n    const customArray = [1] as number[] & { extra?: number };\n    customArray.extra = 2;\n    expect(() => hashApprovalPayload(customArray)).toThrow(/custom properties/i);
+    expect(() => hashApprovalPayload(circular)).toThrow(/circular/i);
+    expect(() => hashApprovalPayload(Object.defineProperty({}, "value", { enumerable: true, get: () => 1 }))).toThrow(/data properties/i);
+    expect(() => hashApprovalPayload({ [Symbol("hidden")]: "value" })).toThrow(/symbol keys/i);
+    const customArray = [1] as number[] & { extra?: number };
+    customArray.extra = 2;
+    expect(() => hashApprovalPayload(customArray)).toThrow(/custom properties/i);
   });
 
   it("rejects missing approval and audits it", async () => {
