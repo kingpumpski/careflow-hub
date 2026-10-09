@@ -40,7 +40,6 @@ describe("RAP approval issuance", () => {
       requestedBy: requesterId,
       approvedBy: approverId,
       facilityId,
-      status: undefined,
     }));
   });
 
@@ -62,6 +61,14 @@ describe("RAP approval issuance", () => {
       requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 16,
     }, secret, deps)).rejects.toThrow(/TTL/i);
     expect(deps.canApprove).not.toHaveBeenCalled();
+  });
+
+  it("rejects a misconfigured signing secret before creating a database row", async () => {
+    const deps = dependencies();
+    await expect(issueRapApprovalToken({
+      requesterId, approverId, facilityId, action: "export", payload: {}, ttlMinutes: 5,
+    }, "short", deps)).rejects.toThrow(/32 UTF-8 bytes/i);
+    expect(deps.insertIssuedToken).not.toHaveBeenCalled();
   });
 
   it("does not return a token if persistence or audit fails", async () => {
