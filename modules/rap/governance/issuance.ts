@@ -13,6 +13,16 @@ export interface RapApprovalIssuanceRecord {
   status: "ISSUED";
 }
 
+export interface RapApprovalIssuanceAuditRecord {
+  tokenId: string;
+  requesterId: string;
+  approverId: string;
+  facilityId: string;
+  action: string;
+  payloadHash: string;
+  expiresAt: string;
+}
+
 /**
  * Host-owned authorization and persistence are mandatory. The caller must derive
  * all identities/facility scope from its authenticated server session, never
@@ -25,15 +35,14 @@ export interface RapApprovalIssuanceDependencies {
     facilityId: string;
     action: string;
   }): Promise<boolean>;
-  insertIssuedToken(record: RapApprovalIssuanceRecord): Promise<void>;
-  auditIssued(record: {
-    tokenId: string;
-    requesterId: string;
-    approverId: string;
-    facilityId: string;
-    action: string;
-    payloadHash: string;
-    expiresAt: string;
+  /**
+   * Persist the ISSUED token row and its immutable audit event in ONE database
+   * transaction/RPC. Reject unless both writes commit atomically. A split insert
+   * and audit call can strand an active approval when the second write fails.
+   */
+  persistIssuedTokenAndAuditAtomically(input: {
+    token: RapApprovalIssuanceRecord;
+    audit: RapApprovalIssuanceAuditRecord;
   }): Promise<void>;
 }
 
@@ -47,11 +56,7 @@ export interface RapApprovalIssuanceInput {
   now?: Date;
 }
 
-/**
- * Issue a signed, single-use approval only after the host confirms that the
- * approver is authorized for this facility/action. Persist before returning the
- * token; if persistence or audit fails, fail closed and do not return a token.
- */
+/** Issue a short-lived, single-use approval only after host authorization and atomic persistence. */
 export async function issueRapApprovalToken(
   input: RapApprovalIssuanceInput,
   secret: string,
@@ -104,12 +109,7 @@ export async function issueRapApprovalToken(
     facilityId: input.facilityId,
     status: "ISSUED",
   };
-
-  // Validate the signing secret and construct the token before creating durable
-  // state, so a misconfigured server cannot strand an unusable ISSUED row.
-  const token = signApprovalToken(claims, secret);
-  await dependencies.insertIssuedToken(record);
-  await dependencies.auditIssued({
+  const audit: RapApprovalIssuanceAuditRecord = {
     tokenId,
     requesterId: input.requesterId,
     approverId: input.approverId,
@@ -117,7 +117,12 @@ export async function issueRapApprovalToken(
     action: input.action,
     payloadHash,
     expiresAt,
-  });
+  };
+
+  // Validate signing configuration before the atomic transaction to avoid
+  // persisting a token that cannot be returned or verified.
+  const token = signApprovalToken(claims, secret);
+  await dependencies.persistIssuedTokenAndAuditAtomically({ token: record, audit });
 
   return { token, claims };
 }
