@@ -46,7 +46,12 @@ export async function compressRetentionBatch(
   const records = await repository.lockBatch(limit);
   let processed = 0;
   for (const record of records) {
-    if (record.compressedAt || record.status === "DELETED" || record.legalHold) continue;
+    if (record.status === "DELETED" || record.legalHold) continue;
+    if (record.compressedAt) {
+      // Retry an event append that may have failed after compression was saved.
+      await repository.appendEvent({ adviceId: record.adviceId, eventType: "COMPRESSED", idempotencyKey: `${record.adviceId}:COMPRESSED` });
+      continue;
+    }
     const original = await binaryStore.read(record.adviceId);
     const compressed = compressor(original);
     const digest = checksum(compressed);
@@ -68,7 +73,17 @@ export async function deleteExpiredBatch(
   let deleted = 0;
   const now = Date.now();
   for (const record of records) {
-    if (record.legalHold || record.status === "DELETED") continue;
+    if (record.legalHold) continue;
+    if (record.status === "DELETED") {
+      // A prior attempt may have committed storage/row deletion but failed to
+      // append the event. Retry the idempotent append without deleting again.
+      await repository.appendEvent({
+        adviceId: record.adviceId,
+        eventType: "DELETED",
+        idempotencyKey: `${record.adviceId}:DELETED:${record.retentionExpiresAt}`,
+      });
+      continue;
+    }
     const expiresAt = new Date(record.retentionExpiresAt).getTime();
     // Invalid timestamps must never be interpreted as expired.
     if (!Number.isFinite(expiresAt) || expiresAt > now) continue;
