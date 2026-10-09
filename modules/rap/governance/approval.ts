@@ -43,7 +43,9 @@ function assertApprovalSecret(secret: string): void {
   }
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nfunction isApprovalClaims(value: unknown): value is RapApprovalClaims {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isApprovalClaims(value: unknown): value is RapApprovalClaims {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const claims = value as Record<string, unknown>;
   return (
