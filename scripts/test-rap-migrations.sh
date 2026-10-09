@@ -9,7 +9,9 @@ set -euo pipefail
 export PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
+create role anon nologin;
 create role authenticated nologin;
+create role service_role nologin;
 create schema auth;
 create or replace function auth.uid() returns uuid
 language sql stable as $$ select null::uuid $$;
