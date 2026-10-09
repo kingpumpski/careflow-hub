@@ -42,6 +42,23 @@ describe("RAP retention deletion", () => {
     expect(deps.binaryStore.delete).not.toHaveBeenCalled();
   });
 
+  it("fails closed when status says legal hold or expired but the hold flag is false", async () => {
+    const compression = dependencies([
+      expired({ adviceId: "held-by-status", status: "LEGAL_HOLD", legalHold: false }),
+      expired({ adviceId: "already-expired", status: "EXPIRED", legalHold: false }),
+    ]);
+    await expect(compressRetentionBatch(compression.repository, compression.binaryStore, (input) => input, () => "checksum")).resolves.toBe(0);
+    expect(compression.binaryStore.read).not.toHaveBeenCalled();
+    expect(compression.repository.saveCompression).not.toHaveBeenCalled();
+
+    const deletion = dependencies([
+      expired({ adviceId: "held-by-status", status: "LEGAL_HOLD", legalHold: false }),
+    ]);
+    await expect(deleteExpiredBatch(deletion.repository, deletion.binaryStore, () => "certificate")).resolves.toBe(0);
+    expect(deletion.binaryStore.delete).not.toHaveBeenCalled();
+    expect(deletion.repository.markDeleted).not.toHaveBeenCalled();
+  });
+
   it("records deletion only after the binary and repository are updated", async () => {
     const deps = dependencies([expired()]);
     await expect(deleteExpiredBatch(deps.repository, deps.binaryStore, () => "cert-1")).resolves.toBe(1);
