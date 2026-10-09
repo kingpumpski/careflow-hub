@@ -118,7 +118,6 @@ begin
 end;
 $$;
 
-
 create or replace function rap.complete_notification_delivery(
   p_outbox_id uuid,
   p_succeeded boolean,
@@ -129,7 +128,7 @@ returns text
 language plpgsql
 security definer
 set search_path = pg_catalog, rap
-as $
+as $$
 declare
   next_status text;
 begin
@@ -139,16 +138,7 @@ begin
   if p_retry_delay_seconds is null or p_retry_delay_seconds < 1 or p_retry_delay_seconds > 86400 then
     raise exception 'RAP retry delay must be between 1 and 86400 seconds';
   end if;
-  if p_error_code is not null and p_error_code !~ '^[A-Z0-9_:-]{1,80}
-revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, text, text, text) from public;
-revoke all on function rap.claim_notification_batch(integer) from public;
-revoke all on function rap.complete_notification_delivery(uuid, boolean, text, integer) from public;
-
-comment on table rap.rap_notification_outbox is
-  'Durable idempotent RAP notification queue; stores minimal notification content, not PHI.';
-comment on function rap.claim_notification_batch(integer) is
-  'Atomically claims ready notifications with SKIP LOCKED. Worker must mark success or schedule bounded retry/dead-letter.';
- then
+  if p_error_code is not null and p_error_code !~ '^[A-Z0-9_:-]{1,80}$' then
     raise exception 'RAP error code must be a short non-sensitive code';
   end if;
 
@@ -175,16 +165,16 @@ comment on function rap.claim_notification_batch(integer) is
   end if;
   return next_status;
 end;
-$;
+$$;
 
 -- Worker-only operations: no client role can call these functions by default.
 revoke all on function rap.enqueue_notification(uuid, uuid, uuid, text, text, text, text, text) from public;
 revoke all on function rap.claim_notification_batch(integer) from public;
+revoke all on function rap.complete_notification_delivery(uuid, boolean, text, integer) from public;
 
 comment on table rap.rap_notification_outbox is
   'Durable idempotent RAP notification queue; stores minimal notification content, not PHI.';
 comment on function rap.claim_notification_batch(integer) is
   'Atomically claims ready notifications with SKIP LOCKED. Worker must mark success or schedule bounded retry/dead-letter.';
-
 comment on function rap.complete_notification_delivery(uuid, boolean, text, integer) is
   'Marks a claimed notification sent, schedules bounded retry, or dead-letters after max attempts.';
