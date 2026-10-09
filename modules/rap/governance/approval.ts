@@ -21,12 +21,38 @@ export function hashApprovalPayload(payload: unknown): string {
 }
 
 export function stableSerialize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`);
-  return `{${entries.join(",")}}`;
+  const ancestors = new WeakSet<object>();
+
+  const serialize = (current: unknown): string => {
+    if (current === null) return "null";
+    if (typeof current === "string") return JSON.stringify(current);
+    if (typeof current === "boolean") return current ? "true" : "false";
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) throw new Error("RAP approval payload contains a non-finite number.");
+      return JSON.stringify(current);
+    }
+    if (typeof current !== "object") {
+      throw new Error("RAP approval payload must contain only JSON-compatible values.");
+    }
+    if (ancestors.has(current)) throw new Error("RAP approval payload must not contain circular references.");
+
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return `[${current.map((entry) => serialize(entry)).join(",")}]`;
+      }
+      const prototype = Object.getPrototypeOf(current);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error("RAP approval payload must contain only plain objects.");
+      }
+      const record = current as Record<string, unknown>;
+      return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${serialize(record[key])}`).join(",")}}`;
+    } finally {
+      ancestors.delete(current);
+    }
+  };
+
+  return serialize(value);
 }
 
 export function constantTimeEqual(left: string, right: string): boolean {
