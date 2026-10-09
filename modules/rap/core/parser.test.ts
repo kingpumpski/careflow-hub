@@ -29,14 +29,14 @@ describe("RAP tabular parser", () => {
   });
 
   it.each([
-    ['Code,Description\\nLAB-1,broken"quote\\n', /quote inside an unquoted field/i],
-    ['Code,Description\\nLAB-1,"quoted"suffix\\n', /characters after a closing quote/i],
+    ['Code,Description\nLAB-1,broken"quote\n', /quote inside an unquoted field/i],
+    ['Code,Description\nLAB-1,"quoted"suffix\n', /characters after a closing quote/i],
   ])("rejects malformed CSV quoting", (input, expectedError) => {
     expect(() => parseTabularDocument(input, "CSV")).toThrow(expectedError);
   });
 
   it("accepts escaped quotes and empty quoted fields", () => {
-    const document = parseTabularDocument('Code,Description\\nLAB-1,"Test ""panel"""\\nLAB-2,""\\n', "CSV");
+    const document = parseTabularDocument('Code,Description\nLAB-1,"Test ""panel"""\nLAB-2,""\n', "CSV");
     expect(document.rows[1][1].value).toBe('Test "panel"');
     expect(document.rows[2][1].value).toBe("");
   });
