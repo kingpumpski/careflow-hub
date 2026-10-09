@@ -10,6 +10,7 @@ export interface RapApprovalIssuanceRecord {
   approvedAt: string;
   expiresAt: string;
   facilityId: string;
+  status: "ISSUED";
 }
 
 /**
