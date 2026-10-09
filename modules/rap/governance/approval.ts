@@ -39,7 +39,7 @@ export function stableSerialize(value: unknown): string {
     ancestors.add(current);
     try {
       if (Array.isArray(current)) {
-        return `[${current.map((entry) => serialize(entry)).join(",")}]`;
+        return `[${Array.from(current, (entry) => serialize(entry)).join(",")}]`;
       }
       const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
