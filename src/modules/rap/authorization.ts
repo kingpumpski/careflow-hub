@@ -34,7 +34,9 @@ export interface RapAuthorizationRequest {
   operation: RapOperation;
   tenantId: string;
   facilityId: string;
-  /** Required for high-impact operations; must come from persisted server state. */
+  /** Creator of the persisted draft, used to enforce reviewer separation of duties. */
+  requestedBy?: string;
+  /** Required for export/submission/destructive/configuration operations; persisted server state only. */
   approval?: {
     approvedBy: string;
     requestedBy: string;
@@ -75,7 +77,6 @@ const PERMISSION_BY_OPERATION: Readonly<Record<RapOperation, string>> = {
 };
 
 const APPROVAL_REQUIRED = new Set<RapOperation>([
-  "APPROVE",
   "EXPORT",
   "SUBMIT",
   "MANAGE_KNOWLEDGE_BASE",
@@ -116,7 +117,7 @@ export function authorizeRapOperation(
     return { allowed: false, reason: "SUBMISSION_DISABLED" };
   }
 
-  if (APPROVAL_REQUIRED.has(request.operation)) {
+  if (request.operation === "APPROVE") {\n    if (!nonEmpty(request.requestedBy)) {\n      return { allowed: false, reason: "APPROVAL_REQUIRED" };\n    }\n    if (request.requestedBy === context.userId) {\n      return { allowed: false, reason: "SEPARATION_OF_DUTIES" };\n    }\n  }\n\n  if (APPROVAL_REQUIRED.has(request.operation)) {
     const approval = request.approval;
     if (!approval) return { allowed: false, reason: "APPROVAL_REQUIRED" };
     if (approval.approvedBy === context.userId
