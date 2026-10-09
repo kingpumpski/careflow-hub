@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedCoordinates, renderTargetColumn } from "./renderer";
+import { changedCoordinates, renderTargetColumn, validateRenderedDocument } from "./renderer";
 import type { RapTabularDocument } from "./types";
 
 const source: RapTabularDocument = {
@@ -42,5 +42,25 @@ describe("RAP deterministic renderer", () => {
       { row: 0, column: 1, value: "A00.1" },
       { row: 0, column: 1, value: "B00.2" },
     ], 1)).toThrow(/duplicate target/i);
+  });
+
+  it("validates a draft against the exact approved change set", () => {
+    const changes = [{ row: 0, column: 1, value: "A00.1" }];
+    const rendered = renderTargetColumn(source, changes, 1);
+    expect(() => validateRenderedDocument(source, rendered, changes)).not.toThrow();
+  });
+
+  it("rejects an unapproved cell mutation during export reconciliation", () => {
+    const changes = [{ row: 0, column: 1, value: "A00.1" }];
+    const rendered = renderTargetColumn(source, changes, 1);
+    rendered.rows[1][2].value = 0;
+    expect(() => validateRenderedDocument(source, rendered, changes)).toThrow(/unapproved change/i);
+  });
+
+  it("rejects altered worksheet identity and shape", () => {
+    const changes = [{ row: 0, column: 1, value: "A00.1" }];
+    const rendered = renderTargetColumn(source, changes, 1);
+    expect(() => validateRenderedDocument(source, { ...rendered, sheetName: "Other" }, changes)).toThrow(/worksheet identity/i);
+    expect(() => validateRenderedDocument(source, { ...rendered, rows: rendered.rows.slice(1) }, changes)).toThrow(/row count/i);
   });
 });
