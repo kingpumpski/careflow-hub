@@ -11,7 +11,7 @@ export interface RapRetentionDecision {
   source: "EXPLICIT_OVERRIDE" | "PARTNER_POLICY" | "CLAIM_TYPE" | "GLOBAL" | "GHANA_LEGAL_MINIMUM";
 }
 
-const validDays = (value: number | undefined): value is number => Number.isInteger(value) && value >= 0;
+const validDays = (value: number | undefined): value is number => Number.isSafeInteger(value) && value >= 0;
 
 export function resolveRetentionDays(input: RapRetentionInputs): RapRetentionDecision {
   const candidates: Array<[RapRetentionDecision["source"], number | undefined]> = [
@@ -33,9 +33,28 @@ export interface RapRetentionSchedule {
   notifyAt: Date[];
 }
 
-export function buildRetentionSchedule(createdAt: Date, retentionDays: number, notifyLeadDays = 7, reminderDays = 1): RapRetentionSchedule {
-  if (!validDays(retentionDays)) throw new Error("RAP retentionDays must be a non-negative integer.");
+function assertNonNegativeDays(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`RAP ${name} must be a non-negative whole number of days.`);
+  }
+}
+
+export function buildRetentionSchedule(
+  createdAt: Date,
+  retentionDays: number,
+  notifyLeadDays = 7,
+  reminderDays = 1,
+): RapRetentionSchedule {
+  if (!(createdAt instanceof Date) || !Number.isFinite(createdAt.getTime())) {
+    throw new Error("RAP retention createdAt must be a valid date.");
+  }
+  assertNonNegativeDays(retentionDays, "retentionDays");
+  assertNonNegativeDays(notifyLeadDays, "notifyLeadDays");
+  assertNonNegativeDays(reminderDays, "reminderDays");
   const expiresAt = new Date(createdAt.getTime() + retentionDays * 86_400_000);
+  if (!Number.isFinite(expiresAt.getTime())) {
+    throw new Error("RAP retention expiration date is outside the supported date range.");
+  }
   return {
     expiresAt,
     notifyAt: [
