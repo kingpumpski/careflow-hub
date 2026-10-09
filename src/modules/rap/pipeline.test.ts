@@ -24,6 +24,32 @@ describe("RAP deterministic validation pipeline", () => {
     expect(result.ruleSetVersion).toBe("1.0.0");
   });
 
+  it("fails closed for malformed runtime payloads and missing authorization context", () => {
+    const malformed = runRapValidation({
+      ...validInput,
+      services: [{ id: "service-a", amount: "50", diagnosisCodes: null }],
+    }, context);
+    expect(malformed.outcome).toBe("BLOCKED");
+    expect(malformed.findings.map((item) => item.code)).toEqual(["INVALID_INPUT_SHAPE"]);
+
+    const missingContext = runRapValidation(validInput, undefined);
+    expect(missingContext.outcome).toBe("BLOCKED");
+    expect(missingContext.findings[0].severity).toBe("BLOCKER");
+  });
+
+  it("flags blank and duplicate service identifiers", () => {
+    const result = runRapValidation({
+      ...validInput,
+      services: [
+        { id: "service-a", amount: 10, diagnosisCodes: ["DX-001"] },
+        { id: "service-a", amount: 20, diagnosisCodes: ["DX-001"] },
+        { id: " ", amount: 30, diagnosisCodes: ["DX-001"] },
+      ],
+    }, context);
+    expect(result.findings.filter((item) => item.code === "INVALID_OR_DUPLICATE_SERVICE_ID"))
+      .toHaveLength(2);
+  });
+
   it("blocks when request tenant differs from verified server context", () => {
     const result = runRapValidation({ ...validInput, tenantId: "tenant-b" }, context);
     expect(result.outcome).toBe("BLOCKED");
