@@ -28,19 +28,35 @@ describe("RAP delimited exporter", () => {
     expect(result.checksum).toBe(createHash("sha256").update(result.bytes).digest("hex"));
   });
 
-  it("neutralizes formula-like strings, including unchanged source cells", async () => {
-    const source = { ...document, rows: [[
-      { value: "=1+1", row: 0, column: 0 },
-      { value: "+SUM(A1:A2)", row: 0, column: 1 },
-      { value: "@cmd", row: 0, column: 2 },
-      { value: "  =2+2", row: 0, column: 3 },
-    ]] };
+  it("neutralizes formula-like strings, including unchanged source cells and whitespace-prefixed formulas", async () => {
+    const source = {
+      ...document,
+      headers: ["Code", "Diagnosis", "Comment", "Formula"],
+      rows: [[
+        { value: "=1+1", row: 0, column: 0 },
+        { value: "+SUM(A1:A2)", row: 0, column: 1 },
+        { value: "@cmd", row: 0, column: 2 },
+        { value: "  =2+2", row: 0, column: 3 },
+      ]],
+    };
     const result = await rapDelimitedExporter.exportDraft({
       source,
       rendered: { ...source, changes: [] },
       approvedChanges: [],
     });
     expect(new TextDecoder().decode(result.bytes)).toContain("'=1+1,'+SUM(A1:A2),'@cmd,'  =2+2");
+  });
+
+  it("rejects rows whose cell count does not match the header count", async () => {
+    const source = {
+      ...document,
+      rows: [[...document.rows[0], { value: "unexpected", row: 0, column: 3 }]],
+    };
+    await expect(rapDelimitedExporter.exportDraft({
+      source,
+      rendered: { ...source, changes: [] },
+      approvedChanges: [],
+    })).rejects.toThrow(/expected 3/i);
   });
 
   it("uses tab delimiters for TSV", async () => {
