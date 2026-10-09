@@ -96,12 +96,25 @@ begin
     raise exception 'RAP notification batch limit must be between 1 and 500';
   end if;
 
+  -- Recover crashed workers. A stale final attempt is dead-lettered instead
+  -- of remaining PROCESSING forever.
+  update rap.rap_notification_outbox n
+     set status = 'DEAD',
+         locked_at = null,
+         last_error_code = 'WORKER_LEASE_EXPIRED',
+         updated_at = clock_timestamp()
+   where n.status = 'PROCESSING'
+     and n.locked_at < clock_timestamp() - interval '5 minutes'
+     and n.attempt_count >= n.max_attempts;
+
   return query
   with candidates as (
     select n.id
       from rap.rap_notification_outbox n
-     where n.status in ('PENDING', 'RETRY')
-       and n.available_at <= clock_timestamp()
+     where (
+         (n.status in ('PENDING', 'RETRY') and n.available_at <= clock_timestamp())
+         or (n.status = 'PROCESSING' and n.locked_at < clock_timestamp() - interval '5 minutes')
+       )
        and n.attempt_count < n.max_attempts
      order by n.available_at, n.created_at, n.id
      for update skip locked
