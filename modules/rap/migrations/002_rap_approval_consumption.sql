@@ -48,6 +48,7 @@ set search_path = pg_catalog, rap
 as $$
 declare
   consumed_id uuid;
+  consumed_facility_id uuid;
 begin
   if p_token_id is null or p_actor_id is null
      or nullif(trim(p_action), '') is null
@@ -66,16 +67,16 @@ begin
      and token.status = 'ISSUED'
      and token.used_at is null
      and token.expires_at > clock_timestamp()
-   returning token.id into consumed_id;
+   returning token.id, token.facility_id into consumed_id, consumed_facility_id;
 
   if consumed_id is null then
     return false;
   end if;
 
   insert into rap.rap_ai_approval_event (
-    token_id, event_type, actor_id, action, payload_hash
+    token_id, event_type, actor_id, action, payload_hash, facility_id
   ) values (
-    consumed_id, 'CONSUMED', p_actor_id, p_action, lower(p_payload_hash)
+    consumed_id, 'CONSUMED', p_actor_id, p_action, lower(p_payload_hash), consumed_facility_id
   );
 
   return true;
