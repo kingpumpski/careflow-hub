@@ -107,7 +107,16 @@ export function canonicalizeJson(value: unknown): string {
     if (ancestors.has(input)) throw new TypeError("Circular references are not valid RAP JSON values.");
     ancestors.add(input);
     try {
-      if (Array.isArray(input)) return `[${input.map(visit).join(",")}]`;
+      if (Array.isArray(input)) {
+        const values: string[] = [];
+        for (let index = 0; index < input.length; index += 1) {
+          if (!Object.prototype.hasOwnProperty.call(input, index)) {
+            throw new TypeError("Sparse arrays are not valid RAP JSON values.");
+          }
+          values.push(visit(input[index]));
+        }
+        return `[${values.join(",")}]`;
+      }
 
       const prototype = Object.getPrototypeOf(input);
       if (prototype !== Object.prototype && prototype !== null) {
@@ -186,7 +195,11 @@ export function transitionAssessment(
     throw new RapDomainError("STALE_VERSION", "This RAP assessment changed. Refresh before retrying.");
   }
 
-  if (!TRANSITIONS[assessment.status].includes(nextStatus)) {
+  if (
+    !Object.prototype.hasOwnProperty.call(TRANSITIONS, assessment.status) ||
+    !Object.prototype.hasOwnProperty.call(TRANSITIONS, nextStatus) ||
+    !TRANSITIONS[assessment.status].includes(nextStatus)
+  ) {
     throw new RapDomainError(
       "INVALID_TRANSITION",
       `Transition from ${assessment.status} to ${nextStatus} is not permitted.`,
