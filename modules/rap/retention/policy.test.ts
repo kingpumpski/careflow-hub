@@ -32,6 +32,22 @@ describe("RAP retention policy", () => {
     ]);
   });
 
+  it("never schedules retention notices before the record is created", () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    const short = buildRetentionSchedule(createdAt, 1, 7, 3);
+    expect(short.notifyAt.map((date) => date.toISOString())).toEqual([
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-02T00:00:00.000Z",
+    ]);
+    const immediate = buildRetentionSchedule(createdAt, 0, 7, 1);
+    expect(immediate.notifyAt.map((date) => date.toISOString())).toEqual([
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+    ]);
+  });
+
   it("rejects invalid dates and non-whole or negative schedule offsets", () => {
     expect(() => buildRetentionSchedule(new Date("invalid"), 30)).toThrow(/valid date/i);
     expect(() => buildRetentionSchedule(new Date("2026-01-01T00:00:00.000Z"), -1)).toThrow(/retentionDays/i);
