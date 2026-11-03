@@ -230,10 +230,19 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
 }
 
 export async function syncPendingOperations(): Promise<{ synced: number; pending: number; failed: number; blocked: number }> {
+  const summary = await getSyncQueueSummary();
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    const summary = await getSyncQueueSummary();
     return { synced: 0, pending: summary.pending + summary.failed, failed: summary.failed, blocked: summary.blocked };
   }
+
+  // Never attempt to replay or hydrate Supabase data before a real authenticated
+  // session exists. During app startup the offline user can briefly coexist with
+  // a reachable network, which previously caused 403/400 REST noise and retries.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) {
+    return { synced: 0, pending: summary.pending + summary.failed, failed: summary.failed, blocked: summary.blocked };
+  }
+
   const operations = await listSyncOperations();
   let synced = 0;
   let failed = 0;
@@ -254,8 +263,8 @@ export async function syncPendingOperations(): Promise<{ synced: number; pending
     }
   }
   try { await pullSupabaseDataToOffline(); } catch { /* best-effort hydration; durable mutations remain queued */ }
-  const summary = await getSyncQueueSummary();
-  return { synced, pending: summary.pending, failed, blocked: summary.blocked };
+  const finalSummary = await getSyncQueueSummary();
+  return { synced, pending: finalSummary.pending, failed, blocked: finalSummary.blocked };
 }
 
 export async function getPendingSyncCount(): Promise<number> {

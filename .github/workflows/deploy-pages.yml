@@ -48,6 +48,9 @@ jobs:
       - name: SPA fallback
         run: cp dist/index.html dist/404.html
 
+      - name: Verify SPA fallback
+        run: npm run verify:pages
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

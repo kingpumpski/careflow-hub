@@ -45,7 +45,10 @@
 - [x] GitHub Pages build includes the SPA `404.html` fallback.
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
 - [ ] Production URL has been independently browser-smoke-tested after the latest release candidate.
-- [x] Supabase production project is healthy and required outstanding/WHT migrations are applied.
+- [ ] Supabase production project is healthy and the outstanding/WHT/document-ingest migrations are applied.
+- [ ] Supabase production deployment is unblocked by the required GitHub Actions repository secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`).
+
+> **Deployment boundary:** repository implementation and CI validation continue while production Supabase deployment is intentionally deferred. The application must not claim that pending migrations or Edge Functions are live until the controlled deployment workflow succeeds.
 
 ## Operational smoke test
 
@@ -70,4 +73,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-PR #21 (`release: consolidate enterprise claims hardening`) remains open until the production smoke test and first legitimate administrator bootstrap are completed. The latest development head is validated by CI, CareFlow Quality Gate, and Dependency Security Audit.
+PR #21 (`release: consolidate enterprise claims hardening`) remains open until the production smoke test and first legitimate administrator bootstrap are completed. The latest development head is validated by CI, CareFlow Quality Gate, and Dependency Security Audit; production Supabase deployment remains a separate blocked gate until its required repository secrets are configured.

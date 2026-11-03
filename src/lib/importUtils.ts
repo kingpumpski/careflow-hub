@@ -7,11 +7,17 @@ export interface ImportColumn {
   label: string;
   required?: boolean;
   type?: ImportColumnType;
+  /** Accepted header aliases for files prepared outside our template. */
+  aliases?: string[];
   /** Accepted values for lookup columns: user supplies the label, we store the value. */
   options?: { label: string; value: string }[];
   /** Example value shown in the downloadable template. */
   example?: string | number;
-  /** Extra guidance shown in the template guide sheet. */
+  /** Inclusive numeric lower bound for number/integer columns. */
+  min?: number;
+  /** Inclusive numeric upper bound for number/integer columns. */
+  max?: number;
+  /** Extra guidance shown in the template guide. */
   hint?: string;
 }
 
@@ -21,8 +27,8 @@ export interface ParsedRow {
   errors: string[];
 }
 
-const normalize = (s: any) => String(s ?? "").trim().toLowerCase().replace(/[\s_\-/]+/g, "");
-
+/** Normalizes template and human-entered headers, including required `*` markers and BOMs. */
+const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_\-/]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function toNumber(raw: any): number | null {
@@ -37,7 +43,6 @@ function toDateString(raw: any): string | null {
   const str = String(raw).trim();
   if (!str) return null;
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-  // Excel serial date
   if (/^\d{5}$/.test(str)) {
     const d = new Date(Date.UTC(1899, 11, 30) as any);
     d.setUTCDate(d.getUTCDate() + Number(str));
@@ -58,7 +63,7 @@ function coerceMonth(raw: any): number | null {
   const named = monthNames.findIndex((m) => m.startsWith(str) && str.length >= 3);
   if (named !== -1) return named + 1;
   const n = toNumber(raw);
-  return n && n >= 1 && n <= 12 ? Math.round(n) : null;
+  return n !== null && Number.isInteger(n) ? n : null;
 }
 
 /** Reads a CSV or Excel file into an array of raw header-keyed objects. */
@@ -76,19 +81,17 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
   return raw.map((source, i) => {
     const headerMap: Record<string, any> = {};
     Object.entries(source).forEach(([k, v]) => { headerMap[normalize(k)] = v; });
-
     const values: Record<string, any> = {};
     const errors: string[] = [];
 
     columns.forEach((col) => {
-      const candidates = [col.key, col.label, col.label.replace(/\*/g, "")];
+      const candidates = [col.key, col.label, ...(col.aliases || []), col.label.replace(/\*/g, ""), `${col.label.replace(/\*/g, "")}*`];
       let rawValue: any = "";
       for (const c of candidates) {
         const hit = headerMap[normalize(c)];
         if (hit !== undefined && String(hit).trim() !== "") { rawValue = hit; break; }
       }
       const isEmpty = rawValue === undefined || String(rawValue).trim() === "";
-
       if (isEmpty) {
         if (col.required) errors.push(`${col.label} is required`);
         return;
@@ -98,13 +101,17 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
         case "number": {
           const n = toNumber(rawValue);
           if (n === null) errors.push(`${col.label} must be a number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
           else values[col.key] = n;
           break;
         }
         case "integer": {
           const n = /month/i.test(col.key) ? coerceMonth(rawValue) : toNumber(rawValue);
-          if (n === null) errors.push(`${col.label} is not valid`);
-          else values[col.key] = Math.round(n);
+          if (n === null || !Number.isInteger(n)) errors.push(`${col.label} must be a whole number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
+          else values[col.key] = n;
           break;
         }
         case "date": {
@@ -136,19 +143,10 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
 /** Builds a downloadable template (Excel with guide sheet, or plain CSV). */
 export function buildTemplate(columns: ImportColumn[], fileName: string, format: "csv" | "excel") {
   const headers = columns.map((c) => (c.required ? `${c.label}*` : c.label));
-  const sample = columns.map((c) => {
-    if (c.example !== undefined) return c.example;
-    if (c.type === "lookup") return c.options?.[0]?.label ?? "";
-    if (c.type === "date") return new Date().toISOString().split("T")[0];
-    if (c.type === "number") return 0;
-    if (c.type === "integer") return 1;
-    if (c.type === "boolean") return "Yes";
-    return "";
-  });
 
   if (format === "csv") {
     const esc = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [headers.map(esc).join(","), sample.map(esc).join(",")].join("\n") + "\n";
+    const csv = `${headers.map(esc).join(",")}\n`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
@@ -159,7 +157,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
   }
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
   ws["!cols"] = headers.map((h) => ({ wch: Math.max(16, h.length + 4) }));
   XLSX.utils.book_append_sheet(wb, ws, "Data");
 
@@ -178,7 +176,9 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.hint || "",
     ]),
     [],
-    ["Keep the header row exactly as provided. Delete the sample row before importing."],
+    ["Data sheet: Data — keep the header row and enter your records below it."],
+    ["Guide sheet: Guide — contains field definitions and is ignored automatically during import."],
+    ["This template intentionally contains headers only; there are no sample records to delete."],
   ];
   const gws = XLSX.utils.aoa_to_sheet(guide);
   gws["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 52 }, { wch: 48 }];

@@ -16,7 +16,10 @@ if (typeof window !== "undefined") {
   const restoredRoute = params.get("cf_route");
   if (restoredRoute) {
     const cleanRoute = restoredRoute.startsWith("/") ? restoredRoute : `/${restoredRoute}`;
-    window.history.replaceState(null, "", `${cleanRoute}${window.location.hash}`);
+    const restoredQuery = new URLSearchParams(window.location.search);
+    restoredQuery.delete("cf_route");
+    const queryString = restoredQuery.toString();
+    window.history.replaceState(null, "", `${cleanRoute}${queryString ? `?${queryString}` : ""}${window.location.hash}`);
   }
 
   // Older shared Codespaces links sometimes retain the GitHub Pages project

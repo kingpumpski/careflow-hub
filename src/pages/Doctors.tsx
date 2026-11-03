@@ -13,17 +13,35 @@ import { useMasterSearch } from "@/hooks/useMasterSearch";
 import { usePermissions } from "@/modules/security/usePermissions";
 
 export default function Doctors() {
-  const { data: doctors, isLoading } = useSupabaseQuery("doctors");
-  const insertMutation = useSupabaseInsert("doctors"); const updateMutation = useSupabaseUpdate("doctors"); const deleteMutation = useSupabaseDelete("doctors"); const bulkInsert = useSupabaseBulkInsert("doctors");
-  const { can } = usePermissions(); const canWriteMasterData = can("masterdata.write");
-  const [dialogOpen, setDialogOpen] = useState(false); const [importOpen, setImportOpen] = useState(false); const [editingDoctor, setEditingDoctor] = useState<any>(null); const [search, setSearch] = useState("");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadPreauth = can("preauth.read");
+  const canWriteMasterData = can("masterdata.write");
+  const { data: doctors, isLoading } = useSupabaseQuery("doctors", { enabled: canReadPreauth && !permissionsLoading });
+  const insertMutation = useSupabaseInsert("doctors");
+  const updateMutation = useSupabaseUpdate("doctors");
+  const deleteMutation = useSupabaseDelete("doctors");
+  const bulkInsert = useSupabaseBulkInsert("doctors");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<any>(null);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({ doctor_name: "", specialty: "", hospital: "", contact: "" });
   const denyWrite = () => toast({ title: "Permission denied", description: "Master-data write permission is required for this action.", variant: "destructive" });
   const openNew = () => { if (!canWriteMasterData) return denyWrite(); setEditingDoctor(null); setForm({ doctor_name: "", specialty: "", hospital: "", contact: "" }); setDialogOpen(true); };
   const openEdit = (d: any) => { if (!canWriteMasterData) return denyWrite(); setEditingDoctor(d); setForm({ doctor_name: d.doctor_name, specialty: d.specialty || "", hospital: d.hospital || "", contact: d.contact || "" }); setDialogOpen(true); };
   const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!canWriteMasterData) return denyWrite(); try { if (editingDoctor) { await updateMutation.mutateAsync({ id: editingDoctor.id, ...form }); toast({ title: "Doctor updated" }); } else { await insertMutation.mutateAsync(form); toast({ title: "Doctor added" }); } setDialogOpen(false); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } };
   const handleDelete = async (id: string) => { if (!canWriteMasterData) return denyWrite(); if (!confirm("Delete this doctor?")) return; try { await deleteMutation.mutateAsync(id); toast({ title: "Doctor deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } };
-  const searchable = useMasterSearch("doctors", ["doctor_name", "specialty"], search, doctors as any[]); const filtered = (searchable || []).filter((d: any) => d.doctor_name?.toLowerCase().includes(search.toLowerCase()) || d.specialty?.toLowerCase().includes(search.toLowerCase()));
+  const searchable = useMasterSearch("doctors", ["doctor_name", "specialty"], search, doctors as any[]);
+  const filtered = (searchable || []).filter((d: any) => d.doctor_name?.toLowerCase().includes(search.toLowerCase()) || d.specialty?.toLowerCase().includes(search.toLowerCase()));
+
+  if (permissionsLoading) {
+    return <div className="space-y-6"><div className="page-header"><div><h1 className="page-title">Doctors</h1><p className="page-description">Checking access…</p></div></div><div className="stat-card"><Skeleton className="h-12 w-full" /></div></div>;
+  }
+
+  if (!canReadPreauth) {
+    return <div className="space-y-6"><div className="page-header"><div><h1 className="page-title">Doctors</h1><p className="page-description">Manage registered doctors and their specialties</p></div></div><div className="stat-card py-10 text-center"><p className="font-medium">Restricted access</p><p className="text-sm text-muted-foreground mt-1">You do not have permission to view doctor records.</p></div></div>;
+  }
+
   return <div className="space-y-6">
     <div className="page-header flex items-start justify-between"><div><h1 className="page-title">Doctors</h1><p className="page-description">Manage registered doctors and their specialties</p></div>{canWriteMasterData && <div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button><Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Doctor</Button></div>}</div>
     <div className="stat-card"><div className="flex items-center gap-3 mb-4"><div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search doctors..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>

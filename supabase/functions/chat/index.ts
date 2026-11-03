@@ -3,6 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((origin) => origin.trim()).filter(Boolean);
+const READ_PERMISSIONS = ["claims.read", "payments.read", "preauth.read", "reports.read", "analytics.read", "ledger.read"];
+type ReadPermission = (typeof READ_PERMISSIONS)[number];
+
+type AuthorizedContext = {
+  supabase: ReturnType<typeof createClient>;
+  permissions: Set<ReadPermission>;
+};
 
 function isAllowedOrigin(origin: string | null) {
   if (!origin) return true;
@@ -44,7 +51,7 @@ function validateMessages(value: unknown): Array<{ role: "user" | "assistant"; c
   return messages;
 }
 
-async function getSystemContext(req: Request) {
+async function getAuthorizedClient(req: Request): Promise<AuthorizedContext> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const authorization = req.headers.get("Authorization");
@@ -58,14 +65,46 @@ async function getSystemContext(req: Request) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("AUTH_REQUIRED");
 
-  // AI context is limited to operational/aggregate fields; patient/clinical/document payloads are excluded.
+  // Resolve the complete read scope once. The context builder then queries only datasets
+  // that the authenticated user is actually authorized to use.
+  const permissionResults = await Promise.all(READ_PERMISSIONS.map(async (permission) => {
+    const { data, error } = await supabase.rpc("current_user_has_permission", { p_permission_key: permission });
+    return { permission, allowed: !error && data === true };
+  }));
+  const permissions = new Set(permissionResults.filter((result) => result.allowed).map((result) => result.permission));
+  if (permissions.size === 0) throw new Error("FORBIDDEN");
+
+  return { supabase, permissions };
+}
+
+async function getSystemContext({ supabase, permissions }: AuthorizedContext) {
+  // AI context is limited to operational/aggregate fields. Patient/clinical/document payloads
+  // are excluded, and unrelated datasets are not queried when the caller lacks their scope.
+  const canClaims = permissions.has("claims.read");
+  const canPayments = permissions.has("payments.read");
+  const canPreauth = permissions.has("preauth.read");
+  const canReports = permissions.has("reports.read") || permissions.has("analytics.read");
+  const canLedger = permissions.has("ledger.read");
+
   const [claimsRes, paymentsRes, preauthRes, insurersRes, taxRes, ledgerRes] = await Promise.all([
-    supabase.from("claims").select("insurance_company_id, claim_amount, status, claim_year, claim_month").order("claim_year", { ascending: false }).order("claim_month", { ascending: false }).limit(200),
-    supabase.from("payments").select("insurance_company_id, amount_paid, payment_date").order("payment_date", { ascending: false }).limit(200),
-    supabase.from("pre_authorizations").select("id").limit(50),
-    supabase.from("insurance_companies").select("id, company_name"),
-    supabase.from("withholding_tax").select("insurance_company_id, tax_amount").limit(100),
-    supabase.from("ledger_entries").select("id").order("created_at", { ascending: false }).limit(50),
+    canClaims || canReports
+      ? supabase.from("claims").select("insurance_company_id, claim_amount, status, claim_year, claim_month").order("claim_year", { ascending: false }).order("claim_month", { ascending: false }).limit(200)
+      : Promise.resolve({ data: [], error: null }),
+    canPayments || canReports
+      ? supabase.from("payments").select("insurance_company_id, amount_paid, payment_date").order("payment_date", { ascending: false }).limit(200)
+      : Promise.resolve({ data: [], error: null }),
+    canPreauth || canReports
+      ? supabase.from("pre_authorizations").select("id").limit(50)
+      : Promise.resolve({ data: [], error: null }),
+    canClaims || canPayments || canReports
+      ? supabase.from("insurance_companies").select("id, company_name")
+      : Promise.resolve({ data: [], error: null }),
+    canPayments || canReports
+      ? supabase.from("withholding_tax").select("insurance_company_id, tax_amount").limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    canLedger || canReports
+      ? supabase.from("ledger_entries").select("id").order("created_at", { ascending: false }).limit(50)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   const firstError = [claimsRes.error, paymentsRes.error, preauthRes.error, insurersRes.error, taxRes.error, ledgerRes.error].find(Boolean);
   if (firstError) throw new Error("SYSTEM_DATA_UNAVAILABLE");
@@ -117,6 +156,11 @@ async function getSystemContext(req: Request) {
 
   return `
 ## LIVE SYSTEM DATA (authenticated user's permitted scope)
+### Access Scope
+- Claims data: ${canClaims || canReports ? "available" : "not requested"}
+- Payments data: ${canPayments || canReports ? "available" : "not requested"}
+- Pre-authorization data: ${canPreauth || canReports ? "available" : "not requested"}
+- Ledger data: ${canLedger || canReports ? "available" : "not requested"}
 ### Financial Summary
 - Total Submitted Claims: GH¢ ${totalSubmitted.toLocaleString()}
 - Total Rejected: GH¢ ${totalRejected.toLocaleString()}
@@ -163,7 +207,8 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) return jsonResponse(req, { error: "AI service unavailable" }, 503);
 
-    const systemContext = await getSystemContext(req);
+    const authorized = await getAuthorizedClient(req);
+    const systemContext = await getSystemContext(authorized);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -194,6 +239,7 @@ Keep answers clear, professional and data-driven. Use GH¢ as currency. Do not e
     return new Response(response.body, { headers: { ...headers, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } });
   } catch (error) {
     if (error instanceof Error && error.message === "AUTH_REQUIRED") return jsonResponse(req, { error: "Authentication required" }, 401);
+    if (error instanceof Error && error.message === "FORBIDDEN") return jsonResponse(req, { error: "Insufficient permission" }, 403);
     if (error instanceof Error && ["INVALID_MESSAGE_PAYLOAD", "INVALID_MESSAGE_ROLE", "INVALID_MESSAGE_CONTENT", "MESSAGE_PAYLOAD_TOO_LARGE"].includes(error.message)) return jsonResponse(req, { error: "Invalid AI message payload" }, 400);
     console.error("chat error:", error);
     return jsonResponse(req, { error: "Unable to process AI request" }, 500);

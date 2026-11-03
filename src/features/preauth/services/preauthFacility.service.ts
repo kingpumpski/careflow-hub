@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { isMissingSchemaError, markFacilityInfrastructureUnavailable } from "@/lib/schemaFallback";
 
 export interface PreAuthFacility {
   id: string;
@@ -24,7 +25,10 @@ export async function listMyPreAuthFacilities(): Promise<FacilityMembership[]> {
   const { data, error } = await ((supabase as any).from("facility_memberships"))
     .select("id,facility_id,user_id,role,status,facility:facilities(id,code,name,country_code,timezone,default_currency,date_format,active)")
     .eq("status", "active");
-  if (error) throw error;
+  if (error) {
+    if (isMissingSchemaError(error)) { markFacilityInfrastructureUnavailable(); return []; }
+    throw error;
+  }
   return (data ?? []) as FacilityMembership[];
 }
 
@@ -34,7 +38,15 @@ export async function listAllActivePreAuthFacilities(): Promise<PreAuthFacility[
     .select("id,code,name,country_code,timezone,default_currency,date_format,active")
     .eq("active", true)
     .order("name", { ascending: true });
-  if (error) throw error;
+  if (error) {
+    // Facility scoping is not provisioned in this environment; administrators
+    // keep global access rather than being locked out of the studio.
+    if (isMissingSchemaError(error) || (error as { code?: string }).code === "42501" || (error as { message?: string }).message?.includes("infinite recursion")) {
+      markFacilityInfrastructureUnavailable();
+      return [];
+    }
+    throw error;
+  }
   return (data ?? []) as PreAuthFacility[];
 }
 

@@ -11,6 +11,7 @@ import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete, useSupabaseBulkInsert } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
 import { useMasterSearch } from "@/hooks/useMasterSearch";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const importColumns = [
   { key: "company_name", label: "Company Name", required: true },
@@ -21,7 +22,11 @@ const importColumns = [
 ];
 
 export default function InsuranceCompanies() {
-  const { data: insurers, isLoading } = useSupabaseQuery("insurance_companies");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canWriteMasterData = can("masterdata.write");
+  const { data: insurers, isLoading } = useSupabaseQuery("insurance_companies", {
+    enabled: !permissionsLoading && canWriteMasterData,
+  });
   const insertMutation = useSupabaseInsert("insurance_companies");
   const updateMutation = useSupabaseUpdate("insurance_companies");
   const deleteMutation = useSupabaseDelete("insurance_companies");
@@ -34,14 +39,25 @@ export default function InsuranceCompanies() {
   const [form, setForm] = useState({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" });
   const searchable = useMasterSearch("insurance_companies", ["company_name", "contact_person", "email"], search, insurers as any[]);
 
-  const openNew = () => { setEditing(null); setForm({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" }); setDialogOpen(true); };
-  const openEdit = (i: any) => { setEditing(i); setForm({ company_name: i.company_name, email: i.email || "", phone: i.phone || "", address: i.address || "", contact_person: i.contact_person || "", color: i.color || "#3b82f6", additional_emails: Array.isArray(i.additional_emails) ? i.additional_emails.join(", ") : "" }); setDialogOpen(true); };
+  const denyWrite = () => toast({ title: "Permission denied", description: "Master-data write permission is required for this action.", variant: "destructive" });
+  const openNew = () => {
+    if (!canWriteMasterData) return denyWrite();
+    setEditing(null);
+    setForm({ company_name: "", email: "", phone: "", address: "", contact_person: "", color: "#3b82f6", additional_emails: "" });
+    setDialogOpen(true);
+  };
+  const openEdit = (i: any) => {
+    if (!canWriteMasterData) return denyWrite();
+    setEditing(i);
+    setForm({ company_name: i.company_name, email: i.email || "", phone: i.phone || "", address: i.address || "", contact_person: i.contact_person || "", color: i.color || "#3b82f6", additional_emails: Array.isArray(i.additional_emails) ? i.additional_emails.join(", ") : "" });
+    setDialogOpen(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canWriteMasterData) return denyWrite();
     try {
-      const additional_emails = form.additional_emails
-        .split(",").map(s => s.trim()).filter(Boolean);
+      const additional_emails = form.additional_emails.split(",").map(s => s.trim()).filter(Boolean);
       const payload = { ...form, additional_emails };
       if (editing) {
         await updateMutation.mutateAsync({ id: editing.id, ...payload });
@@ -57,6 +73,7 @@ export default function InsuranceCompanies() {
   };
 
   const handleToggleActive = async (ins: any) => {
+    if (!canWriteMasterData) return denyWrite();
     try {
       await updateMutation.mutateAsync({ id: ins.id, is_active: !ins.is_active });
       toast({ title: ins.is_active ? "Company deactivated" : "Company reactivated" });
@@ -66,6 +83,7 @@ export default function InsuranceCompanies() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canWriteMasterData) return denyWrite();
     if (!confirm("Delete this insurance company?")) return;
     try { await deleteMutation.mutateAsync(id); toast({ title: "Insurance company deleted" }); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
@@ -76,27 +94,50 @@ export default function InsuranceCompanies() {
     return matchSearch && matchActive;
   });
 
+  if (permissionsLoading) {
+    return <div className="space-y-6 min-w-0"><Skeleton className="h-8 w-64" /><div className="stat-card"><Skeleton className="h-48 w-full" /></div></div>;
+  }
+
+  if (!canWriteMasterData) {
+    return (
+      <div className="space-y-6 min-w-0">
+        <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="page-title">Insurance Companies</h1>
+            <p className="page-description">Manage insurance company partners</p>
+          </div>
+          <Badge variant="secondary">RESTRICTED</Badge>
+        </div>
+        <div className="stat-card flex min-h-40 flex-col items-center justify-center text-center p-6">
+          <Shield className="mb-3 h-8 w-8 text-muted-foreground" />
+          <h2 className="font-semibold">Access restricted</h2>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">Master-data permission is required to view insurance company records.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="page-header flex items-start justify-between">
-        <div>
+    <div className="space-y-6 min-w-0">
+      <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <h1 className="page-title">Insurance Companies</h1>
           <p className="page-description">Manage insurance company partners</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <DownloadTemplate columns={importColumns} fileName="insurance-companies-template" />
           <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="w-4 h-4" />Import</Button>
           <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" />Add Company</Button>
         </div>
       </div>
 
-      <div className="stat-card">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="stat-card min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search companies..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setShowInactive(!showInactive)} className="text-xs gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setShowInactive(!showInactive)} className="text-xs gap-1 self-start sm:self-auto">
             {showInactive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
             {showInactive ? "Showing All" : "Active Only"}
           </Button>
@@ -107,38 +148,40 @@ export default function InsuranceCompanies() {
         ) : filtered.length === 0 ? (
           <p className="text-center text-muted-foreground py-8">No insurance companies found.</p>
         ) : (
-          <table className="data-table">
-            <thead><tr><th>Company</th><th>Status</th><th>Contact Person</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead>
-            <tbody>
-              {filtered.map((i: any) => (
-                <tr key={i.id} className={`hover:bg-muted/50 transition-colors ${i.is_active === false ? "opacity-50" : ""}`}>
-                  <td className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: i.color || "#3b82f6" }} />
-                      {i.company_name}
-                    </div>
-                  </td>
-                  <td>
-                    <Badge variant="outline" className={i.is_active === false ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-success/10 text-success border-success/20"}>
-                      {i.is_active === false ? "Inactive" : "Active"}
-                    </Badge>
-                  </td>
-                  <td>{i.contact_person || "—"}</td>
-                  <td className="text-muted-foreground">{i.email || "—"}</td>
-                  <td className="text-muted-foreground">{i.phone || "—"}</td>
-                  <td>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => handleToggleActive(i)} className="p-1.5 rounded hover:bg-muted" title={i.is_active === false ? "Reactivate" : "Deactivate"}>
-                        {i.is_active === false ? <ToggleLeft className="w-4 h-4 text-muted-foreground" /> : <ToggleRight className="w-4 h-4 text-success" />}
-                      </button>
-                      <button onClick={() => openEdit(i)} className="p-1.5 rounded hover:bg-muted"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
-                      <button onClick={() => handleDelete(i.id)} className="p-1.5 rounded hover:bg-destructive/10"><Trash2 className="w-4 h-4 text-destructive" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[760px]">
+              <thead><tr><th>Company</th><th>Status</th><th>Contact Person</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead>
+              <tbody>
+                {filtered.map((i: any) => (
+                  <tr key={i.id} className={`hover:bg-muted/50 transition-colors ${i.is_active === false ? "opacity-50" : ""}`}>
+                    <td className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: i.color || "#3b82f6" }} />
+                        {i.company_name}
+                      </div>
+                    </td>
+                    <td>
+                      <Badge variant="outline" className={i.is_active === false ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-success/10 text-success border-success/20"}>
+                        {i.is_active === false ? "Inactive" : "Active"}
+                      </Badge>
+                    </td>
+                    <td>{i.contact_person || "—"}</td>
+                    <td className="text-muted-foreground">{i.email || "—"}</td>
+                    <td className="text-muted-foreground">{i.phone || "—"}</td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleToggleActive(i)} className="p-1.5 rounded hover:bg-muted min-h-9 min-w-9" title={i.is_active === false ? "Reactivate" : "Deactivate"}>
+                          {i.is_active === false ? <ToggleLeft className="w-4 h-4 text-muted-foreground" /> : <ToggleRight className="w-4 h-4 text-success" />}
+                        </button>
+                        <button onClick={() => openEdit(i)} className="p-1.5 rounded hover:bg-muted min-h-9 min-w-9"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                        <button onClick={() => handleDelete(i.id)} className="p-1.5 rounded hover:bg-destructive/10 min-h-9 min-w-9"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -172,7 +215,7 @@ export default function InsuranceCompanies() {
         onOpenChange={setImportOpen}
         title="Import Insurance Companies"
         columns={importColumns}
-        onImport={async (rows) => { await bulkInsert.mutateAsync(rows); }}
+        onImport={async (rows) => { if (!canWriteMasterData) return denyWrite(); await bulkInsert.mutateAsync(rows); }}
       />
     </div>
   );

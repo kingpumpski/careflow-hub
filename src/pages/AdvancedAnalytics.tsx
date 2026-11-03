@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { BarChart3, RotateCcw } from "lucide-react";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { usePermissions } from "@/modules/security/usePermissions";
 import ChartCard from "@/components/dashboard/ChartCard";
 import {
   ClaimsExposureCandlestick,
@@ -31,9 +32,13 @@ function quantiles(values: number[]) {
 }
 
 export default function AdvancedAnalytics() {
-  const { data: claims } = useSupabaseQuery("claims");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: outstanding } = useSupabaseQuery("claims_outstanding_periods");
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadAnalytics = can("analytics.read");
+  const analyticsEnabled = !permissionsLoading && canReadAnalytics;
+
+  const { data: claims } = useSupabaseQuery("claims", { enabled: analyticsEnabled });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: analyticsEnabled });
+  const { data: outstanding } = useSupabaseQuery("claims_outstanding_periods", { enabled: analyticsEnabled });
 
   const [insurerId, setInsurerId] = useState("all");
   const [status, setStatus] = useState("all");
@@ -145,6 +150,20 @@ export default function AdvancedAnalytics() {
   }), [filteredFinancial]);
   const activeCount = [insurerId !== "all", status !== "all", settlement !== "all", aging !== "all", Boolean(startPeriod), Boolean(endPeriod)].filter(Boolean).length;
   const reset = () => { setInsurerId("all"); setStatus("all"); setSettlement("all"); setAging("all"); setStartPeriod(""); setEndPeriod(""); };
+
+  if (permissionsLoading) {
+    return <div className="stat-card flex min-h-[240px] items-center justify-center text-muted-foreground">Checking analytics access…</div>;
+  }
+
+  if (!canReadAnalytics) {
+    return (
+      <div className="stat-card flex min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
+        <BarChart3 className="h-8 w-8 text-muted-foreground" />
+        <h1 className="text-lg font-semibold">Advanced analytics access restricted</h1>
+        <p className="max-w-md text-sm text-muted-foreground">Your account does not have the analytics.read permission. No advanced analytics data is requested until access is granted.</p>
+      </div>
+    );
+  }
 
   return <div className="space-y-6">
     <div className="page-header"><div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6" />Advanced Claims Analytics</h1><p className="page-description">Executive BI workspace with period-authoritative settlement exposure, concentration, process control and insurer benchmarking.</p></div></div>

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "./preauthFacility.service";
+import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/schemaFallback";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { createOfflinePreAuthDraft, updateOfflinePreAuthDraft } from "@/modules/offline/preauth-offline-repository";
 import type { PreAuthReviewInput } from "@/modules/authorization/preauth-review";
@@ -39,20 +40,26 @@ export async function searchClientSuggestions(query: string, limit = 12): Promis
   let request = ((supabase as any).from("preauth_client_suggestions")).select("id,client_name,date_of_birth,phone,email,address,identifier,membership_number,use_count,last_used_at").eq("facility_id", facilityId).order("last_used_at", { ascending: false }).limit(limit);
   if (q) { const pattern = `%${escapeLike(q)}%`; request = request.or(`normalized_name.ilike.${pattern},membership_number.ilike.${pattern},phone.ilike.${pattern},identifier.ilike.${pattern}`); }
   const { data, error } = await request;
-  if (error) throw error;
+  if (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
   return (data || []) as ClientSuggestion[];
 }
 
 function withFacility(payload: Record<string, unknown>): Record<string, unknown> {
   const activeFacilityId = getStoredFacilityId();
   const requestedFacilityId = payload.facility_id ? String(payload.facility_id) : "";
-  if (!activeFacilityId && !requestedFacilityId) throw new Error("Select a facility before creating a pre-authorization.");
+  if (!activeFacilityId && !requestedFacilityId) {
+    if (!isFacilityInfrastructureAvailable()) return payload;
+    throw new Error("Select a facility before creating a pre-authorization.");
+  }
   if (activeFacilityId && requestedFacilityId && activeFacilityId !== requestedFacilityId) throw new Error("FACILITY_CONTEXT_MISMATCH");
   return { ...payload, facility_id: activeFacilityId || requestedFacilityId };
 }
 
 function toReviewInput(payload: Record<string, unknown>, items: StudioItem[]): PreAuthReviewInput {
-  return { patientId: String(payload.patient_id ?? ""), patientName: String(payload.patient_name ?? payload.client_name ?? "Patient"), membershipNumber: String(payload.membership_number ?? ""), insurerId: String(payload.insurance_company_id ?? ""), insurerName: String(payload.insurer_name ?? payload.client_company_name ?? ""), procedureId: String(payload.procedure_id ?? ""), procedureName: String(payload.procedure_name ?? "Procedure"), procedureDate: String(payload.procedure_date ?? ""), diagnosis: String(payload.diagnosis ?? ""), doctorId: payload.doctor_id ? String(payload.doctor_id) : undefined, doctorName: String(payload.doctor_name ?? ""), patientPhone: String(payload.patient_phone ?? ""), companyName: String(payload.client_company_name ?? ""), insurerEmail: String(payload.insurer_email ?? ""), providerEmail: String(payload.provider_email ?? ""), providerName: String(payload.provider_name ?? ""), providerAddress: String(payload.provider_address ?? ""), providerPhone: String(payload.provider_phone ?? ""), providerLogoUrl: payload.provider_logo_url ? String(payload.provider_logo_url) : undefined, issuedDate: String(payload.issued_date ?? new Date().toLocaleDateString("en-GB")), currency: String(payload.document_currency ?? "GH¢"), format: (payload.document_format === "international" ? "international" : "ghana"), items: items.map((item, index) => ({ id: `${payload.id ?? "draft"}-${index}`, category: item.description ? "procedure" : "other", description: item.description, quantity: item.quantity, unitPrice: item.unit_price })), };
+  return { patientId: String(payload.patient_id ?? ""), patientName: String(payload.patient_name ?? payload.client_name ?? "Client"), membershipNumber: String(payload.membership_number ?? payload.client_membership_number ?? ""), insurerId: String(payload.insurance_company_id ?? ""), insurerName: String(payload.insurer_name ?? payload.client_company_name ?? ""), procedureId: String(payload.procedure_id ?? ""), procedureName: String(payload.procedure_name ?? "Procedure"), procedureDate: String(payload.procedure_date ?? ""), diagnosis: String(payload.diagnosis ?? ""), doctorId: payload.doctor_id ? String(payload.doctor_id) : undefined, doctorName: String(payload.doctor_name ?? ""), patientPhone: String(payload.patient_phone ?? ""), companyName: String(payload.client_company_name ?? ""), insurerEmail: String(payload.insurer_email ?? ""), providerEmail: String(payload.provider_email ?? ""), providerName: String(payload.provider_name ?? ""), providerAddress: String(payload.provider_address ?? ""), providerPhone: String(payload.provider_phone ?? ""), providerLogoUrl: payload.provider_logo_url ? String(payload.provider_logo_url) : undefined, issuedDate: String(payload.issued_date ?? new Date().toLocaleDateString("en-GB")), currency: String(payload.document_currency ?? "GH¢"), format: (payload.document_format === "international" ? "international" : "ghana"), items: items.map((item, index) => ({ id: `${payload.id ?? "draft"}-${index}`, category: item.description ? "procedure" : "other", description: item.description, quantity: item.quantity, unitPrice: item.unit_price })), };
 }
 
 export async function getPreAuthorizationRevision(preauthId: string): Promise<string | null> {

@@ -17,14 +17,23 @@ describe("pre-authorization studio", () => {
     ])).toBe(250);
   });
 
-  it("builds a stable uniqueness signature", () => {
+  it("normalises uniqueness inputs so equivalent client data produces the same signature", () => {
     const a = buildDuplicateSignature({ patientId: "p1", membershipNumber: "abc-123", procedureId: "proc1", procedureDate: "2026-09-07", insurerId: "ins1" });
     const b = buildDuplicateSignature({ patientId: "p1", membershipNumber: " ABC-123 ", procedureId: "proc1", procedureDate: "2026-09-07", insurerId: "ins1" });
+    const c = buildDuplicateSignature({ patientId: "p1", membershipNumber: "ABC-123", procedureId: "proc1", procedureDate: "2026-09-08", insurerId: "ins1" });
     expect(a).toBe(b);
+    expect(a).not.toBe(c);
   });
 
-  it("generates a human request number from a UUID", () => {
+  it("keeps uniqueness scoped to the insurer", () => {
+    const insurerA = buildDuplicateSignature({ patientId: "p1", membershipNumber: "MEM-01", procedureId: "proc1", procedureDate: "2026-09-07", insurerId: "ins1" });
+    const insurerB = buildDuplicateSignature({ patientId: "p1", membershipNumber: "MEM-01", procedureId: "proc1", procedureDate: "2026-09-07", insurerId: "ins2" });
+    expect(insurerA).not.toBe(insurerB);
+  });
+
+  it("generates a deterministic human request number from a UUID", () => {
     expect(buildRequestNumber("12345678-abcd-efgh", new Date(2026, 0, 1))).toBe("PA-2026-12345678");
+    expect(buildRequestNumber("12345678-abcd-efgh", new Date(2026, 0, 1))).toBe(buildRequestNumber("12345678-abcd-efgh", new Date(2026, 0, 1)));
   });
 
   it("uses future wording for scheduled procedures", () => {

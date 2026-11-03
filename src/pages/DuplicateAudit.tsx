@@ -4,9 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 export default function DuplicateAudit() {
-  const { data: logs, isLoading } = useSupabaseQuery("audit_logs", { filters: { action: "duplicate_rejected" } });
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canReadAudit = can("audit.read");
+  const { data: logs, isLoading } = useSupabaseQuery("audit_logs", { filters: { action: "duplicate_rejected" }, enabled: canReadAudit && !permissionsLoading });
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -15,6 +18,18 @@ export default function DuplicateAudit() {
     if (!t) return rows;
     return rows.filter((r) => JSON.stringify(r.new_data || {}).toLowerCase().includes(t) || (r.table_name || "").toLowerCase().includes(t));
   }, [logs, search]);
+
+  if (!permissionsLoading && !canReadAudit) {
+    return (
+      <div className="space-y-6">
+        <div className="page-header">
+          <h1 className="page-title flex items-center gap-2"><ShieldAlert className="w-6 h-6 text-warning" />Duplicate Audit</h1>
+          <p className="page-description">You do not have permission to view audit records.</p>
+        </div>
+        <div className="stat-card text-sm text-muted-foreground">Audit access is restricted to authorized users.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

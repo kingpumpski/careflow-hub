@@ -69,18 +69,21 @@ export function totalItems(items: PreAuthStudioItem[]): number {
 }
 
 export function buildDuplicateSignature(input: {
-  patientId: string;
+  patientId?: string | null;
+  clientName?: string | null;
   membershipNumber: string;
   procedureId?: string | null;
+  procedureName?: string | null;
   procedureDate: string;
   insurerId?: string | null;
+  insurerName?: string | null;
 }): string {
   return [
-    input.patientId,
+    (input.patientId || input.clientName || "").trim().toLowerCase(),
     input.membershipNumber.trim().toUpperCase(),
-    input.procedureId || "",
+    input.procedureId || input.procedureName || "",
     normaliseDateOnly(input.procedureDate),
-    input.insurerId || "",
+    (input.insurerId || input.insurerName || "").trim().toLowerCase(),
   ].join("|");
 }
 

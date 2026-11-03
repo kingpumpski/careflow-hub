@@ -37,6 +37,7 @@ Deno.serve(async (req) => {
     if (roleError) return json(req, { error: "Unable to verify privileges" }, 500);
     const currentRole = (roles ?? []).find((role: { role?: string | null }) => VALID_ROLES.has(role.role ?? ""))?.role ?? null;
     if (currentRole !== "superuser" && currentRole !== "admin") return json(req, { error: "Forbidden" }, 403);
+    const isSuperuser = currentRole === "superuser";
     const audit = async (action: string, targetUserId?: string | null, metadata: Record<string, unknown> = {}) => {
       const { error } = await admin.from("security_audit_log").insert({
         actor_user_id: user.id,
@@ -63,8 +64,8 @@ Deno.serve(async (req) => {
       const [{ data: profiles, error: profilesError }, { data: roleRows, error: roleRowsError }, { data: overrides, error: overridesError }, { data: catalog, error: catalogError }] = await Promise.all([
         admin.from("profiles").select("id, full_name, email"),
         admin.from("user_roles").select("id, user_id, role"),
-        admin.from("user_permission_overrides").select("user_id, permission_key, granted"),
-        admin.from("app_permissions").select("key, label, category, description").order("category").order("label"),
+        admin.from("user_permission_overrides").select("user_id, permission_key, allowed"),
+        admin.from("app_permissions").select("permission_key, label, category, description").order("category").order("label"),
       ]);
       if (profilesError || roleRowsError || overridesError || catalogError) throw profilesError || roleRowsError || overridesError || catalogError;
       await audit("list_users");
@@ -77,6 +78,7 @@ Deno.serve(async (req) => {
       const password = body.password;
       const role = cleanText(body.role, 40);
       if (!/^\S+@\S+\.\S+$/.test(email) || !fullName || typeof password !== "string" || !VALID_ROLES.has(role)) return json(req, { error: "Valid name, email, password and role are required." }, 400);
+      if (!isSuperuser && role === "superuser") return json(req, { error: "Only a superuser can assign the superuser role." }, 403);
       if (password.length < 12 || password.length > 128) return json(req, { error: "Password must be between 12 and 128 characters." }, 400);
       const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } });
       if (error || !data.user) throw error ?? new Error("User creation failed");
@@ -105,17 +107,19 @@ Deno.serve(async (req) => {
       if (!isUuid(targetUserId)) return json(req, { error: "Valid target_user_id required" }, 400);
       const role = cleanText(body.role, 40);
       if (!VALID_ROLES.has(role)) return json(req, { error: "Invalid role" }, 400);
+      if (!isSuperuser && role === "superuser") return json(req, { error: "Only a superuser can assign the superuser role." }, 403);
       if (targetUserId === user.id && role !== currentRole) return json(req, { error: "You cannot change your own administrative role." }, 400);
       const rawOverrides = body.overrides;
       if (!Array.isArray(rawOverrides) || rawOverrides.length > MAX_PERMISSION_KEYS) return json(req, { error: "Invalid permission overrides" }, 400);
-      const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), granted: item.granted }));
+      const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), allowed: item.granted }));
       if (overrides.some((item) => !item.permission_key || item.permission_key.length > 100)) return json(req, { error: "Invalid permission key" }, 400);
       const { data: validPermissions, error: permissionError } = await admin.from("app_permissions").select("key");
       if (permissionError) throw permissionError;
       const validKeys = new Set((validPermissions ?? []).map((p: { key: string }) => p.key));
       if (overrides.some((item) => !validKeys.has(item.permission_key))) return json(req, { error: "Unknown permission" }, 400);
-      const { data: targetRole, error: targetRoleError } = await admin.from("user_roles").select("id").eq("user_id", targetUserId).maybeSingle();
+      const { data: targetRole, error: targetRoleError } = await admin.from("user_roles").select("id, role").eq("user_id", targetUserId).maybeSingle();
       if (targetRoleError) throw targetRoleError;
+      if (!isSuperuser && targetRole?.role === "superuser") return json(req, { error: "Only a superuser can modify a superuser account." }, 403);
       if (targetRole?.id) {
         const { error } = await admin.from("user_roles").update({ role }).eq("id", targetRole.id);
         if (error) throw error;

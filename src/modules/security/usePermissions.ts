@@ -6,6 +6,13 @@ import { hasPermission, permissionsFor, PERMISSION_CATALOG, ROLE_LABELS, type Ap
 
 const SYSTEM_ADMIN_ROLES = new Set<AppRole>(["superuser", "admin"]);
 const ALL_PERMISSIONS = new Set<Permission>(PERMISSION_CATALOG.map((permission) => permission.key));
+type PermissionRpcRow = { permission_key?: string };
+type PermissionRpcResult = { data: PermissionRpcRow[] | null; error: unknown };
+
+async function fetchMyPermissions(): Promise<PermissionRpcResult> {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (functionName: "get_my_permissions") => Promise<PermissionRpcResult>;
+  return rpc("get_my_permissions");
+}
 
 export function usePermissions() {
   const { userRole, roleLoading } = useAuth();
@@ -23,10 +30,10 @@ export function usePermissions() {
     }
     setPermissionLoading(true);
     void (async () => {
-      const { data, error } = await (supabase.rpc as any)("get_my_permissions");
+      const { data, error } = await fetchMyPermissions();
       if (!active) return;
       const effective = Array.isArray(data)
-        ? data.map((row: { permission_key?: string }) => row.permission_key).filter(Boolean) as Permission[]
+        ? data.map((row) => row.permission_key).filter((key): key is Permission => Boolean(key))
         : [];
       // A successful RPC is authoritative for ordinary users. System administrators
       // retain full control by role, independent of permission overrides or tenancy.
