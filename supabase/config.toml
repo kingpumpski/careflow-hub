@@ -12,3 +12,6 @@ verify_jwt = true
 
 [functions.document-transcribe]
 verify_jwt = true
+
+[functions.claim-diagnosis-analyze]
+verify_jwt = true

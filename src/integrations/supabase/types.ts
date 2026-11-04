@@ -173,6 +173,75 @@ export type Database = {
           },
         ]
       }
+      claim_diagnosis_drafts: {
+        Row: {
+          authorization_code: string | null
+          claim_number: string | null
+          clinical_notes: string | null
+          co_payment: number
+          comments: Json
+          created_at: string
+          created_by: string
+          date_of_service: string | null
+          diagnoses: Json
+          facility_id: string
+          id: string
+          insurance_company_id: string | null
+          patient_name: string | null
+          rejection_reason: string | null
+          response_message: string | null
+          service_items: Json
+          status: string
+          total_amount: number
+          updated_at: string
+          workflow_type: string
+        }
+        Insert: {
+          authorization_code?: string | null
+          claim_number?: string | null
+          clinical_notes?: string | null
+          co_payment?: number
+          comments?: Json
+          created_at?: string
+          created_by?: string
+          date_of_service?: string | null
+          diagnoses?: Json
+          facility_id: string
+          id?: string
+          insurance_company_id?: string | null
+          patient_name?: string | null
+          rejection_reason?: string | null
+          response_message?: string | null
+          service_items?: Json
+          status?: string
+          total_amount?: number
+          updated_at?: string
+          workflow_type: string
+        }
+        Update: {
+          authorization_code?: string | null
+          claim_number?: string | null
+          clinical_notes?: string | null
+          co_payment?: number
+          comments?: Json
+          created_at?: string
+          created_by?: string
+          date_of_service?: string | null
+          diagnoses?: Json
+          facility_id?: string
+          id?: string
+          insurance_company_id?: string | null
+          patient_name?: string | null
+          rejection_reason?: string | null
+          response_message?: string | null
+          service_items?: Json
+          status?: string
+          total_amount?: number
+          updated_at?: string
+          workflow_type?: string
+        }
+        Relationships: []
+      }
       client_companies: {
         Row: {
           company_name: string
@@ -969,6 +1038,18 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      current_user_has_permission: {
+        Args: { p_permission_key: string }
+        Returns: boolean
+      }
+      log_claim_diagnosis_event: {
+        Args: {
+          p_action: string
+          p_metadata?: Json
+          p_record_id: string
+        }
+        Returns: string
       }
     }
     Enums: {
