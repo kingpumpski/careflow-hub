@@ -13,8 +13,9 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
   { label: "Claims Intelligence", icon: Shield, children: [
     { label: "Monthly Claims Entry", path: "/claims", permission: "claims.read" },
-    { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
-    { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
+  { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
+  { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
+  { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
     { label: "Settlement Capture", path: "/claims/settlements", permission: "payments.read" },
     { label: "Settlement Tracking", path: "/payments", permission: "payments.read" },
     { label: "Outstanding", path: "/outstanding", permission: "payments.read" },

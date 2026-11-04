@@ -19,6 +19,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const PreAuthorization = lazy(() => import("@/pages/PreAuthorization"));
 const PreAuthorizationStudioRoute = lazy(() => import("@/pages/PreAuthorizationStudioRoute"));
 const Claims = lazy(() => import("@/pages/Claims"));
+const ClaimDiagnosisAssistant = lazy(() => import("@/pages/ClaimDiagnosisAssistant"));
 const ClaimsSettlement = lazy(() => import("@/pages/ClaimsSettlement"));
 const Payments = lazy(() => import("@/pages/Payments"));
 const Outstanding = lazy(() => import("@/pages/Outstanding"));
@@ -87,6 +88,7 @@ function ProtectedRoutes() {
     <Route path="/pre-auth" element={<PermissionRoute permission="preauth.read"><PreAuthorization /></PermissionRoute>} />
     <Route path="/pre-auth/studio" element={<PermissionRoute permission="preauth.write"><PreAuthorizationStudioRoute /></PermissionRoute>} />
     <Route path="/claims" element={<PermissionRoute permission="claims.read"><Claims /></PermissionRoute>} />
+    <Route path="/claims/diagnosis-assistant" element={<PermissionRoute permission="claims.read"><ClaimDiagnosisAssistant /></PermissionRoute>} />
     <Route path="/claims/settlements" element={<PermissionRoute permission="payments.read"><ClaimsSettlement /></PermissionRoute>} />
     <Route path="/payments" element={<PermissionRoute permission="payments.read"><Payments /></PermissionRoute>} />
     <Route path="/outstanding" element={<PermissionRoute permission="payments.read"><Outstanding /></PermissionRoute>} />
