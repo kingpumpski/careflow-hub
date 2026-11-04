@@ -24,7 +24,15 @@ function parseValue(value: string): { type: "number" | "date" | "text"; value: n
   const numeric = text.replace(/GH¢|GHS|USD|₵|%/gi, "").replace(/,/g, "").replace(/\s+/g, "").trim();
   if (/^-?\d+(?:\.\d+)?$/.test(numeric)) return { type: "number", value: Number(numeric) };
 
-  if (/^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}(?:,?\s+\d{1,2}:\d{2})?/.test(text) || /^\d{4}-\d{2}-\d{2}/.test(text)) {
+  const monthYear = /^([a-z]+)\s+(\d{4})$/i.exec(text);
+  if (monthYear) {
+    const time = Date.parse(`1 ${monthYear[1]} ${monthYear[2]}`);
+    if (!Number.isNaN(time)) return { type: "date", value: time };
+  }
+
+  if (/^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}(?:,?\s+\d{1,2}:\d{2})?/.test(text)
+    || /^\d{4}-\d{2}-\d{2}/.test(text)
+    || /(?:\d{1,2}\s+[a-z]{3,}|[a-z]{3,}\s+\d{1,2}).*\d{4}/i.test(text)) {
     const time = Date.parse(text);
     if (!Number.isNaN(time)) return { type: "date", value: time };
   }
@@ -90,6 +98,8 @@ function setupTable(table: HTMLTableElement) {
   const headerCells = Array.from(table.tHead?.rows[0]?.cells || []) as HTMLTableCellElement[];
   if (!headerCells.length) return;
 
+  if (headerCells.some((header) => header.hasAttribute("data-cf-managed-sort"))) return;
+
   if (table.getAttribute(SORT_READY) !== "true") {
     headerCells.forEach((header, column) => {
       const label = normalize(header.textContent || "");
@@ -128,6 +138,13 @@ function setupTable(table: HTMLTableElement) {
     });
 
     table.setAttribute(SORT_READY, "true");
+
+    const defaultColumn = headerCells.findIndex((header) => header.getAttribute(SORTABLE) === "true");
+    if (defaultColumn >= 0) {
+      const label = normalize(headerCells[defaultColumn].textContent || "");
+      const direction: Direction = /\b(date|period|updated|created|month|year)\b/i.test(label) ? "desc" : "asc";
+      sortTable(table, { column: defaultColumn, direction });
+    }
   }
 
   const current = readSortState(table);

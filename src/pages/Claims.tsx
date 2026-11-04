@@ -67,7 +67,7 @@ export default function Claims() {
   }).filter((a: any) => a.claimCount > 0 || search === "");
   let filteredAggregated = aggregated.filter((a: any) => a.company_name?.toLowerCase().includes(search.toLowerCase()));
   if (filters.company) filteredAggregated = filteredAggregated.filter((a: any) => a.id === filters.company);
-  const { sorted: sortedAggregated, sort, handleSort } = useSort(filteredAggregated);
+  const { sorted: sortedAggregated, sort, handleSort } = useSort(filteredAggregated, "totalSubmitted");
   const grandTotalSubmitted = authoritativeRows.reduce((s: number, r: any) => s + Number(r.submitted_amount || 0), 0);
   const grandTotalPaid = authoritativeRows.reduce((s: number, r: any) => s + Number(r.paid_amount || 0), 0);
   const grandTotalTax = authoritativeRows.reduce((s: number, r: any) => s + Number(r.withholding_tax_amount || 0), 0);

@@ -41,7 +41,7 @@ export default function WithholdingTax() {
 
   let displayData = aggregated;
   if (filters.company) displayData = displayData.filter((a) => a.id === filters.company);
-  const { sorted, sort, handleSort } = useSort(displayData);
+  const { sorted, sort, handleSort } = useSort(displayData, "totalTax");
   const grandTotalTax = displayData.reduce((s, a) => s + a.totalTax, 0);
   const grandTotalClaims = displayData.reduce((s, a) => s + a.totalClaims, 0);
 

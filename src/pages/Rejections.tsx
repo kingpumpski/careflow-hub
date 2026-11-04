@@ -56,7 +56,7 @@ export default function Rejections() {
   let displayData = aggregated;
   if (filters.company) displayData = displayData.filter((a: any) => a.id === filters.company);
 
-  const { sorted, sort, handleSort } = useSort(displayData);
+  const { sorted, sort, handleSort } = useSort(displayData, "totalRejected");
   const grandTotalRejected = displayData.reduce((s: number, a: any) => s + a.totalRejected, 0);
   const grandTotalWhtReduction = displayData.reduce((s: number, a: any) => s + a.totalWhtReduction, 0);
 

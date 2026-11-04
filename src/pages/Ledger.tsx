@@ -55,7 +55,7 @@ export default function Ledger() {
   if (filters.status) filtered = filtered.filter((e) => e.entry_type === filters.status);
 
   // Keep every hook unconditional so permission loading/restricted renders never change hook order.
-  const { sorted, sort, handleSort } = useSort(filtered);
+  const { sorted, sort, handleSort } = useSort(filtered, "entry_date");
 
   const balances: Record<string, number> = {};
   ledgerEntries.forEach((e) => {

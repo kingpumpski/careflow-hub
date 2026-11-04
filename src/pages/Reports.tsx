@@ -115,7 +115,7 @@ export default function Reports() {
     return buckets;
   }, [claims, insurers, payments, withholdingTax]);
 
-  const { sorted: sortedReport, sort, handleSort } = useSort(reportData);
+  const { sorted: sortedReport, sort, handleSort } = useSort(reportData, "outstanding");
 
   const grandSubmitted = reportData.reduce((s, r) => s + r.submitted, 0);
   const grandRejected = reportData.reduce((s, r) => s + r.rejected, 0);

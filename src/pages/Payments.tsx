@@ -50,7 +50,7 @@ export default function Payments() {
 
   let filtered = aggregated.filter((a: any) => a.company_name?.toLowerCase().includes(search.toLowerCase()));
   if (filters.company) filtered = filtered.filter((a: any) => a.id === filters.company);
-  const { sorted, sort, handleSort } = useSort(filtered);
+  const { sorted, sort, handleSort } = useSort(filtered, "totalPaid");
   const grandPaid = aggregated.reduce((s: number, a: any) => s + a.totalPaid, 0);
   const grandNet = aggregated.reduce((s: number, a: any) => s + a.netClaim, 0);
   const grandTax = aggregated.reduce((s: number, a: any) => s + a.totalTax, 0);

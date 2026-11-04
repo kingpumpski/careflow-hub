@@ -13,6 +13,7 @@ export default function SortableHeader({ label, sortKey, currentSort, onSort }: 
   return (
     <th
       className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+      data-cf-managed-sort="true"
       onClick={() => onSort(sortKey)}
     >
       <div className="flex items-center gap-1">
