@@ -109,6 +109,8 @@ export default function ClaimDiagnosisAssistant() {
   const [responseEditable, setResponseEditable] = useState(false);
   const [customItem, setCustomItem] = useState({ code: "", description: "", unitPrice: "", category: "Other" as ClaimServiceItem["category"] });
   const [diagnosisInput, setDiagnosisInput] = useState({ code: "", description: "" });
+  const [manualDiagnosisSearch, setManualDiagnosisSearch] = useState("");
+  const [selectedManualDiagnosis, setSelectedManualDiagnosis] = useState<Record<string, unknown> | null>(null);
   const [commentInput, setCommentInput] = useState("");
 
   const canWrite = can("claims.write");
@@ -133,6 +135,12 @@ export default function ClaimDiagnosisAssistant() {
       .filter((entry) => !query || `${entry.code} ${entry.description}`.toLowerCase().includes(query))
       .slice(0, 12);
   }, [diagnosisRows, searchText]);
+  const filteredManualDiagnoses = useMemo(() => {
+    const query = manualDiagnosisSearch.trim().toLowerCase();
+    return ((diagnosisRows ?? []) as Array<Record<string, unknown>>)
+      .filter((entry) => !query || `${entry.code} ${entry.description}`.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [diagnosisRows, manualDiagnosisSearch]);
   const total = calculateClaimTotal(manualClaim.service_items);
 
   const clearAnalysis = () => {
@@ -186,16 +194,18 @@ export default function ClaimDiagnosisAssistant() {
   };
 
   const addManualDiagnosis = () => {
-    const code = diagnosisInput.code.trim().toUpperCase();
+    const code = String(selectedManualDiagnosis?.code ?? "").trim().toUpperCase();
     const match = ((diagnosisRows ?? []) as Array<Record<string, unknown>>).find((row) => String(row.code).toUpperCase() === code);
     if (!match) {
-      toast({ title: "Choose a diagnosis from the code list", description: "Search and select a diagnosis code that exists in the project diagnosis master.", variant: "destructive" });
+      toast({ title: "Select a diagnosis from the code list", description: "Typed text cannot be added as a diagnosis. Select a matching entry from the project diagnosis master first.", variant: "destructive" });
       return;
     }
-    const diagnosis = { code, description: diagnosisInput.description.trim() || String(match.description) };
+    const diagnosis = { code, description: String(match.description) };
     if (manualClaim.original_diagnoses.some((entry) => entry.code === diagnosis.code)) return;
     updateManualClaim("original_diagnoses", [...manualClaim.original_diagnoses, diagnosis]);
     setDiagnosisInput({ code: "", description: "" });
+    setManualDiagnosisSearch("");
+    setSelectedManualDiagnosis(null);
   };
 
   const addComment = () => {
@@ -535,14 +545,17 @@ export default function ClaimDiagnosisAssistant() {
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Existing diagnoses</p>
                     <div className="flex gap-2">
-                      <Input value={diagnosisInput.code} onChange={(event) => { const value = event.target.value.toUpperCase(); setDiagnosisInput({ ...diagnosisInput, code: value }); setSearchText(value); }} placeholder="Search ICD-10 code" />
-                      <Button type="button" variant="outline" onClick={addManualDiagnosis}>Add code</Button>
+                      <Input value={manualDiagnosisSearch} onChange={(event) => { setManualDiagnosisSearch(event.target.value); setDiagnosisInput({ code: "", description: "" }); setSelectedManualDiagnosis(null); }} placeholder="Search diagnosis code or description" />
+                      <Button type="button" variant="outline" onClick={addManualDiagnosis} disabled={!selectedManualDiagnosis}>Add code</Button>
                     </div>
-                    {searchText && filteredDiagnoses.length > 0 && (
+                    {!diagnosisRows?.length && <p className="text-xs text-amber-700">The project diagnosis master has no entries available. Add or import diagnosis codes in Master Data before selecting a diagnosis.</p>}
+                    {manualDiagnosisSearch && filteredManualDiagnoses.length > 0 && (
                       <div className="max-h-32 overflow-auto rounded-md border">
-                        {filteredDiagnoses.map((entry) => <button key={String(entry.id)} type="button" className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setDiagnosisInput({ code: String(entry.code), description: String(entry.description) }); setSearchText(""); }}><span className="font-mono font-semibold">{String(entry.code)}</span> — {String(entry.description)}</button>)}
+                        {filteredManualDiagnoses.map((entry) => <button key={String(entry.id)} type="button" className={`block w-full border-b px-3 py-2 text-left text-sm hover:bg-muted ${selectedManualDiagnosis?.id === entry.id ? "bg-muted" : ""}`} onClick={() => { setSelectedManualDiagnosis(entry); setDiagnosisInput({ code: String(entry.code), description: String(entry.description) }); }}><span className="font-mono font-semibold">{String(entry.code)}</span> — {String(entry.description)}</button>)}
                       </div>
                     )}
+                    {manualDiagnosisSearch && diagnosisRows?.length > 0 && !filteredManualDiagnoses.length && <p className="text-xs text-muted-foreground">No matching diagnosis code exists in the project diagnosis master.</p>}
+                    {selectedManualDiagnosis && <p className="text-xs text-muted-foreground">Selected: <span className="font-mono">{diagnosisInput.code}</span> — {diagnosisInput.description}</p>}
                     <div className="flex flex-wrap gap-2">{manualClaim.original_diagnoses.map((item) => <Badge key={item.code} variant="secondary">{item.code} · {item.description}<button type="button" aria-label={`Remove ${item.code}`} className="ml-1" onClick={() => updateManualClaim("original_diagnoses", manualClaim.original_diagnoses.filter((entry) => entry.code !== item.code))}>×</button></Badge>)}</div>
                   </div>
                   <label className="space-y-2 text-sm"><span>Clinical notes</span><Textarea value={manualClaim.clinical_notes} onChange={(event) => updateManualClaim("clinical_notes", event.target.value)} placeholder="Enter documented findings or relevant chart notes. Avoid adding unsupported conclusions." className="min-h-24" /></label>
