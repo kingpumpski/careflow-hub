@@ -5,6 +5,7 @@ import {
   Check,
   CheckCircle2,
   Clipboard,
+  Download,
   FileText,
   PlusCircle,
   Printer,
@@ -43,6 +44,7 @@ import {
   type ManualClaimInput,
   type ManualClaimLine,
 } from "@/features/claims/services/claimDiagnosis.service";
+import { exportClaimDiagnosisDraftPdf, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
 
 const REJECTION_REASONS = [
   "Medical Necessity",
@@ -327,6 +329,65 @@ export default function ClaimDiagnosisAssistant() {
     }
   };
 
+  const exportDraftPdf = (draft: ClaimDiagnosisPdfData) => {
+    try {
+      exportClaimDiagnosisDraftPdf(draft);
+      toast({ title: "Draft PDF downloaded" });
+    } catch (error) {
+      toast({
+        title: "Could not export draft",
+        description: error instanceof Error ? error.message : "The PDF could not be generated.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const exportSavedDraftPdf = (draft: Record<string, unknown>) => {
+    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((insurer) => insurer.id === draft.insurance_company_id)?.company_name;
+    exportDraftPdf({ ...draft, insurer_name: insurerName } as ClaimDiagnosisPdfData);
+  };
+
+  const exportCurrentDraftPdf = () => {
+    if (!analysis) return;
+    const serviceItems = entryMode === "manual"
+      ? manualClaim.service_items
+      : analysis.service_items.map((item) => ({
+          id: crypto.randomUUID(),
+          code: item.code,
+          description: item.description,
+          tooth: "",
+          eye: "",
+          days: 1,
+          unit: "Unit",
+          quantity: item.quantity,
+          unitPrice: item.unitPrice ?? 0,
+          flag: "",
+          status: "Pending",
+          category: item.category,
+        }));
+    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((insurer) => insurer.id === manualClaim.insurance_company_id)?.company_name;
+    exportDraftPdf({
+      id: analysis.analysis_id,
+      workflow_type: workflowType,
+      patient_name: manualClaim.patient_name || analysis.patient_name,
+      claim_number: manualClaim.claim_number || analysis.claim_number,
+      date_of_service: manualClaim.date_of_service || analysis.date_of_service,
+      insurance_company_id: manualClaim.insurance_company_id,
+      insurer_name: insurerName,
+      rejection_reason: manualClaim.rejection_reason || analysis.rejection_reason,
+      clinical_notes: manualClaim.clinical_notes,
+      authorization_code: manualClaim.authorization_code,
+      co_payment: manualClaim.co_payment,
+      comments: manualClaim.comments,
+      diagnoses: selectedCodes,
+      service_items: serviceItems,
+      response_message: responseText,
+      total_amount: calculateClaimTotal(serviceItems),
+    });
+  };
+
   const prepareClaimUpdate = async () => {
     if (!analysis) return;
     if (!canWrite) {
@@ -359,7 +420,7 @@ export default function ClaimDiagnosisAssistant() {
         rejection_reason: workflowType === "rejected_claim" ? manualClaim.rejection_reason || analysis.rejection_reason || "" : "",
         service_items: serviceItems,
       };
-      const draftId = await saveClaimDiagnosisDraft(draftInput, analysis, selectedCodes);
+      const draftId = await saveClaimDiagnosisDraft(draftInput, { ...analysis, response_message: responseText }, selectedCodes);
       await recordEvent("claim_update_prepared", { draft_id: draftId, selected_codes: selectedCodes.map((item) => item.code) });
       await queryClient.invalidateQueries({ queryKey: ["claim_diagnosis_drafts"] });
       toast({ title: "Claim update draft prepared", description: `Draft ${draftId} is saved for manual review. No claim was submitted.` });
@@ -583,8 +644,8 @@ export default function ClaimDiagnosisAssistant() {
       {savedDrafts && savedDrafts.length > 0 && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between"><div><h2 className="font-semibold">Prepared Claim Updates</h2><p className="text-sm text-muted-foreground">Saved drafts are not submitted claims.</p></div><Badge variant="outline">{savedDrafts.length}</Badge></div>
-          <div className="overflow-auto rounded-lg border"><table className="w-full min-w-[600px] text-left text-sm"><thead className="bg-muted/50 text-xs"><tr><th className="px-3 py-2">Patient</th><th className="px-3 py-2">Claim reference</th><th className="px-3 py-2">Workflow</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Updated</th><th className="px-3 py-2">Status</th></tr></thead><tbody>
-            {(savedDrafts as Array<Record<string, unknown>>).map((draft) => <tr key={String(draft.id)} className="border-t"><td className="px-3 py-2">{String(draft.patient_name || "—")}</td><td className="px-3 py-2 font-mono text-xs">{String(draft.claim_number || "—")}</td><td className="px-3 py-2">{draft.workflow_type === "rejected_claim" ? "Rejected claim" : "New claim"}</td><td className="px-3 py-2">GH¢ {Number(draft.total_amount || 0).toFixed(2)}</td><td className="px-3 py-2">{draft.updated_at ? new Date(String(draft.updated_at)).toLocaleString() : "—"}</td><td className="px-3 py-2"><Badge variant="secondary">Draft</Badge></td></tr>)}
+          <div className="overflow-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-muted/50 text-xs"><tr><th className="px-3 py-2">Patient</th><th className="px-3 py-2">Claim reference</th><th className="px-3 py-2">Workflow</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Updated</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Export</th></tr></thead><tbody>
+            {(savedDrafts as Array<Record<string, unknown>>).map((draft) => <tr key={String(draft.id)} className="border-t"><td className="px-3 py-2">{String(draft.patient_name || "—")}</td><td className="px-3 py-2 font-mono text-xs">{String(draft.claim_number || "—")}</td><td className="px-3 py-2">{draft.workflow_type === "rejected_claim" ? "Rejected claim" : "New claim"}</td><td className="px-3 py-2">GH¢ {Number(draft.total_amount || 0).toFixed(2)}</td><td className="px-3 py-2">{draft.updated_at ? new Date(String(draft.updated_at)).toLocaleString() : "—"}</td><td className="px-3 py-2"><Badge variant="secondary">Draft</Badge></td><td className="px-3 py-2"><Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => exportSavedDraftPdf(draft)}><Download className="h-4 w-4" />PDF</Button></td></tr>)}
           </tbody></table></div>
         </Card>
       )}
@@ -630,12 +691,12 @@ export default function ClaimDiagnosisAssistant() {
             <div className="rounded-xl border bg-background p-3"><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Selected for Claim</h3><Badge variant="outline">{selectedCodes.length}</Badge></div>
               <div className="space-y-2">{selectedCodes.map((code) => <div key={code.code} className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-2 text-sm"><div><div className="flex items-center gap-2"><span className="font-mono font-semibold">{code.code}</span><Badge variant={code.source === "manual" ? "secondary" : "outline"}>{code.source === "manual" ? "Manual Override" : "AI Recommended"}</Badge></div><p className="mt-1 text-muted-foreground">{code.description}</p></div><Button type="button" size="icon" variant="ghost" aria-label={`Remove ${code.code}`} onClick={() => removeSelectedCode(code.code)}><X className="h-4 w-4" /></Button></div>)}{!selectedCodes.length && <p className="text-sm text-muted-foreground">Accept recommendations or add a code manually.</p>}</div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : "Prepare Claim Update"}</Button></div>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />Export Draft PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : "Prepare Claim Update"}</Button></div>
             {!canWrite && <p className="text-right text-xs text-muted-foreground">Claims write permission is required to save a review draft.</p>}
           </Card>
 
           {workflowType === "rejected_claim" && <Card className="space-y-4 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Claim Response</h2><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setResponseEditable((editable) => !editable)}>{responseEditable ? "Read-only" : "Edit"}</Button><Button type="button" variant="outline" size="sm" onClick={copyResponse}><Clipboard className="mr-2 h-4 w-4" /> Copy</Button></div></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Claim Response</h2><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />PDF</Button><Button type="button" variant="outline" size="sm" onClick={() => setResponseEditable((editable) => !editable)}>{responseEditable ? "Read-only" : "Edit"}</Button><Button type="button" variant="outline" size="sm" onClick={copyResponse}><Clipboard className="mr-2 h-4 w-4" /> Copy</Button></div></div>
             <label className="block space-y-2 text-sm"><span>Rejection reason</span><select value={manualClaim.rejection_reason || analysis.rejection_reason || REJECTION_REASONS[0]} onChange={(event) => { updateManualClaim("rejection_reason", event.target.value); setResponseText(createClaimResponseDraft(analysis, event.target.value)); setResponseEditable(false); }} className="h-10 w-full rounded-md border border-input bg-background px-3">{REJECTION_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
             <label className="block space-y-2 text-sm"><span>Generated response note</span><Textarea value={responseText} readOnly={!responseEditable} onChange={(event) => setResponseText(event.target.value)} className="min-h-[320px] resize-y" /></label>
             <p className="text-xs text-muted-foreground">Draft only. Verify clinical documentation and payer requirements before sending.</p>

@@ -14,6 +14,7 @@ import {
   InsurerPerformanceRadar,
 } from "@/components/dashboard/AdvancedClaimsCharts";
 import { resolvePeriodKey } from "@/modules/analytics/periods";
+import { calculateSettlementRates } from "@/modules/analytics/settlementRates";
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const n = (v: unknown) => Number(v || 0);
@@ -62,6 +63,7 @@ export default function AdvancedAnalytics() {
       && (settlement === "all" || r.outstanding_status === settlement)
       && (aging === "all" || ageBand(r.period_year, r.period_month) === aging);
   }), [rows, effectiveStart, effectiveEnd, insurerId, settlement, aging]);
+  const rates = useMemo(() => calculateSettlementRates(filteredFinancial), [filteredFinancial]);
 
   const filteredClaims = useMemo(() => (claims || []).filter((c: any) => {
     const key = resolvePeriodKey(c);
@@ -181,6 +183,29 @@ export default function AdvancedAnalytics() {
 
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="stat-card"><p className="text-xs text-muted-foreground">System-calculated outstanding</p><p className="text-2xl font-bold">{money(summary.total)}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Actual periods</p><p className="text-2xl font-bold">{summary.actual}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Provisional periods</p><p className="text-2xl font-bold">{summary.provisional}</p></div></div>
 
+    <section className="space-y-3" aria-label="Settlement performance percentages">
+      <div><h2 className="text-sm font-semibold">Settlement performance</h2><p className="text-xs text-muted-foreground">Calculated from the selected, system-backed settlement periods. Rates are amount-weighted across the selected data.</p></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {[
+          { label: "Rejected share", value: rates.rejectedPercent, numerator: rates.rejected, denominator: rates.submitted, formula: "Rejected ÷ submitted" },
+          { label: "Collection rate", value: rates.collectionPercent, numerator: rates.paid, denominator: rates.eligible, formula: "Payments ÷ (submitted − rejected)" },
+          { label: "Withholding tax rate", value: rates.withholdingTaxPercent, numerator: rates.withholdingTax, denominator: rates.eligible, formula: "Withholding tax ÷ eligible claims" },
+          { label: "Outstanding share", value: rates.outstandingPercent, numerator: rates.outstanding, denominator: rates.eligible, formula: "Outstanding ÷ eligible claims" },
+        ].map((metric) => (
+          <div className="stat-card space-y-2" key={metric.label}>
+            <p className="text-xs text-muted-foreground">{metric.label}</p>
+            <p className="text-2xl font-bold">{metric.value === null ? "N/A" : `${metric.value.toFixed(1)}%`}</p>
+            <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={metric.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={metric.value === null ? 0 : Math.min(metric.value, 100)}>
+              <div className="h-full bg-primary" style={{ width: `${metric.value === null ? 0 : Math.min(Math.max(metric.value, 0), 100)}%` }} />
+            </div>
+            <p className="text-xs text-muted-foreground">{metric.formula} · {money(metric.numerator)} / {money(metric.denominator)}</p>
+            {metric.value !== null && metric.value > 100 && <p className="text-xs text-amber-700">Above 100%; review period timing and reconciliation.</p>}
+          </div>
+        ))}
+      </div>
+      {!rates.periods && <p className="text-xs text-muted-foreground">No settlement records match the selected filters.</p>}
+    </section>
+
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
       <ChartCard title="Claims Exposure OHLC" subtitle="Period-end outstanding exposure derived from the calculated ledger"><ClaimsExposureCandlestick data={exposure} /></ChartCard>
       <ChartCard title="Settlement Reconciliation Waterfall" subtitle="Gross submitted less rejected claims, cash payments and withholding tax"><ClaimsWaterfall data={waterfall} /></ChartCard>
@@ -191,6 +216,6 @@ export default function AdvancedAnalytics() {
       <ChartCard title="Settlement Distribution" subtitle="Period-level settlement duration quartiles"><SettlementBoxPlot data={box} /></ChartCard>
       <ChartCard title="Insurer Performance Radar" subtitle="Collection, denial avoidance and relative submitted exposure"><InsurerPerformanceRadar data={radar} /></ChartCard>
     </div>
-    <p className="text-xs text-muted-foreground">Financial formula: Outstanding = Submitted − Rejected − Payments Received − Withholding Tax, floored at zero. A period is actual only when both payment and withholding-tax entries are recorded; otherwise it remains provisional.</p>
+    <p className="text-xs text-muted-foreground">Financial formula: Outstanding = Submitted − Rejected − Payments Received − Withholding Tax, floored at zero. A period is actual only when both payment and withholding-tax entries are recorded; otherwise it remains provisional. Percentages use the selected period and insurer filters; rates are N/A when their denominator is zero.</p>
   </div>;
 }
