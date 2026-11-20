@@ -74,7 +74,8 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
-  const canWrite = !permissionsLoading && can("payments.write");
+  const canRead = !permissionsLoading && can("payments.read");
+  const canWrite = canRead && can("payments.write");
   const [offlineExceptions, setOfflineExceptions] = useState<SettlementException[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -86,6 +87,10 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     setIsLoading(true);
     setError(null);
     try {
+      if (!canRead) {
+        setError("You need payments.read permission to view settlement exceptions.");
+        return;
+      }
       if (offline) {
         await syncOfflineSettlementExceptions(periods);
         setOfflineExceptions(await listOfflineSettlementExceptions());
@@ -126,7 +131,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     } finally {
       setIsLoading(false);
     }
-  }, [offline, periods, canWrite, queryClient]);
+  }, [offline, periods, canRead, canWrite, queryClient]);
 
   useEffect(() => {
     void refresh();
@@ -141,7 +146,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
 
   const changeStatus = async (id: string, status: SettlementExceptionStatus) => {
     if (!user?.id) { setError("Sign in again before changing a settlement exception."); return; }
-    if (!canWrite) { setError("You need payments.write permission to update settlement exceptions."); return; }
+    if (!canWrite) { setError("You need payments.read and payments.write permissions to update settlement exceptions."); return; }
     const note = window.prompt(status === "under_review" ? "Enter the review note:" : "Enter the resolution/waiver note:");
     if (!note?.trim()) return;
     setBusyId(id);
@@ -172,7 +177,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
       <div className="flex flex-wrap items-center gap-2"><Badge variant="destructive">Critical {counts.critical}</Badge><Badge variant="outline">Warning {counts.warning}</Badge><Badge variant="secondary">Info {counts.info}</Badge><Button size="sm" variant="outline" disabled={isLoading} onClick={() => void refresh()}><RefreshCw className={`mr-1 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />Refresh</Button></div>
     </div>
     {error && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
-    {isLoading || (!offline && onlineQuery.isLoading) ? <p className="text-sm text-muted-foreground">Synchronizing settlement exceptions…</p> : !active.length ? <div className="rounded-md border p-5 text-sm text-muted-foreground">No open settlement exceptions detected.</div> : <div className="space-y-3">{active.map((row) => <div key={row.id} className="rounded-md border p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div className="space-y-1"><div className="flex flex-wrap items-center gap-2"><Badge variant={row.severity === "critical" ? "destructive" : row.severity === "warning" ? "outline" : "secondary"}>{row.severity}</Badge><Badge variant="outline">{String(row.status).replace(/_/g, " ")}</Badge><span className="text-sm font-medium">{row.title}</span></div><p className="text-sm text-muted-foreground">{row.description}</p><p className="text-xs text-muted-foreground">Detected {new Date(row.detectedAt).toLocaleString()}</p></div><div className="flex flex-wrap gap-2">{row.status === "open" && <Button size="sm" variant="outline" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "under_review")}><ClipboardCheck className="mr-1 h-4 w-4" />Review</Button>}{row.status === "under_review" && <Button size="sm" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "resolved")}><CheckCircle2 className="mr-1 h-4 w-4" />Resolve</Button>}{(row.status === "open" || row.status === "under_review") && <Button size="sm" variant="ghost" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "waived")}>Waive</Button>}</div></div>{row.resolutionNote && <p className="mt-3 text-xs text-muted-foreground">Last note: {row.resolutionNote}</p>}</div>)}</div>}
-    {!canWrite && <p className="text-xs text-muted-foreground">Read-only view. Payments write permission is required to review, resolve or waive an exception.</p>}
+    {!canRead ? <div role="alert" className="rounded-md border p-5 text-sm text-muted-foreground">Payments read permission is required to view settlement exceptions.</div> : isLoading || (!offline && onlineQuery.isLoading) ? <p className="text-sm text-muted-foreground">Synchronizing settlement exceptions…</p> : !active.length ? <div className="rounded-md border p-5 text-sm text-muted-foreground">No open settlement exceptions detected.</div> : <div className="space-y-3">{active.map((row) => <div key={row.id} className="rounded-md border p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div className="space-y-1"><div className="flex flex-wrap items-center gap-2"><Badge variant={row.severity === "critical" ? "destructive" : row.severity === "warning" ? "outline" : "secondary"}>{row.severity}</Badge><Badge variant="outline">{String(row.status).replace(/_/g, " ")}</Badge><span className="text-sm font-medium">{row.title}</span></div><p className="text-sm text-muted-foreground">{row.description}</p><p className="text-xs text-muted-foreground">Detected {new Date(row.detectedAt).toLocaleString()}</p></div><div className="flex flex-wrap gap-2">{row.status === "open" && <Button size="sm" variant="outline" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "under_review")}><ClipboardCheck className="mr-1 h-4 w-4" />Review</Button>}{row.status === "under_review" && <Button size="sm" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "resolved")}><CheckCircle2 className="mr-1 h-4 w-4" />Resolve</Button>}{(row.status === "open" || row.status === "under_review") && <Button size="sm" variant="ghost" disabled={!canWrite || busyId === row.id} onClick={() => void changeStatus(row.id, "waived")}>Waive</Button>}</div></div>{row.resolutionNote && <p className="mt-3 text-xs text-muted-foreground">Last note: {row.resolutionNote}</p>}</div>)}</div>}
+    {canRead && !canWrite && <p className="text-xs text-muted-foreground">Read-only view. Payments write permission is required to review, resolve or waive an exception.</p>}
   </section>;
 }
