@@ -91,7 +91,7 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
 
 ## Recovery limitations that must be tested before production certification
 
-- The exact PostgreSQL logical-dump restore method must be verified with a real project backup and a disposable replacement project. This repository does not claim a successful end-to-end restore until that test passes.
+- The custom-format PostgreSQL dump and restore command must be verified with a real CareFlow backup and a disposable replacement Supabase project. This repository does not claim a successful end-to-end restore until that test passes.
 - The worker requires a PostgreSQL session-pooler connection URI and a database role with read access to the required schemas. It fails closed if the required Auth, Storage metadata or migration-ledger tables are missing.
 - Supabase platform database backups and PITR do not include Storage objects; this worker includes Storage separately.
 - Platform Auth/provider settings, OAuth client secrets, SMTP secrets, Edge Function secrets, JWT/API keys, custom domains and third-party integrations must be reconfigured or rotated. The database backup contains database-resident Auth data only to the extent provided by Supabase's backup format.
