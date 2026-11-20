@@ -329,13 +329,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "claim_cases_facility_id_fkey"
-            columns: ["facility_id"]
-            isOneToOne: false
-            referencedRelation: "facilities"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "claim_cases_insurance_company_id_fkey"
             columns: ["insurance_company_id"]
             isOneToOne: false
@@ -391,13 +384,6 @@ export type Database = {
             columns: ["claim_case_id"]
             isOneToOne: false
             referencedRelation: "claim_cases"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "claim_case_events_facility_id_fkey"
-            columns: ["facility_id"]
-            isOneToOne: false
-            referencedRelation: "facilities"
             referencedColumns: ["id"]
           },
         ]
