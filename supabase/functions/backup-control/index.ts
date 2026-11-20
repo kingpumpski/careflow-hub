@@ -72,25 +72,37 @@ Deno.serve(async (req) => {
     });
 
     if (body.action === "list") {
-      const listed = await client.send(new ListObjectsV2Command({ Bucket: r2Bucket, Prefix: "manifests/" + projectRef + "/", MaxKeys: 50 }));
       const manifests = [];
-      for (const item of (listed.Contents ?? []).filter((entry) => entry.Key?.endsWith(".json"))) {
-        const response = await client.send(new GetObjectCommand({ Bucket: r2Bucket, Key: item.Key! }));
-        const raw = await response.Body?.transformToString();
-        if (!raw) continue;
-        const manifest = JSON.parse(raw);
-        if (manifest.project_ref !== projectRef || manifest.verification !== "sha256-verified") continue;
-        manifests.push({
-          backup_id: manifest.backup_id,
-          created_at: manifest.created_at,
-          encrypted_bytes: manifest.encrypted_bytes,
-          database_bytes: manifest.database_bytes,
-          storage_bucket_count: manifest.storage_bucket_count,
-          storage_object_count: manifest.storage_object_count,
-          verification: manifest.verification,
-          source_commit: manifest.source_commit,
-        });
-      }
+      let continuationToken: string | undefined;
+      let scanned = 0;
+      do {
+        const listed = await client.send(new ListObjectsV2Command({
+          Bucket: r2Bucket,
+          Prefix: "manifests/" + projectRef + "/",
+          MaxKeys: 1000,
+          ContinuationToken: continuationToken,
+        }));
+        for (const item of (listed.Contents ?? []).filter((entry) => entry.Key?.endsWith(".json"))) {
+          const response = await client.send(new GetObjectCommand({ Bucket: r2Bucket, Key: item.Key! }));
+          const raw = await response.Body?.transformToString();
+          if (!raw) continue;
+          const manifest = JSON.parse(raw);
+          if (manifest.project_ref !== projectRef || manifest.verification !== "sha256-verified") continue;
+          manifests.push({
+            backup_id: manifest.backup_id,
+            created_at: manifest.created_at,
+            encrypted_bytes: manifest.encrypted_bytes,
+            encrypted_sha256: manifest.encrypted_sha256,
+            database_bytes: manifest.database_bytes,
+            storage_bucket_count: manifest.storage_bucket_count,
+            storage_object_count: manifest.storage_object_count,
+            verification: manifest.verification,
+            source_commit: manifest.source_commit,
+          });
+        }
+        continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+        scanned += listed.Contents?.length ?? 0;
+      } while (continuationToken && scanned < 5000);
       manifests.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       await audit("system_backup_listed", { count: manifests.length });
       return json(req, { backups: manifests });
@@ -112,7 +124,7 @@ Deno.serve(async (req) => {
       ResponseContentDisposition: "attachment; filename=careflow-system-backup-" + backupId + ".tar.gz.age",
     }), { expiresIn: 60 });
     await audit("system_backup_downloaded", { backup_id: backupId });
-    return json(req, { download_url: url, expires_in_seconds: 60 });
+    return json(req, { download_url: url, expires_in_seconds: 60, encrypted_sha256: manifest.encrypted_sha256, backup_id: backupId });
   } catch (error) {
     console.error("backup-control failed:", error);
     return json(req, { error: "The backup request could not be completed." }, 500);
