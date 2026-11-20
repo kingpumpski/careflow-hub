@@ -31,7 +31,7 @@ for (const [name, value] of Object.entries({
   BACKUP_R2_BUCKET: r2Bucket,
   BACKUP_R2_ACCOUNT_ID: r2Account,
 })) if (!value) throw new Error("Missing required secret/configuration: " + name);
-if (projectRef !== expectedRef || !supabaseUrl.includes(projectRef + ".supabase.co")) {
+if (projectRef !== expectedRef || supabaseUrl !== "https://" + expectedRef + ".supabase.co") {
   throw new Error("Refusing backup: SUPABASE_PROJECT_ID and SUPABASE_URL must identify the approved CareFlow project.");
 }
 if (!ageRecipient.startsWith("age1")) throw new Error("BACKUP_AGE_RECIPIENT must be a valid age public recipient.");

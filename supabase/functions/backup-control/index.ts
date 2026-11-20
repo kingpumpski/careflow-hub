@@ -98,7 +98,15 @@ Deno.serve(async (req) => {
           const raw = await response.Body?.transformToString();
           if (!raw) continue;
           const manifest = JSON.parse(raw);
-          if (manifest.project_ref !== projectRef || manifest.verification !== "sha256-verified") continue;
+          if (
+            manifest.project_ref !== projectRef ||
+            manifest.verification !== "sha256-verified" ||
+            typeof manifest.backup_id !== "string" ||
+            !/^[0-9TZ-]{8,30}-[0-9a-f-]{8,40}$/.test(manifest.backup_id) ||
+            manifest.encrypted_object_key !== "backups/" + projectRef + "/" + manifest.backup_id + ".tar.gz.age" ||
+            typeof manifest.encrypted_sha256 !== "string" ||
+            !/^[a-f0-9]{64}$/.test(manifest.encrypted_sha256)
+          ) continue;
           manifests.push({
             backup_id: manifest.backup_id,
             created_at: manifest.created_at,
@@ -121,13 +129,22 @@ Deno.serve(async (req) => {
     }
 
     const backupId = body.backup_id;
-    if (typeof backupId !== "string" || !/^[0-9T-]{8,30}-[0-9a-f-]{8,40}$/.test(backupId)) return json(req, { error: "Invalid backup ID." }, 400);
+    if (typeof backupId !== "string" || !/^[0-9TZ-]{8,30}-[0-9a-f-]{8,40}$/.test(backupId)) return json(req, { error: "Invalid backup ID." }, 400);
     const manifestKey = "manifests/" + projectRef + "/" + backupId + ".json";
     const response = await client.send(new GetObjectCommand({ Bucket: r2Bucket, Key: manifestKey }));
     const raw = await response.Body?.transformToString();
     if (!raw) return json(req, { error: "Backup manifest is unavailable." }, 404);
     const manifest = JSON.parse(raw);
-    if (manifest.project_ref !== projectRef || manifest.backup_id !== backupId || manifest.verification !== "sha256-verified" || typeof manifest.encrypted_object_key !== "string" || !manifest.encrypted_object_key.startsWith("backups/" + projectRef + "/")) {
+    if (
+      manifest.project_ref !== projectRef ||
+      manifest.backup_id !== backupId ||
+      manifest.verification !== "sha256-verified" ||
+      manifest.encrypted_object_key !== "backups/" + projectRef + "/" + backupId + ".tar.gz.age" ||
+      typeof manifest.encrypted_sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(manifest.encrypted_sha256) ||
+      !Number.isFinite(manifest.encrypted_bytes) ||
+      manifest.encrypted_bytes <= 0
+    ) {
       return json(req, { error: "Backup manifest failed validation." }, 409);
     }
     const url = await getSignedUrl(client, new GetObjectCommand({

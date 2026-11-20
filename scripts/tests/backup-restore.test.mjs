@@ -36,7 +36,7 @@ async function fixture() {
     format: "careflow-system-backup",
     format_version: 1,
     project_ref: "jajfdgknctzqypdtvmxo",
-    backup_id: "20261120T010203040506-12345678",
+    backup_id: "2026-11-20T11-15-30-123Z-12345678-1234-1234-1234-123456789abc",
     created_at: "2026-11-20T01:02:03.000Z",
     database: {
       path: "database/project-database.backup",

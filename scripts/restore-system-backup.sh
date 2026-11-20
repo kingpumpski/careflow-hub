@@ -21,6 +21,10 @@ if tar -tzf "$WORK/backup.tar.gz" | awk 'BEGIN{bad=0} /^\//{bad=1} /(^|\/)\.\.(\
   echo "Backup archive contains an unsafe path. Refusing extraction." >&2
   exit 1
 fi
+if tar -tvzf "$WORK/backup.tar.gz" | awk '$1 !~ /^[-d]/ {bad=1} END{exit bad?0:1}'; then
+  echo "Backup archive contains a link or special file. Refusing extraction." >&2
+  exit 1
+fi
 mkdir -p "$OUTPUT"
 tar --no-same-owner --no-same-permissions -xzf "$WORK/backup.tar.gz" -C "$OUTPUT"
 node scripts/verify-system-backup.mjs "$OUTPUT"
