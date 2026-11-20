@@ -612,7 +612,7 @@ export default function SettingsPage() {
 
             <div className="rounded-lg border border-border p-3 space-y-2">
               <p className="text-sm font-medium">Backup schedule</p>
-              <p className="text-xs text-muted-foreground">The worker is configured to run daily at 02:00 UTC and can also be started manually. A backup is listed here only after the encrypted archive has been uploaded to the private off-site bucket and its SHA-256 checksum has been verified.</p>
+              <p className="text-xs text-muted-foreground">A daily workflow is scheduled for 02:00 UTC and can also be started manually. It becomes operational only after the Supabase, GitHub and private R2 secrets are configured and the backup portal Edge Function is deployed. A backup is listed here only after the encrypted archive has been uploaded to off-site storage and its SHA-256 checksum has been verified.</p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={handleRequestSystemBackup} disabled={backupRunning}>
                   {backupRunning ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Queuing...</> : <><Database className="w-4 h-4 mr-2" />Create Full Backup Now</>}
