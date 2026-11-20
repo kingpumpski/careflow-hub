@@ -8,7 +8,8 @@ import { Readable } from "node:stream";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-const exec = promisify(execFile);
+const execFileAsync = promisify(execFile);
+const exec = (file, args, options = {}) => execFileAsync(file, args, { maxBuffer: 50 * 1024 * 1024, ...options });
 const projectRef = process.env.SUPABASE_PROJECT_ID;
 const expectedRef = "jajfdgknctzqypdtvmxo";
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
