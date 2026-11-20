@@ -42,6 +42,8 @@ async function fixture() {
       path: "database/project-database.backup",
       bytes: db.length,
       sha256: hash(db),
+      format: "pg_dump_custom",
+      postgresMajor: 17,
     },
     storage: { bucketCount: 1, objectCount: 1, totalBytes: object.length },
     source: {
