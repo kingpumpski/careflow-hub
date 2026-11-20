@@ -1,0 +1,90 @@
+name: Temporary major dependency remediation preview
+
+on:
+  push:
+    branches: [chore/major-audit-remediation-preview]
+
+permissions:
+  contents: write
+
+jobs:
+  major-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout isolated preview branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install current lockfile
+        run: npm ci
+
+      - name: Apply major upgrades in isolation
+        run: |
+          npm install zod@^4.6.7 --save --no-fund
+          npm install vitest@^5.1.1 --save-dev --no-fund
+          npm pkg set 'overrides.postcss-selector-parser=^6.1.6'
+          npm install --no-fund
+
+      - name: Reinstall exact updated lockfile
+        run: npm ci
+
+      - name: Capture dependency audit reports
+        shell: bash
+        run: |
+          npm audit --omit=dev --json > production-audit.json || true
+          npm audit --json > full-audit.json || true
+
+      - name: Validate major-upgraded dependency tree
+        shell: bash
+        run: |
+          set +e
+          npm run lint > lint.log 2>&1
+          lint_status=$?
+          npm test -- --run > test.log 2>&1
+          test_status=$?
+          npm run build > build.log 2>&1
+          build_status=$?
+          {
+            echo "Lint exit: $lint_status"
+            echo "Test exit: $test_status"
+            echo "Build exit: $build_status"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat lint.log
+          cat test.log
+          cat build.log
+          if [[ "$lint_status" -ne 0 || "$test_status" -ne 0 || "$build_status" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Commit major upgrades only when validation passes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: upgrade vulnerable zod and vitest dependencies"
+          git push origin HEAD:refs/heads/chore/major-audit-remediation-preview
+
+      - name: Upload major-upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: major-dependency-remediation-preview
+          path: |
+            package.json
+            package-lock.json
+            production-audit.json
+            full-audit.json
+            lint.log
+            test.log
+            build.log
+          retention-days: 7
