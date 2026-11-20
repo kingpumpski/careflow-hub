@@ -66,6 +66,11 @@ export default function ClaimCases() {
     enabled: !offline && Boolean(facilityId) && canRead,
   });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: !offline && canRead });
+  const { data: preauthorizations } = useSupabaseQuery("pre_authorizations", {
+    select: "id,request_number,insurance_company_id,procedure_date,provider_name",
+    filters: facilityId ? { facility_id: facilityId } : undefined,
+    enabled: !offline && Boolean(facilityId) && canRead && can("preauth.read"),
+  });
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const { data: events, isLoading: eventsLoading } = useSupabaseQuery("claim_case_events", {
     orderBy: "created_at",
@@ -79,6 +84,7 @@ export default function ClaimCases() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState({
     insurance_company_id: "",
+    preauth_id: "",
     patient_name: "",
     member_number: "",
     date_of_service: today(),
@@ -116,6 +122,7 @@ export default function ClaimCases() {
       const { data, error } = await callClaimRpc("create_individual_claim_case", {
         p_facility_id: facilityId,
         p_insurance_company_id: form.insurance_company_id,
+        p_preauth_id: form.preauth_id || null,
         p_patient_name: form.patient_name.trim(),
         p_date_of_service: form.date_of_service,
         p_submitted_amount: amount,
@@ -127,7 +134,7 @@ export default function ClaimCases() {
       if (error) throw new Error(error.message);
       const row = Array.isArray(data) ? data[0] as { claim_number?: string } | undefined : data as { claim_number?: string } | null;
       toast({ title: "Individual claim case created", description: row?.claim_number ? `Reference: ${row.claim_number}` : "The new claim case is saved as a draft." });
-      setForm({ insurance_company_id: "", patient_name: "", member_number: "", date_of_service: today(), procedure_name: "", diagnosis: "", submitted_amount: "", clinical_notes: "" });
+      setForm({ insurance_company_id: "", preauth_id: "", patient_name: "", member_number: "", date_of_service: today(), procedure_name: "", diagnosis: "", submitted_amount: "", clinical_notes: "" });
       setShowCreate(false);
       await refresh();
     } catch (cause) {
@@ -207,7 +214,7 @@ export default function ClaimCases() {
     {showCreate && canWrite && !offline && <section className="stat-card space-y-4">
       <div className="flex items-center gap-2"><FilePlus2 className="h-5 w-5" /><h2 className="font-semibold">Register a new claim case</h2></div>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => void createCase(event)}>
-        <div className="space-y-2"><Label htmlFor="case-insurer">Insurance company *</Label><select id="case-insurer" required value={form.insurance_company_id} onChange={(event) => setForm((old) => ({ ...old, insurance_company_id: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">Select insurer</option>{(insurers ?? []).filter((item: any) => item.is_active).map((item: any) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></div>
+        <div className="space-y-2"><Label htmlFor="case-insurer">Insurance company *</Label><select id="case-insurer" required value={form.insurance_company_id} onChange={(event) => setForm((old) => ({ ...old, insurance_company_id: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">Select insurer</option>{(insurers ?? []).filter((item: any) => item.is_active).map((item: any) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="case-preauth">Link pre-authorization (optional)</Label><select id="case-preauth" value={form.preauth_id} onChange={(event) => { const selected = (preauthorizations ?? []).find((item: any) => item.id === event.target.value); setForm((old) => ({ ...old, preauth_id: event.target.value, insurance_company_id: selected?.insurance_company_id ?? old.insurance_company_id, date_of_service: selected?.procedure_date ?? old.date_of_service })); }} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">No pre-authorization link</option>{(preauthorizations ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.request_number || item.id.slice(0, 8)} · {item.provider_name || "Provider not specified"}</option>)}</select><p className="text-xs text-muted-foreground">Only pre-authorizations belonging to the selected facility are listed. The server also verifies that the insurer matches.</p></div>
         <div className="space-y-2"><Label htmlFor="case-patient">Patient name *</Label><Input id="case-patient" required value={form.patient_name} onChange={(event) => setForm((old) => ({ ...old, patient_name: event.target.value }))} maxLength={180} /></div>
         <div className="space-y-2"><Label htmlFor="case-member">Membership number</Label><Input id="case-member" value={form.member_number} onChange={(event) => setForm((old) => ({ ...old, member_number: event.target.value }))} maxLength={100} /></div>
         <div className="space-y-2"><Label htmlFor="case-service-date">Date of service *</Label><Input id="case-service-date" type="date" required value={form.date_of_service} onChange={(event) => setForm((old) => ({ ...old, date_of_service: event.target.value }))} /></div>
