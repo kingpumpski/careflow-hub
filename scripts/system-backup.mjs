@@ -149,6 +149,7 @@ async function exportStorage() {
           const name = String(entry.name ?? "");
           if (!name || name === "." || name === ".." || name.includes("\\") || name.startsWith("/")) throw new Error("Unsafe Storage object name encountered.");
           const key = prefix ? prefix + "/" + name : name;
+          if (key.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("Unsafe Storage object path returned by API.");
           const isFolder = entry.id == null && entry.metadata == null;
           if (isFolder) {
             queue.push(key);
