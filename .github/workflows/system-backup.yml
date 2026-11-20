@@ -45,7 +45,7 @@ jobs:
           test "$SUPABASE_PROJECT_ID" = "jajfdgknctzqypdtvmxo"
           test "$SUPABASE_URL" = "https://jajfdgknctzqypdtvmxo.supabase.co"
           for name in SUPABASE_SERVICE_ROLE_KEY SUPABASE_DB_URL BACKUP_AGE_RECIPIENT BACKUP_R2_ACCOUNT_ID BACKUP_R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-            if [[ -z "\${!name:-}" ]]; then echo "::error::Missing required secret $name"; exit 1; fi
+            if [[ -z "${!name:-}" ]]; then echo "::error::Missing required secret $name"; exit 1; fi
           done
           [[ "$BACKUP_AGE_RECIPIENT" == age1* ]]
 
