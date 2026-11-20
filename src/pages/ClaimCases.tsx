@@ -94,7 +94,6 @@ export default function ClaimCases() {
       .some((value) => value.toLowerCase().includes(search.toLowerCase()));
     return matchesSearch && (statusFilter === "all" || item.status === statusFilter);
   }), [cases, insurerById, search, statusFilter]);
-  const selectedCase = ((cases ?? []) as ClaimCase[]).find((item) => item.id === selectedCaseId) ?? null;
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["claim_cases"] });
