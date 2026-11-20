@@ -173,8 +173,16 @@ async function exportStorage() {
 async function writeSourceSnapshot() {
   const target = path.join(stage, "source");
   await mkdir(target, { recursive: true });
-  await exec("git", ["archive", "--format=tar", "--output", path.join(target, "careflow-source.tar"), "HEAD"], { cwd: process.cwd() });
-  return { commit, included: ["supabase/config.toml", "supabase/migrations", "supabase/functions", "application source at the recorded commit"] };
+  const archivePath = path.join(target, "careflow-source.tar");
+  await exec("git", ["archive", "--format=tar", "--output", archivePath, "HEAD"], { cwd: process.cwd() });
+  const info = await stat(archivePath);
+  return {
+    commit,
+    archive_path: "source/careflow-source.tar",
+    archive_bytes: info.size,
+    archive_sha256: await sha256File(archivePath),
+    included: ["supabase/config.toml", "supabase/migrations", "supabase/functions", "application source at the recorded commit"],
+  };
 }
 
 try {
