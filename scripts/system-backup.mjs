@@ -35,6 +35,11 @@ if (projectRef !== expectedRef || !supabaseUrl.includes(projectRef + ".supabase.
 }
 if (!ageRecipient.startsWith("age1")) throw new Error("BACKUP_AGE_RECIPIENT must be a valid age public recipient.");
 if (!/^postgres(ql)?:\/\//i.test(databaseUrl)) throw new Error("SUPABASE_DB_URL must be a PostgreSQL connection URI.");
+const databaseUri = new URL(databaseUrl);
+const databaseUser = decodeURIComponent(databaseUri.username);
+if (databaseUri.hostname !== "db." + projectRef + ".supabase.co" && databaseUser !== "postgres." + projectRef) {
+  throw new Error("SUPABASE_DB_URL must connect to the approved CareFlow project via its direct host or matching Session Pooler username.");
+}
 if (!r2Endpoint.startsWith("https://")) throw new Error("BACKUP_R2_ENDPOINT must use HTTPS.");
 
 const backupId = new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "") + "-" + randomUUID().slice(0, 8);
