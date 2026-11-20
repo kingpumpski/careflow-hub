@@ -51,12 +51,12 @@ async function sha256File(filePath) {
 
 async function downloadDatabaseBackup() {
   const versionProbe = await exec("docker", [
-    "run", "--rm", "-e", "DATABASE_URL", "postgres:18-alpine",
+    "run", "--rm", "-e", "DATABASE_URL", "postgres:19-alpine",
     "sh", "-c", 'psql "$DATABASE_URL" -Atqc "SHOW server_version_num"',
   ], { env: { ...process.env, DATABASE_URL: databaseUrl } });
   const serverVersionNum = Number(versionProbe.stdout.trim());
   const postgresMajor = Math.floor(serverVersionNum / 10000);
-  if (!Number.isInteger(postgresMajor) || postgresMajor < 14 || postgresMajor > 18) {
+  if (!Number.isInteger(postgresMajor) || postgresMajor < 14 || postgresMajor > 19) {
     throw new Error("Unsupported PostgreSQL server version number: " + versionProbe.stdout.trim());
   }
 
