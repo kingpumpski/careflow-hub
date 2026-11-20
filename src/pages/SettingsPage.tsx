@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Upload, Percent, DollarSign, Mail, Building2, Database, Loader2, Send, Landmark, Plus, Trash2, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,25 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { parseBankingPartners, LETTERHEAD_STYLES } from "@/lib/letterhead";
 import type { BankingPartner } from "@/lib/exportUtils";
+
+type SystemBackup = {
+  backup_id: string;
+  created_at: string;
+  encrypted_bytes: number;
+  encrypted_sha256: string;
+  database_bytes: number;
+  storage_bucket_count: number;
+  storage_object_count: number;
+  verification: string;
+  source_commit: string;
+};
+
+const formatBackupBytes = (bytes: number) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
 
 const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string; hint: string }> = {
   gmail: { host: "smtp.gmail.com", port: "587", secure: "tls", hint: "Gmail requires 2-Step Verification and a 16-character App Password (not your normal password). Username is your full Gmail/Workspace address." },
@@ -31,6 +50,11 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState("GH¢ (Ghana Cedi)");
   const [logoUrl, setLogoUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+
+  const [systemBackups, setSystemBackups] = useState<SystemBackup[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupServiceError, setBackupServiceError] = useState<string | null>(null);
 
   // SMTP / Hospital email settings
   const [smtpHost, setSmtpHost] = useState("");
@@ -190,6 +214,50 @@ export default function SettingsPage() {
       toast({ title: "Partial export downloaded", description: "This file contains only the selected tables and is not a complete disaster-recovery backup." });
     } catch (err: any) {
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const loadSystemBackups = useCallback(async () => {
+    setBackupLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backup-control", { body: { action: "list" } });
+      if (error) throw error;
+      if (!Array.isArray(data?.backups)) throw new Error(data?.error || "Backup service returned an invalid response.");
+      setSystemBackups(data.backups as SystemBackup[]);
+      setBackupServiceError(null);
+    } catch (error) {
+      setBackupServiceError(error instanceof Error ? error.message : "Backup service is not available. Confirm the backup Edge Function and its secrets are deployed.");
+    } finally {
+      setBackupLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSystemBackups();
+  }, [loadSystemBackups]);
+
+  const handleRequestSystemBackup = async () => {
+    setBackupRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backup-control", { body: { action: "create" } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "The backup job could not be queued.");
+      toast({ title: "Full-system backup queued", description: "The encrypted backup worker is running. Refresh this list after it completes." });
+    } catch (error) {
+      toast({ title: "Backup request failed", description: error instanceof Error ? error.message : "The backup job could not be queued.", variant: "destructive" });
+    } finally {
+      setBackupRunning(false);
+    }
+  };
+
+  const handleDownloadSystemBackup = async (backupId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("backup-control", { body: { action: "download", backup_id: backupId } });
+      if (error) throw error;
+      if (typeof data?.download_url !== "string" || !data.download_url.startsWith("https://")) throw new Error("A secure download URL was not returned.");
+      window.location.assign(data.download_url);
+    } catch (error) {
+      toast({ title: "Backup download failed", description: error instanceof Error ? error.message : "Unable to create a secure download link.", variant: "destructive" });
     }
   };
 
@@ -531,14 +599,82 @@ export default function SettingsPage() {
 
         <TabsContent value="backup" className="space-y-4 mt-4">
           <div className="stat-card space-y-4">
-            <h3 className="font-heading font-semibold flex items-center gap-2">
-              <Database className="w-4 h-4 text-primary" />
-              Manual Data Export
-            </h3>
-            <p className="text-sm text-muted-foreground">This downloads a partial export of eight selected database tables. Automatic daily backups are not configured in this application. The export does not include all database tables, Storage files, Auth users, project configuration, Edge Function settings or migration history, and it cannot restore the full system. Do not use it as the production disaster-recovery backup.</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-heading font-semibold flex items-center gap-2">
+                  <Database className="w-4 h-4 text-primary" />
+                  Full-system Backup Center
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">Encrypted, off-site backup packages covering the Supabase database snapshot, Storage bucket files, migrations, Edge Function source and application source commit.</p>
+              </div>
+              <span className="text-xs rounded-full border px-2 py-1 text-muted-foreground">Admin only · encrypted</span>
+            </div>
+
+            <div className="rounded-lg border border-border p-3 space-y-2">
+              <p className="text-sm font-medium">Backup schedule</p>
+              <p className="text-xs text-muted-foreground">The worker is configured to run daily at 02:00 UTC and can also be started manually. A backup is listed here only after the encrypted archive has been uploaded to the private off-site bucket and its SHA-256 checksum has been verified.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={handleRequestSystemBackup} disabled={backupRunning}>
+                  {backupRunning ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Queuing...</> : <><Database className="w-4 h-4 mr-2" />Create Full Backup Now</>}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void loadSystemBackups()} disabled={backupLoading}>
+                  {backupLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Refresh Backup List
+                </Button>
+              </div>
+            </div>
+
+            {backupServiceError && (
+              <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
+                <p className="text-sm font-medium">Backup service not yet available</p>
+                <p className="text-xs text-muted-foreground">{backupServiceError}</p>
+                <p className="text-xs text-muted-foreground">The Edge Function and off-site storage credentials must be configured before a backup can be generated or downloaded. This screen does not report a backup as complete unless a verified manifest is returned.</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Verified backup files</h4>
+              {backupLoading && systemBackups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Checking the backup repository...</p>
+              ) : systemBackups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No verified full-system backups are currently available.</p>
+              ) : (
+                systemBackups.map((backup) => (
+                  <div key={backup.backup_id} className="rounded-lg border border-border p-3 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{new Date(backup.created_at).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">Backup ID: {backup.backup_id}</p>
+                      </div>
+                      <span className="text-xs rounded-full border border-emerald-600/40 px-2 py-1 text-emerald-700 dark:text-emerald-400">SHA-256 verified</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div><p className="text-muted-foreground">Encrypted file</p><p className="font-medium">{formatBackupBytes(backup.encrypted_bytes)}</p></div>
+                      <div><p className="text-muted-foreground">Database</p><p className="font-medium">{formatBackupBytes(backup.database_bytes)}</p></div>
+                      <div><p className="text-muted-foreground">Storage buckets</p><p className="font-medium">{backup.storage_bucket_count}</p></div>
+                      <div><p className="text-muted-foreground">Storage objects</p><p className="font-medium">{backup.storage_object_count}</p></div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground break-all">Encrypted SHA-256: {backup.encrypted_sha256}</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-muted-foreground">Source commit: {backup.source_commit?.slice(0, 12) || "unknown"}</p>
+                      <Button size="sm" variant="outline" onClick={() => void handleDownloadSystemBackup(backup.backup_id)}>
+                        <Database className="w-4 h-4 mr-2" />Download Encrypted Backup
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Recovery is an operator-controlled process. Decrypt the archive using the offline age private key, restore the database through the Supabase-supported recovery path, then restore and verify Storage objects. Never upload the private key or service-role key to this browser.</p>
+            <a className="text-sm text-primary underline underline-offset-4" href="https://github.com/kingpumpski/careflow-hub/blob/main/docs/BACKUP_AND_RESTORE.md" target="_blank" rel="noreferrer">Open full backup and recovery runbook</a>
+          </div>
+
+          <div className="stat-card space-y-3">
+            <h3 className="font-heading font-semibold">Legacy Partial Export</h3>
+            <p className="text-xs text-muted-foreground">This older convenience export contains only eight selected database tables. It is not encrypted, is not a complete system backup and cannot restore the project. Use it only for limited data review—not disaster recovery.</p>
             <Button variant="outline" size="sm" onClick={handleManualBackup}>
               <Database className="w-4 h-4 mr-2" />
-              Download Partial Export
+              Download 8-table Partial Export
             </Button>
           </div>
         </TabsContent>
