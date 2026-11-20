@@ -11,6 +11,7 @@ if (manifest.format !== "careflow-system-backup" || manifest.format_version !== 
 if (manifest.project_ref !== "jajfdgknctzqypdtvmxo") throw new Error("Backup project reference does not match CareFlow production.");
 if (!/^[0-9T-]{8,30}-[0-9a-f-]{8,40}$/.test(manifest.backup_id ?? "")) throw new Error("Invalid backup ID in manifest.");
 if (!manifest.database?.path || !/^[a-f0-9]{64}$/.test(manifest.database.sha256 ?? "")) throw new Error("Database backup metadata is incomplete.");
+if (manifest.database.format !== "pg_dump_custom" || !Number.isInteger(manifest.database.postgresMajor)) throw new Error("Database backup is not a supported custom-format PostgreSQL dump.");
 
 async function sha256(file) {
   const hash = createHash("sha256");
