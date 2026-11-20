@@ -75,7 +75,7 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
    bash scripts/restore-system-backup.sh careflow-system-backup.tar.gz.age
    ```
    The script verifies the encrypted package checksum, decrypts it, rejects unsafe archive paths, then validates the database dump, source snapshot and every Storage object checksum.
-5. Create a replacement Supabase project in the same region and with the same PostgreSQL major version. Obtain its **Session Pooler** connection URI (port 5432) from the Supabase Connect dialog. Restore the database into that replacement project:
+5. Create a replacement Supabase project in the same region and with the same PostgreSQL major version (the backup worker supports PostgreSQL 14–19). Obtain its **Session Pooler** connection URI (port 5432) from the Supabase Connect dialog. Restore the database into that replacement project:
    ```bash
    export RESTORE_TARGET_PROJECT_REF=<new-project-ref>
    export RESTORE_TARGET_DB_URL='postgresql://postgres.<new-project-ref>:<password>@<session-pooler-host>:5432/postgres?sslmode=require'
