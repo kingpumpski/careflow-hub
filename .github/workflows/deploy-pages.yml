@@ -84,7 +84,11 @@ jobs:
           HTTP_URL="${SITE_URL/https:/http:}"
           HTTP_EFFECTIVE_URL="$(curl --silent --show-error --location --max-redirs 5 --output /dev/null --write-out '%{url_effective}' "$HTTP_URL")"
           echo "HTTP redirect destination: $HTTP_EFFECTIVE_URL"
-          [[ "$HTTP_EFFECTIVE_URL" == https://* ]] || { echo "HTTP is not redirected to HTTPS."; exit 1; }
+          if [[ "$HTTP_EFFECTIVE_URL" == https://* ]]; then
+            echo "HTTP redirects to HTTPS."
+          else
+            echo "::warning::The HTTP site does not redirect to HTTPS. Enable Enforce HTTPS in repository Settings → Pages."
+          fi
           curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-connrefused "$SITE_URL" -o /tmp/careflow-index.html
           grep -q '<div id="root"></div>' /tmp/careflow-index.html
           python3 - <<'PY'

@@ -68,3 +68,8 @@ A release is considered technically ready when:
 ## Database updates
 
 For schema changes, create a new timestamped migration under `supabase/migrations/`, review it, apply it to the production Supabase project, and commit it to Git. For ordinary operational data entry, use the application workflows or Supabase Table Editor rather than changing schema files.
+
+
+## GitHub Pages transport security
+
+The post-deploy workflow tests the HTTPS site URL and all same-origin JavaScript/CSS assets. The GitHub Pages action currently returns an HTTP URL and the live HTTP endpoint does not redirect to HTTPS. The repository owner must enable **Enforce HTTPS** under **Settings → Pages**. Until that setting is enabled and the redirect check reports HTTPS, do not treat HTTP-to-HTTPS redirection as configured.

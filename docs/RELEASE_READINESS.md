@@ -32,7 +32,7 @@
 
 ## Security gates
 
-- [ ] Dependency audit passes (latest main-branch audit on 2026-11-16 failed: 8 production dependency findings, including 1 critical, 3 high and 4 moderate; full-tree report contains 19 findings).
+- [x] Dependency audit passes (main run 44720017229 on 2026-11-20: 0 production and 0 full-tree vulnerabilities; audit gates now block pull requests).
 - [x] Edge Function authentication and origin controls pass.
 - [x] Sensitive secrets exist only in server-side configuration.
 - [x] Admin/self-role escalation protections are verified.
@@ -45,7 +45,7 @@
 - [x] Pull request to `main` passes the current full quality/security checks.
 - [x] GitHub Pages build includes the SPA `404.html` fallback.
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
-- [ ] Production URL has been independently browser-smoke-tested after the latest release candidate.
+- [ ] HTTPS live smoke test passes after deployment; root and same-origin JS/CSS assets are checked automatically. The current HTTP endpoint does not redirect to HTTPS; enable Enforce HTTPS in repository Settings → Pages.
 - [ ] Supabase production project is healthy and the outstanding/WHT/document-ingest migrations are applied.
 - [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
 - [ ] Supabase production deployment is unblocked by the required GitHub Actions repository secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`).
@@ -75,4 +75,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-The repository is not production-certified. The latest main-branch code-quality and build workflows passed on 2026-11-04, but the dependency audit failed on 2026-11-16. Production URL smoke testing, Supabase project health, production migration application, migration-ledger reconciliation, and first legitimate administrator bootstrap remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
+The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The static site deployment and asset smoke test are automated, but HTTPS enforcement still requires the repository Pages setting. Supabase project health, production migration application, migration-ledger reconciliation, complete backup/restore, organization-level tenant isolation, and first legitimate administrator bootstrap remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
