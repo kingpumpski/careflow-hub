@@ -665,7 +665,7 @@ export default function SettingsPage() {
                 ))
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Recovery is an operator-controlled process. Decrypt the archive using the offline age private key, restore the database through the Supabase-supported recovery path, then restore and verify Storage objects. Never upload the private key or service-role key to this browser.</p>
+            <p className="text-xs text-muted-foreground">Recovery is an operator-controlled process. Decrypt the archive using the offline age private key, restore the database through the Supabase-supported recovery path, then restore and verify Storage objects. The database snapshot may contain confidential settings such as the SMTP password currently stored in system_settings. Never upload the private key or service-role key to this browser.</p>
             <a className="text-sm text-primary underline underline-offset-4" href="https://github.com/kingpumpski/careflow-hub/blob/main/docs/BACKUP_AND_RESTORE.md" target="_blank" rel="noreferrer">Open full backup and recovery runbook</a>
           </div>
 
