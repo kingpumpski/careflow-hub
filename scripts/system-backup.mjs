@@ -166,7 +166,7 @@ async function exportStorage() {
           await mkdir(path.dirname(target), { recursive: true });
           const encodedKey = key.split("/").map(encodeURIComponent).join("/");
           const objectResponse = await storageRequest("/object/authenticated/" + encodeURIComponent(bucketName) + "/" + encodedKey);
-          if (!objectResponse.ok || !objectResponse.body) throw new Error("Unable to download Storage object " + bucketName + "/" + key + " (HTTP " + objectResponse.status + ").");
+          if (!objectResponse.ok || !objectResponse.body) throw new Error("Unable to download a Storage object (HTTP " + objectResponse.status + "). Object names are intentionally omitted from CI logs.");
           await pipeline(Readable.fromWeb(objectResponse.body), createWriteStream(target, { flags: "wx" }));
           const objectStat = await stat(target);
           const object = {
@@ -243,11 +243,15 @@ try {
   await writeFile(path.join(stage, "manifest.json"), JSON.stringify(innerManifest, null, 2));
   const encrypted = path.join(root, "careflow-system-backup.tar.gz.age");
   // Stream tar directly into age so an additional plaintext archive is never written to disk.
-  await exec("bash", [
-    "-o", "pipefail", "-c",
-    'tar -czf - -C "$1" . | age -r "$2" -o "$3"',
-    "bash", stage, ageRecipient, encrypted,
-  ]);
+  try {
+    await exec("bash", [
+      "-o", "pipefail", "-c",
+      'tar -czf - -C "$1" . | age -r "$2" -o "$3"',
+      "bash", stage, ageRecipient, encrypted,
+    ]);
+  } catch {
+    throw new Error("Failed to package or encrypt the backup. Detailed file paths are suppressed to prevent disclosure of patient-related Storage object names in public CI logs.");
+  }
   const encryptedInfo = await stat(encrypted);
   const encryptedSha = await sha256File(encrypted);
   const backupKey = "backups/" + projectRef + "/" + backupId + ".tar.gz.age";
