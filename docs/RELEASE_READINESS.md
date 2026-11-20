@@ -48,7 +48,8 @@
 - [x] Pull request to `main` passes the current full quality/security checks.
 - [x] GitHub Pages build includes the SPA `404.html` fallback.
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
-- [ ] HTTPS live smoke test passes after deployment; root and same-origin JS/CSS assets are checked automatically. The current HTTP endpoint does not redirect to HTTPS; enable Enforce HTTPS in repository Settings → Pages.
+- [x] HTTPS live smoke test passes after deployment; root, same-origin JS/CSS assets and SPA deep-link fallback are verified (main run 44720398737).
+- [ ] HTTP redirects to HTTPS; enable Enforce HTTPS in repository Settings → Pages (the current HTTP endpoint still serves directly).
 - [ ] Supabase production project is healthy and the outstanding/WHT/document-ingest migrations are applied.
 - [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
 - [ ] The `production-database` GitHub Environment has required reviewers and environment-scoped Supabase secrets configured; the intended project ref is confirmed and accessible.
@@ -78,4 +79,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The static site deployment and asset smoke test are automated, but HTTPS enforcement still requires the repository Pages setting. Supabase project health, production migration application, migration-ledger reconciliation, complete backup/restore, organization-level tenant isolation, and first legitimate administrator bootstrap remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
+The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The static site and assets are verified over HTTPS by the automated smoke test; HTTP-to-HTTPS redirection still requires the repository Pages Enforce HTTPS setting. Supabase project health, production migration application, migration-ledger reconciliation, complete backup/restore, organization-level tenant isolation, and first legitimate administrator bootstrap remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
