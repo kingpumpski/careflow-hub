@@ -656,6 +656,7 @@ export default function SettingsPage() {
                       <div><p className="text-muted-foreground">Storage objects</p><p className="font-medium">{backup.storage_object_count}</p></div>
                       <div><p className="text-muted-foreground">Public buckets</p><p className="font-medium">{backup.storage_public_bucket_count}</p></div>
                     </div>
+                    {backup.storage_public_bucket_count > 0 && <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">This backup contains {backup.storage_public_bucket_count} public Storage bucket(s). Review exposure before restoring; the restore script requires explicit approval to recreate public access.</p>}
                     <p className="text-[11px] text-muted-foreground break-all">Encrypted SHA-256: {backup.encrypted_sha256}</p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[11px] text-muted-foreground">Source commit: {backup.source_commit?.slice(0, 12) || "unknown"}</p>
