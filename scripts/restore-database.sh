@@ -25,6 +25,11 @@ node -e 'const u = new URL(process.env.RESTORE_TARGET_DB_URL); const ref = proce
 
 ROOT="$(cd "$ROOT_INPUT" && pwd)"
 node scripts/verify-system-backup.mjs "$ROOT"
+PUBLIC_BUCKET_COUNT="$(node -e 'const m = require(process.argv[1]); const s = require("node:fs").readFileSync(process.argv[2], "utf8"); const v = JSON.parse(s); process.stdout.write(String(v.buckets.filter((b) => b.public).length));' "$ROOT/manifest.json" "$ROOT/storage/manifest.json")"
+if [[ "$PUBLIC_BUCKET_COUNT" -gt 0 && "${RESTORE_ALLOW_PUBLIC_BUCKETS:-}" != "YES" ]]; then
+  echo "Refusing database restore: the backup contains $PUBLIC_BUCKET_COUNT public Storage bucket(s). Review exposure and set RESTORE_ALLOW_PUBLIC_BUCKETS=YES only if public access is intended." >&2
+  exit 1
+fi
 SOURCE_REF="$(node -e 'const m=require(process.argv[1]); process.stdout.write(m.project_ref)' "$ROOT/manifest.json")"
 if [[ "$RESTORE_TARGET_PROJECT_REF" == "$SOURCE_REF" && "${RESTORE_ALLOW_SOURCE_OVERWRITE:-}" != "I_UNDERSTAND_THIS_OVERWRITES_PRODUCTION" ]]; then
   echo "Refusing to overwrite the source project. Restore to a replacement project first. For an explicitly approved in-place recovery, set RESTORE_ALLOW_SOURCE_OVERWRITE=I_UNDERSTAND_THIS_OVERWRITES_PRODUCTION." >&2
