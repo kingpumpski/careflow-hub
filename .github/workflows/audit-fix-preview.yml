@@ -1,0 +1,77 @@
+name: Temporary npm audit remediation preview
+
+on:
+  push:
+    branches: [chore/audit-remediation-preview]
+
+permissions:
+  contents: write
+
+jobs:
+  compatible-fixes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install current lockfile
+        run: npm ci
+
+      - name: Apply compatible npm audit fixes only
+        shell: bash
+        run: |
+          set +e
+          npm audit fix --no-fund
+          status=$?
+          echo "npm audit fix exit code: $status" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Reinstall updated lockfile
+        run: npm ci
+
+      - name: Capture remaining audit reports
+        shell: bash
+        run: |
+          npm audit --omit=dev --json > production-audit.json || true
+          npm audit --json > full-audit.json || true
+
+      - name: Validate updated dependency tree
+        run: |
+          npm run lint
+          npm test -- --run
+          npm run build
+
+      - name: Commit compatible dependency updates to this isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- package.json package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json
+            git commit -m "chore: apply compatible dependency security updates"
+            git push origin HEAD:refs/heads/chore/audit-remediation-preview
+          else
+            echo "No compatible dependency updates were available." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload remediation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-remediation-preview
+          path: |
+            package.json
+            package-lock.json
+            production-audit.json
+            full-audit.json
+          retention-days: 7
