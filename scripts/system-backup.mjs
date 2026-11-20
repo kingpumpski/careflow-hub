@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -41,15 +41,6 @@ const root = await mkdtemp(path.join(tmpdir(), "careflow-backup-"));
 const stage = path.join(root, "package");
 const storageRoot = path.join(stage, "storage", "objects");
 await mkdir(storageRoot, { recursive: true });
-
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const body = (await response.text()).slice(0, 1200);
-    throw new Error("HTTP " + response.status + " from " + new URL(url).host + ": " + body);
-  }
-  return response.json();
-}
 
 async function sha256File(filePath) {
   const hash = createHash("sha256");
@@ -240,18 +231,10 @@ try {
   const manifestPath = "s3://" + r2Bucket + "/" + manifestKey;
   const aws = ["--endpoint-url", r2Endpoint, "--region", "auto"];
   await exec("aws", ["s3", "cp", encrypted, encryptedPath, ...aws, "--only-show-errors"]);
-  const head = await requestJson(r2Endpoint + "/" + r2Bucket + "/" + backupKey, {
-    method: "HEAD",
-    headers: {
-      Authorization: "Bearer " + process.env.BACKUP_R2_VERIFY_TOKEN,
-    },
-  }).catch(() => null);
   // AWS CLI head-object uses SigV4; do not treat an unsigned HTTP HEAD as proof.
   const headResult = await exec("aws", ["s3api", "head-object", "--bucket", r2Bucket, "--key", backupKey, ...aws]);
-  if (!headResult.stdout.includes(String(encryptedInfo.size))) {
-    const parsed = JSON.parse(headResult.stdout || "{}");
-    if (Number(parsed.ContentLength) !== encryptedInfo.size) throw new Error("R2 object size verification failed.");
-  }
+  const parsedHead = JSON.parse(headResult.stdout || "{}");
+  if (Number(parsedHead.ContentLength) !== encryptedInfo.size) throw new Error("R2 object size verification failed.");
   const verificationCopy = path.join(root, "verify.age");
   await exec("aws", ["s3", "cp", encryptedPath, verificationCopy, ...aws, "--only-show-errors"]);
   if (await sha256File(verificationCopy) !== encryptedSha) throw new Error("R2 download checksum did not match the generated backup.");
