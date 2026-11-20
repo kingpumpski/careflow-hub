@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CLAIM_STATUSES, getAvailableClaimTransitions } from "./lifecycle";
 
 const migration = readFileSync(
-  new URL("../../../supabase/migrations/20261120170000_individual_claim_case_lifecycle.sql", import.meta.url),
+  resolve(process.cwd(), "supabase/migrations/20261120170000_individual_claim_case_lifecycle.sql"),
   "utf8",
 );
 
