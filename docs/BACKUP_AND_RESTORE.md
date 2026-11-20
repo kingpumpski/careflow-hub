@@ -13,7 +13,7 @@ The archive is encrypted client-side using `age` before it leaves the runner. Th
 
 External secrets such as Supabase service-role/secret keys, database connection passwords, R2 credentials, GitHub tokens, Edge Function secrets and the age private identity are never written into the backup archive or repository. However, the database snapshot includes database-resident settings and application records. CareFlow currently stores SMTP settings in the `system_settings` table, so any SMTP password saved there is included inside the encrypted database backup. Treat the archive as highly confidential, protect the offline age identity, and rotate database-resident credentials if an archive or recovery key is exposed. External environment/function secrets must be re-entered during recovery.
 
-Supabase platform database backups do not include Storage object files; this worker exports Storage separately. Supabase CLI `db dump` also excludes the managed `auth` and `storage` schemas by default, so do not substitute a normal CLI dump for the platform database snapshot.
+Supabase database snapshots do not include the actual Storage object bytes; this worker exports every Storage object separately. The Supabase CLI `db dump` command excludes managed `auth` and `storage` schemas by default, so this worker intentionally uses raw PostgreSQL `pg_dump` and verifies that Auth, Storage metadata and migration-history tables are present.
 
 ## Required one-time configuration
 
@@ -25,31 +25,31 @@ Create this environment in repository Settings → Environments. Configure these
 |---|---|
 | `SUPABASE_PROJECT_ID` | Must equal `jajfdgknctzqypdtvmxo` |
 | `SUPABASE_URL` | Must equal `https://jajfdgknctzqypdtvmxo.supabase.co` |
-| `SUPABASE_ACCESS_TOKEN` | Supabase Personal Access Token with the Management API permission required to download project backups (`database:write` / `backups_write`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side key used only to enumerate and download Storage objects |
+| `SUPABASE_DB_URL` | PostgreSQL Session Pooler connection URI for this project, using port 5432, a database password and `sslmode=require`; URL-encode special characters in the password |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side key used only by the backup runner to enumerate and download Storage objects |
 | `BACKUP_AGE_RECIPIENT` | Public age recipient (`age1...`); the private identity is kept offline by the recovery operator |
 | `BACKUP_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `BACKUP_R2_BUCKET` | Private R2 bucket name dedicated to CareFlow backups |
-| `BACKUP_R2_ACCESS_KEY_ID` | R2 S3-compatible access key with object list/get/put/head permissions |
-| `BACKUP_R2_SECRET_ACCESS_KEY` | Matching R2 secret key |
+| `BACKUP_R2_ACCESS_KEY_ID` | R2 S3-compatible worker key with object list/get/put/head permissions |
+| `BACKUP_R2_SECRET_ACCESS_KEY` | Matching R2 worker secret key |
 
 The R2 bucket must have public access disabled. Create separate bucket-scoped credentials: the GitHub backup worker requires object read/write/list access for upload and read-back verification, while the Supabase Edge Function requires object read/list access only. Configure a lifecycle/retention policy appropriate to the organisation's recovery requirements (recommended minimum: 30 daily restore points, subject to storage cost and policy). Do not configure lifecycle deletion until retention and legal requirements are approved.
 
-Create the age key pair offline and keep the private identity in at least two protected offline locations. Only the public recipient is configured in GitHub Actions. Loss of the private identity makes the encrypted backups unrecoverable.
+Create the age key pair offline with `age-keygen -o careflow-age-identity.txt`. Copy only the `age1...` public recipient into `BACKUP_AGE_RECIPIENT`; keep the private identity file in at least two protected offline locations. Loss of the private identity makes the encrypted backups unrecoverable. The `production-backup` GitHub Environment must not require human approval for every run, otherwise unattended daily backups will stall.
 
 ### Supabase Edge Function secrets
 
 Set these secrets for the `backup-control` Edge Function:
 
 - `BACKUP_R2_ACCOUNT_ID`
-- `BACKUP_R2_ACCESS_KEY_ID`
-- `BACKUP_R2_SECRET_ACCESS_KEY`
+- `BACKUP_R2_READ_ACCESS_KEY_ID` — a separate R2 credential restricted to bucket object list/read.
+- `BACKUP_R2_READ_SECRET_ACCESS_KEY` — matching read-only R2 secret.
 - `BACKUP_R2_BUCKET`
 - `GITHUB_BACKUP_DISPATCH_TOKEN` — fine-grained GitHub token restricted to this repository with Actions: write permission.
 - `GITHUB_BACKUP_REPOSITORY=kingpumpski/careflow-hub`
 - `ALLOWED_ORIGINS=https://kingpumpski.github.io`
 
-Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to the function runtime. Never add a service-role key to a Vite environment variable.
+Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to the function runtime. Never add a service-role key to a Vite environment variable. The `production-backup` GitHub Environment also needs `SUPABASE_ACCESS_TOKEN` (authorised to deploy Edge Functions) and `SUPABASE_PROJECT_ID` for the manually confirmed `deploy-backup-control.yml` workflow. The `production-database` environment separately retains its deployment token and database password.
 
 ## How to operate
 
@@ -68,20 +68,27 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
 1. Create or identify a replacement Supabase project. Record its project ref and database password. Confirm PostgreSQL major-version compatibility with the source backup.
 2. Download the encrypted backup from Settings → Backup. Record the `encrypted_sha256` shown in the verified manifest.
 3. On a trusted recovery workstation, install `age`, `tar` and the Node.js runtime. Keep the age private identity in a protected file; never upload it to GitHub, Supabase, the app or R2.
-4. Run:
+4. Run the checksum-verified decrypt and extraction step:
    ```bash
-   BACKUP_AGE_IDENTITY_FILE=/secure/offline/careflow-age-identity.txt \\
-   BACKUP_EXPECTED_SHA256=<manifest-encrypted-sha256> \\
+   export BACKUP_AGE_IDENTITY_FILE=/secure/offline/careflow-age-identity.txt
+   export BACKUP_EXPECTED_SHA256=<manifest-encrypted-sha256>
    bash scripts/restore-system-backup.sh careflow-system-backup.tar.gz.age
    ```
-   The script verifies the encrypted package checksum, decrypts it, rejects unsafe archive paths, then validates the database backup and every Storage object checksum.
-5. Restore the database using the Supabase-supported restore path for the downloaded database backup format and target plan/version. For a platform daily/PITR recovery, use Supabase Dashboard → Database → Backups / Point in Time and restore to a **new project** where supported. For a downloaded physical backup, follow Supabase's documented local restore process (`supabase db start --from-backup`) first; do not feed a physical backup file to `psql` or `pg_restore` unless its actual format has been identified and the restore tooling explicitly supports it.
+   The script verifies the encrypted package checksum, decrypts it, rejects unsafe archive paths, then validates the database dump, source snapshot and every Storage object checksum.
+5. Create a replacement Supabase project in the same region and with the same PostgreSQL major version. Obtain its **Session Pooler** connection URI (port 5432) from the Supabase Connect dialog. Restore the database into that replacement project:
+   ```bash
+   export RESTORE_TARGET_PROJECT_REF=<new-project-ref>
+   export RESTORE_TARGET_DB_URL='postgresql://postgres.<new-project-ref>:<password>@<session-pooler-host>:5432/postgres?sslmode=require'
+   export RESTORE_CONFIRMATION="RESTORE-DATABASE-TO:${RESTORE_TARGET_PROJECT_REF}"
+   bash scripts/restore-database.sh <verified-extracted-directory>
+   ```
+   The script verifies the target PostgreSQL major version, requires explicit target confirmation, refuses to overwrite the source project by default, and restores the custom-format dump transactionally. This is destructive to the target database; use a new project first.
 6. After the target database is restored and the target project is healthy, restore the Storage buckets and objects:
    ```bash
-   RESTORE_TARGET_SUPABASE_URL=https://<target-ref>.supabase.co \\
-   RESTORE_TARGET_PROJECT_REF=<target-ref> \\
-   RESTORE_TARGET_SERVICE_ROLE_KEY=<target-service-role-key> \\
-   RESTORE_CONFIRMATION=RESTORE-STORAGE-TO:<target-ref> \\
+   export RESTORE_TARGET_SUPABASE_URL=https://<target-ref>.supabase.co
+   export RESTORE_TARGET_PROJECT_REF=<target-ref>
+   export RESTORE_TARGET_SERVICE_ROLE_KEY=<target-service-role-key>
+   export RESTORE_CONFIRMATION="RESTORE-STORAGE-TO:${RESTORE_TARGET_PROJECT_REF}"
    node scripts/restore-storage.mjs <verified-extracted-directory>
    ```
    The script creates missing buckets, uploads objects, and downloads each uploaded object again to verify SHA-256.
@@ -94,13 +101,13 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
 - The custom-format PostgreSQL dump and restore command must be verified with a real CareFlow backup and a disposable replacement Supabase project. This repository does not claim a successful end-to-end restore until that test passes.
 - The worker requires a PostgreSQL session-pooler connection URI and a database role with read access to the required schemas. It fails closed if the required Auth, Storage metadata or migration-ledger tables are missing.
 - Supabase platform database backups and PITR do not include Storage objects; this worker includes Storage separately.
-- Platform Auth/provider settings, OAuth client secrets, SMTP secrets, Edge Function secrets, JWT/API keys, custom domains and third-party integrations must be reconfigured or rotated. The database backup contains database-resident Auth data only to the extent provided by Supabase's backup format.
+- Platform Auth/provider settings, OAuth client secrets, SMTP transport secrets, Edge Function secrets, JWT/API keys, custom domains and third-party integrations must be reconfigured or rotated. The PostgreSQL dump includes `auth.users` and `auth.identities`, including password hashes, but it does not include cluster-wide role definitions/passwords or project-level provider configuration.
 - R2 is off-site from the Supabase project. It must remain private, have independent access controls, and retain the age private key securely.
 - The first successful scheduled run and a complete restore rehearsal are mandatory before the UI may be treated as production-ready.
 
 ## References
 
 - [Supabase database backups](https://supabase.com/docs/guides/platform/backups)
-- [Supabase Management API — download project backup](https://supabase.com/docs/reference/api/v2-download-project-backup)
-- [Supabase backup and restore with CLI](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)
-- [Restore a downloaded backup locally](https://supabase.com/docs/guides/local-development/restoring-downloaded-backup)
+- [PostgreSQL pg_dump documentation](https://www.postgresql.org/docs/current/app-pgdump.html)
+- [PostgreSQL pg_restore documentation](https://www.postgresql.org/docs/current/app-pgrestore.html)
+- [Supabase database backups and Storage limitations](https://supabase.com/docs/guides/platform/backups)
