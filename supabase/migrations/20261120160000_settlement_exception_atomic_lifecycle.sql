@@ -99,6 +99,7 @@ DECLARE
   v_exception public.settlement_exceptions%rowtype;
   v_actor uuid := auth.uid();
   v_note text := nullif(trim(coalesce(p_note,'')), '');
+  v_previous_status text;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
@@ -126,6 +127,7 @@ BEGIN
   IF v_exception.status = p_target_status THEN
     RETURN v_exception;
   END IF;
+  v_previous_status := v_exception.status;
   IF NOT (
     (v_exception.status = 'open' AND p_target_status IN ('under_review','waived'))
     OR (v_exception.status = 'under_review' AND p_target_status IN ('resolved','waived'))
@@ -150,7 +152,7 @@ BEGIN
   )
   VALUES (
     v_exception.facility_id, v_exception.id, 'status_changed', v_actor, now(),
-    CASE WHEN p_target_status = 'under_review' THEN 'open' ELSE 'under_review' END,
+    v_previous_status,
     p_target_status, v_note
   );
 
