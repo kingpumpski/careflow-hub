@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertClaimTransition, canTransitionClaim, CLAIM_STATUSES } from "./lifecycle";
+import { assertClaimTransition, canTransitionClaim, CLAIM_STATUSES, getAvailableClaimTransitions } from "./lifecycle";
 
 describe("claim lifecycle", () => {
   it("defines a finite, unique status catalogue", () => {
@@ -17,6 +17,11 @@ describe("claim lifecycle", () => {
   it("blocks invalid transitions", () => {
     expect(canTransitionClaim("draft", "paid")).toBe(false);
     expect(canTransitionClaim("closed", "draft")).toBe(false);
+  });
+
+  it("returns only the allowed next statuses for the UI", () => {
+    expect(getAvailableClaimTransitions("draft")).toEqual(["verified"]);
+    expect(getAvailableClaimTransitions("closed")).toEqual([]);
   });
 
   it("throws on an invalid transition", () => {
