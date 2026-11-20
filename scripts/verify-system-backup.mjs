@@ -11,6 +11,7 @@ if (manifest.format !== "careflow-system-backup" || manifest.format_version !== 
 if (manifest.project_ref !== "jajfdgknctzqypdtvmxo") throw new Error("Backup project reference does not match CareFlow production.");
 if (!/^[0-9T-]{8,30}-[0-9a-f-]{8,40}$/.test(manifest.backup_id ?? "")) throw new Error("Invalid backup ID in manifest.");
 if (!manifest.database?.path || !/^[a-f0-9]{64}$/.test(manifest.database.sha256 ?? "")) throw new Error("Database backup metadata is incomplete.");
+if (manifest.database.format !== "pg_dump_custom" || !Number.isInteger(manifest.database.postgresMajor)) throw new Error("Database backup is not a supported custom-format PostgreSQL dump.");
 
 async function sha256(file) {
   const hash = createHash("sha256");
@@ -38,6 +39,7 @@ if (sourceInfo.size !== manifest.source?.archive_bytes || await sha256(sourcePat
 const storageManifest = JSON.parse(await readFile(path.join(root, "storage", "manifest.json"), "utf8"));
 if (!Array.isArray(storageManifest.buckets)) throw new Error("Storage manifest is invalid.");
 if (storageManifest.buckets.length !== manifest.storage?.bucketCount) throw new Error("Storage bucket count does not match the package manifest.");
+if (storageManifest.buckets.filter((bucket) => bucket.public).length !== manifest.storage?.publicBucketCount) throw new Error("Public Storage bucket count does not match the package manifest.");
 let objects = 0;
 let storageBytes = 0;
 const bucketNames = new Set();

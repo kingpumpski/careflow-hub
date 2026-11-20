@@ -18,6 +18,7 @@ type SystemBackup = {
   database_bytes: number;
   storage_bucket_count: number;
   storage_object_count: number;
+  storage_public_bucket_count: number;
   verification: string;
   source_commit: string;
 };
@@ -648,12 +649,14 @@ export default function SettingsPage() {
                       </div>
                       <span className="text-xs rounded-full border border-emerald-600/40 px-2 py-1 text-emerald-700 dark:text-emerald-400">SHA-256 verified</span>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
                       <div><p className="text-muted-foreground">Encrypted file</p><p className="font-medium">{formatBackupBytes(backup.encrypted_bytes)}</p></div>
                       <div><p className="text-muted-foreground">Database</p><p className="font-medium">{formatBackupBytes(backup.database_bytes)}</p></div>
                       <div><p className="text-muted-foreground">Storage buckets</p><p className="font-medium">{backup.storage_bucket_count}</p></div>
                       <div><p className="text-muted-foreground">Storage objects</p><p className="font-medium">{backup.storage_object_count}</p></div>
+                      <div><p className="text-muted-foreground">Public buckets</p><p className="font-medium">{backup.storage_public_bucket_count}</p></div>
                     </div>
+                    {backup.storage_public_bucket_count > 0 && <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">This backup contains {backup.storage_public_bucket_count} public Storage bucket(s). Review exposure before restoring; the restore script requires explicit approval to recreate public access.</p>}
                     <p className="text-[11px] text-muted-foreground break-all">Encrypted SHA-256: {backup.encrypted_sha256}</p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[11px] text-muted-foreground">Source commit: {backup.source_commit?.slice(0, 12) || "unknown"}</p>
@@ -665,7 +668,7 @@ export default function SettingsPage() {
                 ))
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Recovery is an operator-controlled process. Decrypt the archive using the offline age private key, restore the database through the Supabase-supported recovery path, then restore and verify Storage objects. Never upload the private key or service-role key to this browser.</p>
+            <p className="text-xs text-muted-foreground">Recovery is an operator-controlled process. Decrypt the archive using the offline age private key, restore the database through the Supabase-supported recovery path, then restore and verify Storage objects. The database snapshot may contain confidential settings such as the SMTP password currently stored in system_settings. Never upload the private key or service-role key to this browser.</p>
             <a className="text-sm text-primary underline underline-offset-4" href="https://github.com/kingpumpski/careflow-hub/blob/main/docs/BACKUP_AND_RESTORE.md" target="_blank" rel="noreferrer">Open full backup and recovery runbook</a>
           </div>
 

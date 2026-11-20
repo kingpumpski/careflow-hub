@@ -23,8 +23,8 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const r2Account = Deno.env.get("BACKUP_R2_ACCOUNT_ID");
-    const r2Key = Deno.env.get("BACKUP_R2_ACCESS_KEY_ID");
-    const r2Secret = Deno.env.get("BACKUP_R2_SECRET_ACCESS_KEY");
+    const r2Key = Deno.env.get("BACKUP_R2_READ_ACCESS_KEY_ID");
+    const r2Secret = Deno.env.get("BACKUP_R2_READ_SECRET_ACCESS_KEY");
     const r2Bucket = Deno.env.get("BACKUP_R2_BUCKET");
     if (!supabaseUrl || !anonKey || !serviceKey || !r2Account || !r2Key || !r2Secret || !r2Bucket) return json(req, { error: "Backup service is not configured." }, 503);
 
@@ -48,6 +48,17 @@ Deno.serve(async (req) => {
     };
 
     if (body.action === "create") {
+      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: recentRequests, error: rateLimitError } = await admin
+        .from("security_audit_log")
+        .select("created_at")
+        .eq("actor_user_id", user.id)
+        .eq("action", "system_backup_requested")
+        .gte("created_at", since)
+        .limit(1);
+      if (rateLimitError) return json(req, { error: "Unable to verify backup request rate limit." }, 500);
+      if (recentRequests?.length) return json(req, { error: "A full-system backup was already requested in the last 10 minutes. Check the backup list before retrying." }, 429);
+
       const token = Deno.env.get("GITHUB_BACKUP_DISPATCH_TOKEN");
       const repository = Deno.env.get("GITHUB_BACKUP_REPOSITORY") ?? "kingpumpski/careflow-hub";
       if (!token) return json(req, { error: "Backup scheduler is not configured." }, 503);
@@ -96,6 +107,7 @@ Deno.serve(async (req) => {
             database_bytes: manifest.database_bytes,
             storage_bucket_count: manifest.storage_bucket_count,
             storage_object_count: manifest.storage_object_count,
+          storage_public_bucket_count: manifest.storage_public_bucket_count ?? 0,
             verification: manifest.verification,
             source_commit: manifest.source_commit,
           });

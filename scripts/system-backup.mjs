@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -8,12 +8,13 @@ import { Readable } from "node:stream";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-const exec = promisify(execFile);
+const execFileAsync = promisify(execFile);
+const exec = (file, args, options = {}) => execFileAsync(file, args, { maxBuffer: 50 * 1024 * 1024, ...options });
 const projectRef = process.env.SUPABASE_PROJECT_ID;
 const expectedRef = "jajfdgknctzqypdtvmxo";
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const managementToken = process.env.SUPABASE_ACCESS_TOKEN;
+const databaseUrl = process.env.SUPABASE_DB_URL;
 const ageRecipient = process.env.BACKUP_AGE_RECIPIENT;
 const r2Endpoint = process.env.BACKUP_R2_ENDPOINT;
 const r2Bucket = process.env.BACKUP_R2_BUCKET;
@@ -24,7 +25,7 @@ for (const [name, value] of Object.entries({
   SUPABASE_PROJECT_ID: projectRef,
   SUPABASE_URL: supabaseUrl,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
-  SUPABASE_ACCESS_TOKEN: managementToken,
+  SUPABASE_DB_URL: databaseUrl,
   BACKUP_AGE_RECIPIENT: ageRecipient,
   BACKUP_R2_ENDPOINT: r2Endpoint,
   BACKUP_R2_BUCKET: r2Bucket,
@@ -34,6 +35,12 @@ if (projectRef !== expectedRef || !supabaseUrl.includes(projectRef + ".supabase.
   throw new Error("Refusing backup: SUPABASE_PROJECT_ID and SUPABASE_URL must identify the approved CareFlow project.");
 }
 if (!ageRecipient.startsWith("age1")) throw new Error("BACKUP_AGE_RECIPIENT must be a valid age public recipient.");
+if (!/^postgres(ql)?:\/\//i.test(databaseUrl)) throw new Error("SUPABASE_DB_URL must be a PostgreSQL connection URI.");
+const databaseUri = new URL(databaseUrl);
+const databaseUser = decodeURIComponent(databaseUri.username);
+if (databaseUri.hostname !== "db." + projectRef + ".supabase.co" && databaseUser !== "postgres." + projectRef) {
+  throw new Error("SUPABASE_DB_URL must connect to the approved CareFlow project via its direct host or matching Session Pooler username.");
+}
 if (!r2Endpoint.startsWith("https://")) throw new Error("BACKUP_R2_ENDPOINT must use HTTPS.");
 
 const backupId = new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "") + "-" + randomUUID().slice(0, 8);
@@ -49,35 +56,56 @@ async function sha256File(filePath) {
 }
 
 async function downloadDatabaseBackup() {
-  const response = await fetch("https://api.supabase.com/v2/projects/" + projectRef + "/backups/download", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + managementToken,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ data: { type: "project_backup_file" } }),
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error("Supabase database backup request failed (" + response.status + "): " + text.slice(0, 1200));
-  let payload;
-  try { payload = JSON.parse(text); } catch { throw new Error("Supabase backup API did not return JSON."); }
-  const fileUrl = payload?.data?.attributes?.file_url ?? payload?.data?.file_url ?? payload?.file_url;
-  if (typeof fileUrl !== "string" || !/^https:\/\//.test(fileUrl)) {
-    throw new Error("Supabase backup API did not return a valid HTTPS file_url. Refusing to create an incomplete backup.");
+  const versionProbe = await exec("docker", [
+    "run", "--rm", "-e", "DATABASE_URL", "postgres:19-alpine",
+    "sh", "-c", 'psql "$DATABASE_URL" -Atqc "SHOW server_version_num"',
+  ], { env: { ...process.env, DATABASE_URL: databaseUrl } });
+  const serverVersionNum = Number(versionProbe.stdout.trim());
+  const postgresMajor = Math.floor(serverVersionNum / 10000);
+  if (!Number.isInteger(postgresMajor) || postgresMajor < 14 || postgresMajor > 19) {
+    throw new Error("Unsupported PostgreSQL server version number: " + versionProbe.stdout.trim());
   }
-  const fileResponse = await fetch(fileUrl);
-  if (!fileResponse.ok || !fileResponse.body) throw new Error("Unable to download the generated database backup: HTTP " + fileResponse.status);
-  const contentDisposition = fileResponse.headers.get("content-disposition") ?? "";
-  const extension = contentDisposition.match(/filename="?([^";]+)"?/i)?.[1]?.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "backup";
-  const target = path.join(stage, "database", "project-database." + (extension || "backup"));
-  await mkdir(path.dirname(target), { recursive: true });
-  await pipeline(Readable.fromWeb(fileResponse.body), createWriteStream(target, { flags: "wx" }));
-  const info = await stat(target);
-  if (info.size < 1024) throw new Error("Downloaded database backup is unexpectedly small; refusing to publish.");
-  return { path: path.relative(stage, target), bytes: info.size, sha256: await sha256File(target), contentType: fileResponse.headers.get("content-type") ?? "application/octet-stream" };
-}
 
+  const databaseDir = path.join(stage, "database");
+  await mkdir(databaseDir, { recursive: true });
+  const target = path.join(databaseDir, "project-database.dump");
+  await exec("docker", [
+    "run", "--rm", "-v", databaseDir + ":/backup",
+    "postgres:" + postgresMajor + "-alpine",
+    "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
+    "--file", "/backup/project-database.dump",
+  ]);
+  const info = await stat(target);
+  if (info.size < 1024) throw new Error("Database dump is unexpectedly small; refusing to publish.");
+
+  const toc = await exec("docker", [
+    "run", "--rm", "-v", databaseDir + ":/backup",
+    "postgres:" + postgresMajor + "-alpine",
+    "pg_restore", "--list", "/backup/project-database.dump",
+  ]);
+  const requiredTables = [
+    ["auth", "users"],
+    ["auth", "identities"],
+    ["storage", "buckets"],
+    ["storage", "objects"],
+    ["supabase_migrations", "schema_migrations"],
+  ];
+  for (const [schema, table] of requiredTables) {
+    const definitionPattern = new RegExp("\\bTABLE\\s+" + schema + "\\s+" + table + "\\b");
+    const dataPattern = new RegExp("\\bTABLE DATA\\s+" + schema + "\\s+" + table + "\\b");
+    if (!definitionPattern.test(toc.stdout) || !dataPattern.test(toc.stdout)) {
+      throw new Error("Database dump is missing the definition or data entry for required managed table " + schema + "." + table + ". Refusing to publish an incomplete backup.");
+    }
+  }
+  return {
+    path: path.relative(stage, target),
+    bytes: info.size,
+    sha256: await sha256File(target),
+    format: "pg_dump_custom",
+    postgresMajor,
+    includedSchemas: ["public", "auth", "storage", "supabase_migrations", "extensions"],
+  };
+}
 async function storageRequest(route, options = {}) {
   return fetch(supabaseUrl + "/storage/v1" + route, {
     ...options,
@@ -125,6 +153,7 @@ async function exportStorage() {
           const name = String(entry.name ?? "");
           if (!name || name === "." || name === ".." || name.includes("\\") || name.startsWith("/")) throw new Error("Unsafe Storage object name encountered.");
           const key = prefix ? prefix + "/" + name : name;
+          if (key.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("Unsafe Storage object path returned by API.");
           const isFolder = entry.id == null && entry.metadata == null;
           if (isFolder) {
             queue.push(key);
@@ -167,7 +196,7 @@ async function exportStorage() {
   }
   await mkdir(path.join(stage, "storage"), { recursive: true });
   await writeFile(path.join(stage, "storage", "manifest.json"), JSON.stringify({ buckets: bucketManifests }, null, 2));
-  return { bucketCount: buckets.length, objectCount, totalBytes };
+  return { bucketCount: buckets.length, publicBucketCount: bucketManifests.filter((bucket) => bucket.public).length, objectCount, totalBytes };
 }
 
 async function writeSourceSnapshot() {
@@ -204,16 +233,20 @@ try {
     storage,
     security: {
       archive_encrypted_with_age: true,
-      secrets_included: false,
-      auth_and_database_users: "Included only to the extent provided by the Supabase platform database backup file; verify with a restore test.",
+      external_secrets_included: false,
+      database_resident_credentials_included: true,
+      auth_and_database_users: "Included from auth.users and auth.identities in the full PostgreSQL logical dump; encrypted password hashes are included and therefore the archive is highly confidential.",
       supabase_storage_files: "Separately exported from every bucket.",
     },
   };
   await writeFile(path.join(stage, "manifest.json"), JSON.stringify(innerManifest, null, 2));
-  const archive = path.join(root, "careflow-system-backup.tar.gz");
-  await exec("tar", ["-czf", archive, "-C", stage, "."]);
-  const encrypted = archive + ".age";
-  await exec("age", ["-r", ageRecipient, "-o", encrypted, archive]);
+  const encrypted = path.join(root, "careflow-system-backup.tar.gz.age");
+  // Stream tar directly into age so an additional plaintext archive is never written to disk.
+  await exec("bash", [
+    "-o", "pipefail", "-c",
+    'tar -czf - -C "$1" . | age -r "$2" -o "$3"',
+    "bash", stage, ageRecipient, encrypted,
+  ]);
   const encryptedInfo = await stat(encrypted);
   const encryptedSha = await sha256File(encrypted);
   const backupKey = "backups/" + projectRef + "/" + backupId + ".tar.gz.age";
@@ -229,11 +262,15 @@ try {
     encrypted_bytes: encryptedInfo.size,
     encrypted_sha256: encryptedSha,
     database_bytes: database.bytes,
+    postgres_major: database.postgresMajor,
+    database_format: database.format,
     storage_bucket_count: storage.bucketCount,
     storage_object_count: storage.objectCount,
+    storage_public_bucket_count: storage.publicBucketCount,
     storage_bytes: storage.totalBytes,
     verification: "upload-pending",
-    secrets_included: false,
+    external_secrets_included: false,
+    database_resident_credentials_included: true,
   };
   const encryptedPath = "s3://" + r2Bucket + "/" + backupKey;
   const manifestPath = "s3://" + r2Bucket + "/" + manifestKey;
@@ -250,6 +287,7 @@ try {
   const manifestFile = path.join(root, "public-manifest.json");
   await writeFile(manifestFile, JSON.stringify(publicManifest, null, 2));
   await exec("aws", ["s3", "cp", manifestFile, manifestPath, ...aws, "--content-type", "application/json", "--cache-control", "no-store", "--only-show-errors"]);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "backup_id=" + backupId + "\n");
   console.log(JSON.stringify({ backup_id: backupId, encrypted_bytes: encryptedInfo.size, storage_objects: storage.objectCount, verification: publicManifest.verification, manifest_key: manifestKey }));
 } finally {
   await rm(root, { recursive: true, force: true });
