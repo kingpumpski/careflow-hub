@@ -20,6 +20,21 @@ The repository workflow can build and deploy the site, but the connected GitHub 
 
 The deployment workflow already performs typecheck, lint, unit tests, production build and SPA fallback generation before the Pages artifact is uploaded.
 
+## Protected Supabase production deployment
+
+The database deployment workflow is manual-only. A normal push or merge to `main` must never trigger a production schema change automatically.
+
+Before using **Actions → CareFlow Supabase Deploy → Run workflow**:
+
+1. Configure a GitHub Environment named `production-database`.
+2. Add required reviewers to that environment and enable deployment protection. Store `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID` and `SUPABASE_DB_PASSWORD` as environment secrets (not general repository secrets).
+3. Verify a complete backup and a successful restore test for the same project.
+4. Reconcile all local migration timestamps with `supabase_migrations.schema_migrations`, including the duplicate legacy prefixes recorded in [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
+5. Confirm that `SUPABASE_PROJECT_ID` matches the `project_id` in `supabase/config.toml`.
+6. Dispatch the workflow and explicitly confirm all four release-gate inputs. The workflow prints the remote migration ledger and runs `supabase db push --dry-run` before applying migrations.
+
+The workflow checks the explicit confirmations, environment secrets and project-ref match. GitHub Environment reviewer approval is a separate required control; do not remove it. The confirmations are an auditable operator attestation, not a substitute for backup evidence or restore testing.
+
 ## Supabase production configuration
 
 The browser may contain only the Supabase project URL and publishable/anon key. Never place a service-role key or other privileged secret in Vite environment variables.
