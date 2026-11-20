@@ -9,7 +9,7 @@ import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/s
 import { usePermissions } from "@/modules/security/usePermissions";
 import type { Permission } from "@/modules/security";
 
-type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts";
+type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts" | "claim_cases" | "claim_case_events";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
@@ -31,7 +31,7 @@ const READ_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
   ledger_entries: ["ledger.read", "reports.read"], audit_logs: ["audit.read"], user_roles: ["users.manage"],
   claims_settlement_periods: ["payments.read"], settlement_exceptions: ["payments.read"], settlement_exception_audit_events: ["payments.read"],
   claims_outstanding_periods: ["claims.read"],
-  claim_diagnosis_drafts: ["claims.read"],
+  claim_diagnosis_drafts: ["claims.read"], claim_cases: ["claims.read"], claim_case_events: ["claims.read"],
 };
 
 const WRITE_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
