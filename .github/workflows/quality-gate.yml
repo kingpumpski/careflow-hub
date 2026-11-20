@@ -35,6 +35,7 @@ jobs:
           node --check scripts/system-backup.mjs
           node --check scripts/verify-system-backup.mjs
           node --check scripts/restore-storage.mjs
+          bash -n scripts/restore-system-backup.sh scripts/restore-database.sh
       - name: Setup Deno for Supabase Edge Function checks
         uses: denoland/setup-deno@v2
         with:
