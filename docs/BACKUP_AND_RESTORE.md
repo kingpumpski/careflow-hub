@@ -33,7 +33,7 @@ Create this environment in repository Settings → Environments. Configure these
 | \`BACKUP_R2_ACCESS_KEY_ID\` | R2 S3-compatible access key with object list/get/put/head permissions |
 | \`BACKUP_R2_SECRET_ACCESS_KEY\` | Matching R2 secret key |
 
-The R2 bucket must have public access disabled. Keep R2 credentials restricted to this bucket. Configure a lifecycle/retention policy appropriate to the organisation's recovery requirements (recommended minimum: 30 daily restore points, subject to storage cost and policy). Do not configure lifecycle deletion until retention and legal requirements are approved.
+The R2 bucket must have public access disabled. Create separate bucket-scoped credentials: the GitHub backup worker requires object read/write/list access for upload and read-back verification, while the Supabase Edge Function requires object read/list access only. Configure a lifecycle/retention policy appropriate to the organisation's recovery requirements (recommended minimum: 30 daily restore points, subject to storage cost and policy). Do not configure lifecycle deletion until retention and legal requirements are approved.
 
 Create the age key pair offline and keep the private identity in at least two protected offline locations. Only the public recipient is configured in GitHub Actions. Loss of the private identity makes the encrypted backups unrecoverable.
 
@@ -54,7 +54,7 @@ Supabase supplies \`SUPABASE_URL\`, \`SUPABASE_ANON_KEY\` and \`SUPABASE_SERVICE
 ## How to operate
 
 1. The workflow runs daily at 02:00 UTC.
-2. An authorised system administrator can request an on-demand run from Settings → Backup.
+2. An authorised system administrator can request an on-demand run from Settings → Backup. Requests are rate-limited to one per administrator per 10 minutes.
 3. The worker requests a database backup from the Supabase Management API, exports all Storage objects, snapshots the source commit, creates the package, encrypts it, uploads it to R2, downloads it again and compares SHA-256.
 4. The plaintext manifest is uploaded **last**. Its presence with \`verification=sha256-verified\` is the commit marker that the backup completed successfully.
 5. The Backup Center only lists manifests that pass project-ref and verification checks. It issues a 60-second signed download URL on demand.
