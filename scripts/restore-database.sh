@@ -21,6 +21,7 @@ if [[ ! "$RESTORE_TARGET_DB_URL" =~ ^postgres(ql)?:// ]]; then
   echo "RESTORE_TARGET_DB_URL must be a PostgreSQL connection URI." >&2
   exit 1
 fi
+node -e 'const u = new URL(process.env.RESTORE_TARGET_DB_URL); const ref = process.env.RESTORE_TARGET_PROJECT_REF; if (u.hostname !== "db." + ref + ".supabase.co" && decodeURIComponent(u.username) !== "postgres." + ref) { console.error("Target database URI does not match RESTORE_TARGET_PROJECT_REF."); process.exit(1); }'
 
 ROOT="$(cd "$ROOT_INPUT" && pwd)"
 node scripts/verify-system-backup.mjs "$ROOT"
