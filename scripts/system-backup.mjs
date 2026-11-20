@@ -70,7 +70,8 @@ async function downloadDatabaseBackup() {
   await mkdir(databaseDir, { recursive: true });
   const target = path.join(databaseDir, "project-database.dump");
   await exec("docker", [
-    "run", "--rm", "-v", databaseDir + ":/backup",
+    "run", "--rm", "--user", String(process.getuid()) + ":" + String(process.getgid()),
+    "-v", databaseDir + ":/backup",
     "postgres:" + postgresMajor + "-alpine",
     "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
     "--file", "/backup/project-database.dump",
