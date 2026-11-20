@@ -98,11 +98,11 @@ export default function ClaimCases() {
     clinical_notes: "",
   });
 
-  const insurerRows = (insurers ?? []) as InsuranceCompanyOption[];
-  const preauthorizationRows = (preauthorizations ?? []) as PreauthorizationOption[];
-  const caseRows = (cases ?? []) as ClaimCase[];
-  const eventRows = (events ?? []) as ClaimCaseEvent[];
-  const insurerById = useMemo(() => new Map(insurerRows.map((item) => [item.id, item.company_name])), [insurers]);
+  const insurerRows = useMemo(() => (insurers ?? []) as InsuranceCompanyOption[], [insurers]);
+  const preauthorizationRows = useMemo(() => (preauthorizations ?? []) as PreauthorizationOption[], [preauthorizations]);
+  const caseRows = useMemo(() => (cases ?? []) as ClaimCase[], [cases]);
+  const eventRows = useMemo(() => (events ?? []) as ClaimCaseEvent[], [events]);
+  const insurerById = useMemo(() => new Map(insurerRows.map((item) => [item.id, item.company_name])), [insurerRows]);
   const filteredCases = useMemo(() => caseRows.filter((item) => {
     const matchesSearch = [item.claim_number, item.patient_name, item.member_number ?? "", String(insurerById.get(item.insurance_company_id) ?? "")]
       .some((value) => value.toLowerCase().includes(search.toLowerCase()));
