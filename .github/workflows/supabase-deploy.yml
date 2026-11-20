@@ -5,11 +5,6 @@ name: CareFlow Supabase Deploy
 on:
   workflow_dispatch:
     inputs:
-      backup_verified:
-        description: "A complete, restorable backup for this target project has been verified."
-        required: true
-        type: boolean
-        default: false
       migration_ledger_reconciled:
         description: "The remote migration ledger has been compared with repository migrations."
         required: true
@@ -34,7 +29,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment:
+      name: production-backup
+    outputs:
+      backup_id: ${{ steps.create_backup.outputs.backup_id }}
+    env:
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+      BACKUP_R2_ACCOUNT_ID: ${{ secrets.BACKUP_R2_ACCOUNT_ID }}
+      BACKUP_R2_ENDPOINT: https://${{ secrets.BACKUP_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BACKUP_R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify approved project and backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SUPABASE_PROJECT_ID" = "jajfdgknctzqypdtvmxo"
+          test "$SUPABASE_URL" = "https://jajfdgknctzqypdtvmxo.supabase.co"
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_SERVICE_ROLE_KEY BACKUP_AGE_RECIPIENT BACKUP_R2_ACCOUNT_ID BACKUP_R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name:-}" ]]; then echo "::error::Missing required secret $name"; exit 1; fi
+          done
+      - name: Install age encryption utility
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age
+      - name: Create verified off-site backup before database deployment
+        id: create_backup
+        run: node scripts/system-backup.mjs
+
   deploy:
+    needs: backup
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -51,7 +86,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "${{ inputs.backup_verified }}" == "true" ]] || { echo "A verified backup is required."; exit 1; }
           [[ "${{ inputs.migration_ledger_reconciled }}" == "true" ]] || { echo "Migration ledger reconciliation is required."; exit 1; }
           [[ "${{ inputs.restored_backup_tested }}" == "true" ]] || { echo "A successful restore test is required."; exit 1; }
           [[ "${{ inputs.confirm_production_deploy }}" == "true" ]] || { echo "Explicit production deployment confirmation is required."; exit 1; }
@@ -64,6 +98,7 @@ jobs:
             echo "Configured production project ref does not match supabase/config.toml."
             exit 1
           }
+          echo "Verified backup ID: ${{ needs.backup.outputs.backup_id }}"
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
