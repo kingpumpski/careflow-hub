@@ -35,5 +35,11 @@ jobs:
           node --check scripts/system-backup.mjs
           node --check scripts/verify-system-backup.mjs
           node --check scripts/restore-storage.mjs
+      - name: Setup Deno for Supabase Edge Function checks
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Typecheck backup portal Edge Function
+        run: deno check supabase/functions/backup-control/index.ts
       - name: Production build
         run: npm run build
