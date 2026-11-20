@@ -69,13 +69,17 @@ async function downloadDatabaseBackup() {
   const databaseDir = path.join(stage, "database");
   await mkdir(databaseDir, { recursive: true });
   const target = path.join(databaseDir, "project-database.dump");
-  await exec("docker", [
-    "run", "--rm", "--user", String(process.getuid()) + ":" + String(process.getgid()),
-    "-v", databaseDir + ":/backup",
-    "postgres:" + postgresMajor + "-alpine",
-    "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
-    "--file", "/backup/project-database.dump",
-  ]);
+  try {
+    await exec("docker", [
+      "run", "--rm", "--user", String(process.getuid()) + ":" + String(process.getgid()),
+      "-v", databaseDir + ":/backup",
+      "postgres:" + postgresMajor + "-alpine",
+      "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
+      "--file", "/backup/project-database.dump",
+    ]);
+  } catch {
+    throw new Error("PostgreSQL logical dump failed. Check the Session Pooler connection, database privileges and server compatibility; connection details are suppressed.");
+  }
   const info = await stat(target);
   if (info.size < 1024) throw new Error("Database dump is unexpectedly small; refusing to publish.");
 
@@ -160,27 +164,31 @@ async function exportStorage() {
             queue.push(key);
             continue;
           }
-          const relative = path.join(bucketName, ...key.split("/"));
-          const target = path.join(bucketDir, ...key.split("/"));
-          if (!target.startsWith(bucketDir + path.sep)) throw new Error("Storage path escaped backup directory.");
-          await mkdir(path.dirname(target), { recursive: true });
-          const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-          const objectResponse = await storageRequest("/object/authenticated/" + encodeURIComponent(bucketName) + "/" + encodedKey);
-          if (!objectResponse.ok || !objectResponse.body) throw new Error("Unable to download a Storage object (HTTP " + objectResponse.status + "). Object names are intentionally omitted from CI logs.");
-          await pipeline(Readable.fromWeb(objectResponse.body), createWriteStream(target, { flags: "wx" }));
-          const objectStat = await stat(target);
-          const object = {
-            key,
-            path: path.posix.join("storage", "objects", relative.split(path.sep).join("/")),
-            bytes: objectStat.size,
-            sha256: await sha256File(target),
-            content_type: entry.metadata?.mimetype ?? entry.metadata?.contentType ?? "application/octet-stream",
-            cache_control: entry.metadata?.cacheControl ?? null,
-            metadata: entry.user_metadata ?? null,
-          };
-          objects.push(object);
-          objectCount += 1;
-          totalBytes += objectStat.size;
+          try {
+            const relative = path.join(bucketName, ...key.split("/"));
+            const target = path.join(bucketDir, ...key.split("/"));
+            if (!target.startsWith(bucketDir + path.sep)) throw new Error("Unsafe Storage object path.");
+            await mkdir(path.dirname(target), { recursive: true });
+            const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+            const objectResponse = await storageRequest("/object/authenticated/" + encodeURIComponent(bucketName) + "/" + encodedKey);
+            if (!objectResponse.ok || !objectResponse.body) throw new Error("Storage object download failed.");
+            await pipeline(Readable.fromWeb(objectResponse.body), createWriteStream(target, { flags: "wx" }));
+            const objectStat = await stat(target);
+            const object = {
+              key,
+              path: path.posix.join("storage", "objects", relative.split(path.sep).join("/")),
+              bytes: objectStat.size,
+              sha256: await sha256File(target),
+              content_type: entry.metadata?.mimetype ?? entry.metadata?.contentType ?? "application/octet-stream",
+              cache_control: entry.metadata?.cacheControl ?? null,
+              metadata: entry.user_metadata ?? null,
+            };
+            objects.push(object);
+            objectCount += 1;
+            totalBytes += objectStat.size;
+          } catch {
+            throw new Error("Storage export failed while processing an object. Object names are intentionally omitted from public CI logs.");
+          }
         }
         if (entries.length < 1000) break;
         offset += entries.length;
