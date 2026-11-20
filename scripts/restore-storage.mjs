@@ -16,6 +16,8 @@ if (confirmation !== "RESTORE-STORAGE-TO:" + targetRef) throw new Error("Explici
 const manifest = JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"));
 if (manifest.format !== "careflow-system-backup") throw new Error("Unsupported backup archive.");
 const storage = JSON.parse(await readFile(path.join(root, "storage", "manifest.json"), "utf8"));
+const publicBuckets = storage.buckets.filter((bucket) => bucket.public);
+if (publicBuckets.length && process.env.RESTORE_ALLOW_PUBLIC_BUCKETS !== "YES") throw new Error("Backup contains public Storage buckets. Review them and set RESTORE_ALLOW_PUBLIC_BUCKETS=YES only if public access is intended.");
 const headers = { apikey: serviceKey, Authorization: "Bearer " + serviceKey };
 async function sha256(file) {
   const hash = createHash("sha256");
