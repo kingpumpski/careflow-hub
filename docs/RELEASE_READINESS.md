@@ -7,7 +7,7 @@
 ## Application gates
 
 - [x] TypeScript check passes.
-- [x] ESLint passes.
+- [x] ESLint regression gate passes; main has 719 warnings (0 errors), down from the 720-warning baseline, with no new warning signatures. The remaining warnings are tracked for incremental cleanup.
 - [x] Unit/regression tests pass.
 - [x] Production build completes successfully.
 - [x] Claims financial UI reads the authoritative `claims_outstanding_periods` view.
@@ -31,7 +31,7 @@
 - [ ] Duplicate migration version prefixes are reconciled against the production migration ledger; see [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
 - [ ] Organization-level tenant schema, active-organization context and cross-tenant RLS tests are implemented (facility scoping alone is not organization tenancy).
 - [ ] Claim lifecycle transitions are enforced by a server-side transactional RPC and Claims UI.
-- [ ] Settlement exception register supports atomic online/offline lifecycle transitions and audit.
+- [ ] Settlement exception register supports atomic online/offline lifecycle transitions and audit. PR #48 contains the online implementation and passed code CI, but remains draft pending disposable-database integration tests; its migration is not applied.
 
 ## Security gates
 
@@ -48,7 +48,9 @@
 - [x] Full custom-format PostgreSQL dump includes and validates Auth users/identities, Storage metadata and migration history; database and Storage restore scripts are guarded by target confirmation (PR #45).
 - [x] Backup integrity tests, Node/Bash syntax checks and Deno Edge Function typecheck pass (PR #45 checks 44729717302 and 44729717264).
 - [x] Production database deployment workflow now requires a fresh successful encrypted backup before migrations can run.
-- [ ] Supabase project access, `production-backup` environment secrets, private R2 bucket and `backup-control` Edge Function are configured.
+- [x] Supabase project `jajfdgknctzqypdtvmxo` is accessible and `ACTIVE_HEALTHY` (PostgreSQL 17, `eu-west-1`).
+- [x] Private Cloudflare R2 bucket `careflow-system-backups` exists and the authenticated `backup-control` Edge Function is deployed and ACTIVE.
+- [ ] Bucket-scoped worker/portal credentials, age encryption key, GitHub `production-backup` secrets and Supabase function secrets are configured. Do not place secret values in chat.
 - [ ] First encrypted full-system backup completes and its manifest verifies.
 - [ ] Restore rehearsal succeeds against a disposable replacement Supabase project, including database, Auth, Storage objects, Edge Functions and login/RLS smoke tests.
 
@@ -60,9 +62,9 @@
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
 - [x] HTTPS live smoke test passes after deployment; root, same-origin JS/CSS assets and SPA deep-link fallback are verified (main run 44727328070).
 - [x] HTTP redirects to HTTPS; verified by main Pages run 44727328070 on 2026-11-20.
-- [ ] Supabase production project is accessible and healthy; the owner-confirmed ref is `jajfdgknctzqypdtvmxo`, but the connected Supabase account currently does not list or authorize access to it.
+- [x] Supabase production project is accessible and healthy; confirmed project ref is `jajfdgknctzqypdtvmxo` (PostgreSQL 17, `eu-west-1`). No production migrations are authorized or applied by this verification.
 - [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
-- [ ] The `production-database` GitHub Environment has required reviewers and environment-scoped Supabase secrets configured; the intended project ref is accessible.
+- [ ] The `production-database` GitHub Environment has required reviewers and environment-scoped Supabase secrets configured.
 
 > **Deployment boundary:** repository implementation and CI validation continue while production Supabase deployment is intentionally deferred. The application must not claim that pending migrations or Edge Functions are live until the controlled deployment workflow succeeds.
 
@@ -89,4 +91,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The published app shell and JS/CSS assets pass the HTTPS smoke test, and HTTP now redirects to HTTPS (main run 44727328070). The full-system Backup Center and recovery tooling (including full PostgreSQL/Auth/Storage backup, guarded database restore, Storage restore, and pre-migration backup enforcement) are merged, but the service is not yet operational: the owner-confirmed Supabase project is inaccessible to the connected Supabase account and Cloudflare R2 is not enabled. No production backup or restore rehearsal has been completed. Production schema application, migration-ledger reconciliation, organization-level tenant isolation and first legitimate administrator bootstrap also remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
+The repository is not production-certified. Main-branch CI, the quality gate and dependency security audit passed on 2026-11-20; the latest dependency audit reports zero vulnerabilities. PR #49 merged a per-file/rule/message ESLint regression gate, and PR #50 removed one warning; the current observed count is 719 warnings against a 720-warning baseline. The last verified GitHub Pages HTTPS smoke test and HTTP-to-HTTPS redirect were recorded in run 44727328070; the newest merged commit still needs a fresh live smoke test. Supabase project `jajfdgknctzqypdtvmxo` is accessible and ACTIVE_HEALTHY, Cloudflare R2 is enabled with private bucket `careflow-system-backups`, and `backup-control` is deployed. However, no worker/portal credentials or encryption key have been configured, no encrypted backup has completed, and no restore rehearsal has passed. The live migration ledger currently contains 74 entries while the repository has 116 local migration files and three duplicate timestamp groups; do not infer that the difference is simply unapplied migrations. No production schema migration or ledger repair has been performed. Organization-level tenant isolation, server-enforced claim lifecycle, settlement exception database integration, and first legitimate administrator bootstrap remain unverified. The connected project also has unresolved security-advisor findings: five authenticated-callable SECURITY DEFINER functions, an RLS-enabled `role_permissions` table without a client policy, and leaked-password protection disabled. Do not interpret a successful static-site deployment as proof that every backend workflow is live.
