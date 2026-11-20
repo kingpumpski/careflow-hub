@@ -45,21 +45,29 @@ BEGIN
   FROM public.settlement_exceptions
   WHERE settlement_period_id = p_settlement_period_id
     AND type = p_type
-    AND status IN ('open','under_review')
   ORDER BY detected_at DESC
   LIMIT 1
   FOR UPDATE;
 
   IF FOUND THEN
-    UPDATE public.settlement_exceptions
-    SET severity = p_severity,
-        title = trim(p_title),
-        description = trim(p_description),
-        detected_at = coalesce(p_detected_at, now()),
-        updated_at = now()
-    WHERE id = v_exception.id
-    RETURNING * INTO v_exception;
-    RETURN v_exception;
+    IF v_exception.status IN ('open','under_review') THEN
+      UPDATE public.settlement_exceptions
+      SET severity = p_severity,
+          title = trim(p_title),
+          description = trim(p_description),
+          detected_at = coalesce(p_detected_at, now()),
+          updated_at = now()
+      WHERE id = v_exception.id
+      RETURNING * INTO v_exception;
+      RETURN v_exception;
+    END IF;
+    -- Do not reopen an unchanged resolved/waived exception on every refresh.
+    -- A materially changed detection creates a new lifecycle record instead.
+    IF v_exception.severity = p_severity
+       AND v_exception.title = trim(p_title)
+       AND v_exception.description = trim(p_description) THEN
+      RETURN v_exception;
+    END IF;
   END IF;
 
   INSERT INTO public.settlement_exceptions(
