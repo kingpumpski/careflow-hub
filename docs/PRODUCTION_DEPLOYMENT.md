@@ -35,6 +35,18 @@ Before using **Actions → CareFlow Supabase Deploy → Run workflow**:
 
 The workflow checks the explicit confirmations, environment secrets and project-ref match. GitHub Environment reviewer approval is a separate required control; do not remove it. The confirmations are an auditable operator attestation, not a substitute for backup evidence or restore testing.
 
+## Full-system backup configuration
+
+The Backup Center implementation and runbook are in [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md). Before calling backups operational:
+
+1. Connect the Supabase account that owns project `jajfdgknctzqypdtvmxo`.
+2. Enable Cloudflare R2 and create a private bucket dedicated to CareFlow backups.
+3. Configure the `production-backup` GitHub Environment secrets listed in the runbook, including a Management API token with backup-download permission, the server-side Supabase key, the age public recipient and R2 credentials.
+4. Configure the `backup-control` Edge Function secrets and deploy the function through the manually confirmed workflow.
+5. Run a backup, verify the encrypted archive and restore it to a disposable replacement project before declaring disaster recovery ready.
+
+The age private identity must remain offline and must not be stored in GitHub, Supabase or the application.
+
 ## Supabase production configuration
 
 The browser may contain only the Supabase project URL and publishable/anon key. Never place a service-role key or other privileged secret in Vite environment variables.
@@ -72,4 +84,4 @@ For schema changes, create a new timestamped migration under `supabase/migration
 
 ## GitHub Pages transport security
 
-The post-deploy workflow tests the HTTPS site URL and all same-origin JavaScript/CSS assets. The GitHub Pages action currently returns an HTTP URL and the live HTTP endpoint does not redirect to HTTPS. The repository owner must enable **Enforce HTTPS** under **Settings → Pages**. Until that setting is enabled and the redirect check reports HTTPS, do not treat HTTP-to-HTTPS redirection as configured.
+The post-deploy workflow tests the HTTPS site URL and all same-origin JavaScript/CSS assets. Main Pages deployment run 44727328070 confirmed that the live HTTP endpoint redirects to HTTPS and that the HTTPS app shell and assets are reachable.
