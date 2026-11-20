@@ -148,21 +148,48 @@ export default function SettingsPage() {
   const handleManualBackup = async () => {
     try {
       const tables = ["claims", "payments", "withholding_tax", "insurance_companies", "pre_authorizations", "patients", "doctors", "procedures"];
-      const backup: Record<string, any> = { timestamp: new Date().toISOString(), version: "1.0" };
-      for (const t of tables) {
-        const { data } = await (supabase.from(t as any) as any).select("*");
-        backup[t] = data || [];
+      const pageSize = 1000;
+      const backup: Record<string, any> = {
+        timestamp: new Date().toISOString(),
+        version: "1.1",
+        exportType: "partial-operational-table-export",
+        includedTables: tables,
+        tableCounts: {},
+        limitations: [
+          "This export includes only the eight listed tables.",
+          "It does not include other database tables, Storage objects, Auth users, project settings, Edge Function configuration or secrets, or migration history.",
+          "This file is not a complete or verified system backup and is not a supported production restore artifact.",
+        ],
+      };
+
+      for (const table of tables) {
+        const rows: any[] = [];
+        let offset = 0;
+        while (true) {
+          const { data, error } = await (supabase.from(table as any) as any)
+            .select("*")
+            .order("id", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (error) throw new Error(`Unable to export ${table}: ${error.message}`);
+          const page = data || [];
+          rows.push(...page);
+          if (page.length < pageSize) break;
+          offset += pageSize;
+        }
+        backup[table] = rows;
+        backup.tableCounts[table] = rows.length;
       }
+
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `medclaims-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `careflow-partial-export-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "Backup downloaded" });
+      toast({ title: "Partial export downloaded", description: "This file contains only the selected tables and is not a complete disaster-recovery backup." });
     } catch (err: any) {
-      toast({ title: "Backup failed", description: err.message, variant: "destructive" });
+      toast({ title: "Export failed", description: err.message, variant: "destructive" });
     }
   };
 
@@ -506,12 +533,12 @@ export default function SettingsPage() {
           <div className="stat-card space-y-4">
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <Database className="w-4 h-4 text-primary" />
-              Backup Settings
+              Manual Data Export
             </h3>
-            <p className="text-sm text-muted-foreground">Automatic daily backups are enabled. You can also download a manual backup of all data.</p>
+            <p className="text-sm text-muted-foreground">This downloads a partial export of eight selected database tables. Automatic daily backups are not configured in this application. The export does not include all database tables, Storage files, Auth users, project configuration, Edge Function settings or migration history, and it cannot restore the full system. Do not use it as the production disaster-recovery backup.</p>
             <Button variant="outline" size="sm" onClick={handleManualBackup}>
               <Database className="w-4 h-4 mr-2" />
-              Download Backup Now
+              Download Partial Export
             </Button>
           </div>
         </TabsContent>
