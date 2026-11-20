@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
     }
 
     const backupId = body.backup_id;
-    if (typeof backupId !== "string" || !/^[0-9T-]{8,30}-[0-9a-f-]{8,40}$/.test(backupId)) return json(req, { error: "Invalid backup ID." }, 400);
+    if (typeof backupId !== "string" || !/^[0-9TZ-]{8,30}-[0-9a-f-]{8,40}$/.test(backupId)) return json(req, { error: "Invalid backup ID." }, 400);
     const manifestKey = "manifests/" + projectRef + "/" + backupId + ".json";
     const response = await client.send(new GetObjectCommand({ Bucket: r2Bucket, Key: manifestKey }));
     const raw = await response.Body?.transformToString();
