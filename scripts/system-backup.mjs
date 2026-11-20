@@ -204,7 +204,8 @@ try {
     storage,
     security: {
       archive_encrypted_with_age: true,
-      secrets_included: false,
+      external_secrets_included: false,
+      database_resident_credentials_included: true,
       auth_and_database_users: "Included only to the extent provided by the Supabase platform database backup file; verify with a restore test.",
       supabase_storage_files: "Separately exported from every bucket.",
     },
@@ -233,7 +234,8 @@ try {
     storage_object_count: storage.objectCount,
     storage_bytes: storage.totalBytes,
     verification: "upload-pending",
-    secrets_included: false,
+    external_secrets_included: false,
+    database_resident_credentials_included: true,
   };
   const encryptedPath = "s3://" + r2Bucket + "/" + backupKey;
   const manifestPath = "s3://" + r2Bucket + "/" + manifestKey;
