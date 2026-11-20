@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
             database_bytes: manifest.database_bytes,
             storage_bucket_count: manifest.storage_bucket_count,
             storage_object_count: manifest.storage_object_count,
+          storage_public_bucket_count: manifest.storage_public_bucket_count ?? 0,
             verification: manifest.verification,
             source_commit: manifest.source_commit,
           });
