@@ -62,6 +62,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -69,3 +70,51 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Smoke test published site and built assets
+        env:
+          SITE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SITE_URL"
+          SITE_URL="${SITE_URL%/}/"
+          export SITE_URL
+          curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-connrefused "$SITE_URL" -o /tmp/careflow-index.html
+          grep -q '<div id="root"></div>' /tmp/careflow-index.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin, urlparse
+          from urllib.request import urlopen
+          import os
+
+          class Assets(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.urls = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "script" and attrs.get("src"):
+                      self.urls.append(attrs["src"])
+                  if tag == "link" and attrs.get("rel") == "stylesheet" and attrs.get("href"):
+                      self.urls.append(attrs["href"])
+
+          base = os.environ["SITE_URL"]
+          parser = Assets()
+          parser.feed(open("/tmp/careflow-index.html", encoding="utf-8").read())
+          if not parser.urls:
+              raise SystemExit("No built JS/CSS assets were referenced by the published page.")
+          for asset in parser.urls:
+              target = urljoin(base, asset)
+              if urlparse(target).netloc != urlparse(base).netloc:
+                  continue
+              with urlopen(target, timeout=20) as response:
+                  if response.status != 200:
+                      raise SystemExit(f"Asset failed: {target} returned {response.status}")
+              print(f"OK {target}")
+          PY
+
+          # GitHub Pages serves the SPA fallback with a 404 status for deep links.
+          # Verify that the fallback body still contains the app root.
+          curl --silent --show-error --location "$SITE_URL/claims" -o /tmp/careflow-claims.html
+          grep -q '<div id="root"></div>' /tmp/careflow-claims.html
