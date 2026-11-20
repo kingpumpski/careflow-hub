@@ -196,7 +196,7 @@ async function exportStorage() {
   }
   await mkdir(path.join(stage, "storage"), { recursive: true });
   await writeFile(path.join(stage, "storage", "manifest.json"), JSON.stringify({ buckets: bucketManifests }, null, 2));
-  return { bucketCount: buckets.length, objectCount, totalBytes };
+  return { bucketCount: buckets.length, publicBucketCount: bucketManifests.filter((bucket) => bucket.public).length, objectCount, totalBytes };
 }
 
 async function writeSourceSnapshot() {
@@ -266,6 +266,7 @@ try {
     database_format: database.format,
     storage_bucket_count: storage.bucketCount,
     storage_object_count: storage.objectCount,
+    storage_public_bucket_count: storage.publicBucketCount,
     storage_bytes: storage.totalBytes,
     verification: "upload-pending",
     external_secrets_included: false,
