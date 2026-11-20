@@ -55,7 +55,7 @@ Supabase supplies \`SUPABASE_URL\`, \`SUPABASE_ANON_KEY\` and \`SUPABASE_SERVICE
 
 1. The workflow runs daily at 02:00 UTC.
 2. An authorised system administrator can request an on-demand run from Settings → Backup. Requests are rate-limited to one per administrator per 10 minutes.
-3. The worker requests a database backup from the Supabase Management API, exports all Storage objects, snapshots the source commit, creates the package, encrypts it, uploads it to R2, downloads it again and compares SHA-256.
+3. The worker selects the latest completed logical Supabase database backup, requests its download by backup ID through the Management API, exports all Storage objects, snapshots the source commit, creates the package, encrypts it, uploads it to R2, downloads it again and compares SHA-256. It deliberately fails closed if only physical backups are available; physical backups are not directly downloadable through this flow.
 4. The plaintext manifest is uploaded **last**. Its presence with \`verification=sha256-verified\` is the commit marker that the backup completed successfully.
 5. The Backup Center only lists manifests that pass project-ref and verification checks. It issues a 60-second signed download URL on demand.
 
@@ -91,7 +91,8 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
 
 ## Recovery limitations that must be tested before production certification
 
-- The exact Management API download artifact format and the target restore method must be verified with a real backup and a disposable replacement project. This repository does not claim a successful end-to-end restore until that test passes.
+- The exact Management API download artifact format and the target restore method must be verified with a real logical backup and a disposable replacement project. This repository does not claim a successful end-to-end restore until that test passes.
+- Supabase Free projects do not receive daily platform backups, and projects using physical-only backups cannot use this download route. Until a separately tested logical-dump fallback is implemented, the full-system workflow will fail closed rather than mislabel a public-schema-only dump as a complete backup.
 - Supabase platform database backups and PITR do not include Storage objects; this worker includes Storage separately.
 - Platform Auth/provider settings, OAuth client secrets, SMTP secrets, Edge Function secrets, JWT/API keys, custom domains and third-party integrations must be reconfigured or rotated. The database backup contains database-resident Auth data only to the extent provided by Supabase's backup format.
 - R2 is off-site from the Supabase project. It must remain private, have independent access controls, and retain the age private key securely.
