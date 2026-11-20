@@ -15,3 +15,8 @@ verify_jwt = true
 
 [functions.claim-diagnosis-analyze]
 verify_jwt = true
+
+# The backup portal accepts only authenticated JWTs and performs admin/R2
+# operations server-side. Never disable JWT verification for this function.
+[functions.backup-control]
+verify_jwt = true
