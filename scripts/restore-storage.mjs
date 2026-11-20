@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-const root = path.resolve(process.argv[2] ?? "");
+const root = process.argv[2] ? await realpath(path.resolve(process.argv[2])) : "";
 if (!process.argv[2]) throw new Error("Usage: node scripts/restore-storage.mjs <verified-extracted-backup-directory>");
 const targetUrl = process.env.RESTORE_TARGET_SUPABASE_URL?.replace(/\/+$/, "");
 const targetRef = process.env.RESTORE_TARGET_PROJECT_REF;
@@ -32,21 +32,21 @@ const existing = await existingResponse.json();
 const existingNames = new Set(existing.map((bucket) => bucket.name));
 let restored = 0;
 for (const bucket of storage.buckets) {
-  if (!existingNames.has(bucket.name)) {
-    await api("/bucket", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: bucket.name,
-        name: bucket.name,
-        public: bucket.public,
-        file_size_limit: bucket.file_size_limit,
-        allowed_mime_types: bucket.allowed_mime_types,
-      }),
-    });
-  }
+  await api(existingNames.has(bucket.name) ? "/bucket/" + encodeURIComponent(bucket.name) : "/bucket", {
+    method: existingNames.has(bucket.name) ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: bucket.name,
+      name: bucket.name,
+      public: bucket.public,
+      file_size_limit: bucket.file_size_limit,
+      allowed_mime_types: bucket.allowed_mime_types,
+    }),
+  });
   for (const object of bucket.objects) {
-    const file = path.resolve(root, object.path);
+    const candidate = path.resolve(root, object.path);
+    if (!candidate.startsWith(root + path.sep)) throw new Error("Unsafe Storage path in backup manifest.");
+    const file = await realpath(candidate);
     if (!file.startsWith(root + path.sep) || await sha256(file) !== object.sha256) throw new Error("Local object checksum failed: " + bucket.name + "/" + object.key);
     const encodedKey = object.key.split("/").map(encodeURIComponent).join("/");
     await api("/object/" + encodeURIComponent(bucket.name) + "/" + encodedKey, {
@@ -55,6 +55,7 @@ for (const bucket of storage.buckets) {
         "Content-Type": object.content_type || "application/octet-stream",
         "x-upsert": "true",
         ...(object.cache_control ? { "cache-control": object.cache_control } : {}),
+        ...(object.metadata ? { "x-metadata": Buffer.from(JSON.stringify(object.metadata)).toString("base64") } : {}),
       },
       body: createReadStream(file),
       duplex: "half",
