@@ -30,7 +30,7 @@ if [[ "$RESTORE_TARGET_PROJECT_REF" == "$SOURCE_REF" && "${RESTORE_ALLOW_SOURCE_
   exit 1
 fi
 POSTGRES_MAJOR="$(node -e 'const m=require(process.argv[1]); process.stdout.write(String(m.database.postgresMajor))' "$ROOT/manifest.json")"
-if [[ ! "$POSTGRES_MAJOR" =~ ^(14|15|16|17|18)$ ]]; then
+if [[ ! "$POSTGRES_MAJOR" =~ ^(14|15|16|17|18|19)$ ]]; then
   echo "Unsupported PostgreSQL major version in backup manifest: $POSTGRES_MAJOR" >&2
   exit 1
 fi
