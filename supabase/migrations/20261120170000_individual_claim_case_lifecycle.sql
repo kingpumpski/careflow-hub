@@ -236,6 +236,7 @@ AS $function$
     WHEN 'partially_paid' THEN p_to_status IN ('paid', 'reconciled')
     WHEN 'paid' THEN p_to_status IN ('reconciled', 'closed')
     WHEN 'reconciled' THEN p_to_status = 'closed'
+    WHEN 'closed' THEN false
     ELSE false
   END;
 $function$;
