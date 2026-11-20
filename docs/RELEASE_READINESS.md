@@ -29,6 +29,9 @@
 - [x] Production data changes are performed through application workflows or controlled SQL/migration procedures.
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
 - [ ] Duplicate migration version prefixes are reconciled against the production migration ledger; see [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
+- [ ] Organization-level tenant schema, active-organization context and cross-tenant RLS tests are implemented (facility scoping alone is not organization tenancy).
+- [ ] Claim lifecycle transitions are enforced by a server-side transactional RPC and Claims UI.
+- [ ] Settlement exception register supports atomic online/offline lifecycle transitions and audit.
 
 ## Security gates
 
@@ -48,7 +51,7 @@
 - [ ] HTTPS live smoke test passes after deployment; root and same-origin JS/CSS assets are checked automatically. The current HTTP endpoint does not redirect to HTTPS; enable Enforce HTTPS in repository Settings → Pages.
 - [ ] Supabase production project is healthy and the outstanding/WHT/document-ingest migrations are applied.
 - [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
-- [ ] Supabase production deployment is unblocked by the required GitHub Actions repository secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`).
+- [ ] The `production-database` GitHub Environment has required reviewers and environment-scoped Supabase secrets configured; the intended project ref is confirmed and accessible.
 
 > **Deployment boundary:** repository implementation and CI validation continue while production Supabase deployment is intentionally deferred. The application must not claim that pending migrations or Edge Functions are live until the controlled deployment workflow succeeds.
 
