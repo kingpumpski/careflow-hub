@@ -80,9 +80,11 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
    export RESTORE_TARGET_PROJECT_REF=<new-project-ref>
    export RESTORE_TARGET_DB_URL='postgresql://postgres.<new-project-ref>:<password>@<session-pooler-host>:5432/postgres?sslmode=require'
    export RESTORE_CONFIRMATION="RESTORE-DATABASE-TO:${RESTORE_TARGET_PROJECT_REF}"
+   # Only if you reviewed the manifest and intentionally want public buckets:
+   # export RESTORE_ALLOW_PUBLIC_BUCKETS=YES
    bash scripts/restore-database.sh <verified-extracted-directory>
    ```
-   The script verifies the target PostgreSQL major version, requires explicit target confirmation, refuses to overwrite the source project by default, and restores the custom-format dump transactionally. This is destructive to the target database; use a new project first.
+   The script verifies the target PostgreSQL major version, requires explicit target confirmation, refuses to overwrite the source project by default, blocks the restore if public buckets are present without explicit approval, and restores the custom-format dump transactionally. This is destructive to the target database; use a new project first.
 6. After the target database is restored and the target project is healthy, restore the Storage buckets and objects:
    ```bash
    export RESTORE_TARGET_SUPABASE_URL=https://<target-ref>.supabase.co
