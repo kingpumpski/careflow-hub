@@ -106,7 +106,7 @@ BEGIN
   IF coalesce(length(trim(p_email)), 0) = 0 THEN
     RAISE EXCEPTION 'A registered user email is required';
   END IF;
-  IF p_membership_role NOT IN ('owner', 'member', 'viewer') THEN
+  IF coalesce(p_membership_role, '') NOT IN ('owner', 'member', 'viewer') THEN
     RAISE EXCEPTION 'Facility membership role must be owner, member or viewer';
   END IF;
 
