@@ -172,3 +172,13 @@ REVOKE ALL ON FUNCTION public.record_settlement_exception(uuid,text,text,text,te
 GRANT EXECUTE ON FUNCTION public.record_settlement_exception(uuid,text,text,text,text,timestamptz) TO authenticated;
 REVOKE ALL ON FUNCTION public.transition_settlement_exception_atomic(uuid,text,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.transition_settlement_exception_atomic(uuid,text,text) TO authenticated;
+
+-- The lifecycle RPCs are the only supported online write path. The table's
+-- facility RLS policies are read filters, not a substitute for write grants.
+-- Prevent direct PostgREST writes that could bypass the atomic audit events.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.settlement_exceptions FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.settlement_exception_audit_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.settlement_exceptions TO authenticated;
+GRANT SELECT ON TABLE public.settlement_exception_audit_events TO authenticated;
