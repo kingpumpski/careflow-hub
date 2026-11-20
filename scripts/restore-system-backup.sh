@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INPUT="\${1:-}"
+INPUT="${1:-}"
 if [[ -z "$INPUT" || ! -f "$INPUT" ]]; then
   echo "Usage: BACKUP_AGE_IDENTITY_FILE=/secure/path/identity.txt BACKUP_EXPECTED_SHA256=<manifest-sha256> $0 <backup.tar.gz.age> [output-directory]" >&2
   exit 2
 fi
-: "\${BACKUP_AGE_IDENTITY_FILE:?Set BACKUP_AGE_IDENTITY_FILE to the private age identity file.}"
-: "\${BACKUP_EXPECTED_SHA256:?Copy the expected SHA-256 from the verified backup manifest.}"
-OUTPUT="\${2:-careflow-recovery-\$(date -u +%Y%m%dT%H%M%SZ)}"
+: "${BACKUP_AGE_IDENTITY_FILE:?Set BACKUP_AGE_IDENTITY_FILE to the private age identity file.}"
+: "${BACKUP_EXPECTED_SHA256:?Copy the expected SHA-256 from the verified backup manifest.}"
+OUTPUT="${2:-careflow-recovery-$(date -u +%Y%m%dT%H%M%SZ)}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 ACTUAL="$(sha256sum "$INPUT" | awk '{print $1}')"
