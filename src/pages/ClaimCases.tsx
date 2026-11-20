@@ -33,6 +33,10 @@ type ClaimCase = {
   created_at: string;
 };
 
+type InsuranceCompanyOption = { id: string; company_name: string; is_active: boolean };
+
+type PreauthorizationOption = { id: string; request_number: string | null; insurance_company_id: string | null; procedure_date: string | null; provider_name: string | null };
+
 type ClaimCaseEvent = {
   id: string;
   claim_case_id: string;
@@ -94,12 +98,16 @@ export default function ClaimCases() {
     clinical_notes: "",
   });
 
-  const insurerById = useMemo(() => new Map((insurers ?? []).map((item: any) => [item.id, item.company_name])), [insurers]);
-  const filteredCases = useMemo(() => ((cases ?? []) as ClaimCase[]).filter((item) => {
+  const insurerRows = (insurers ?? []) as InsuranceCompanyOption[];
+  const preauthorizationRows = (preauthorizations ?? []) as PreauthorizationOption[];
+  const caseRows = (cases ?? []) as ClaimCase[];
+  const eventRows = (events ?? []) as ClaimCaseEvent[];
+  const insurerById = useMemo(() => new Map(insurerRows.map((item) => [item.id, item.company_name])), [insurers]);
+  const filteredCases = useMemo(() => caseRows.filter((item) => {
     const matchesSearch = [item.claim_number, item.patient_name, item.member_number ?? "", String(insurerById.get(item.insurance_company_id) ?? "")]
       .some((value) => value.toLowerCase().includes(search.toLowerCase()));
     return matchesSearch && (statusFilter === "all" || item.status === statusFilter);
-  }), [cases, insurerById, search, statusFilter]);
+  }), [caseRows, insurerById, search, statusFilter]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["claim_cases"] });
@@ -202,9 +210,9 @@ export default function ClaimCases() {
     </header>
 
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Total cases</p><p className="text-2xl font-bold">{(cases ?? []).length}</p></div>
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Open cases</p><p className="text-2xl font-bold">{((cases ?? []) as ClaimCase[]).filter((item) => !["closed", "reconciled"].includes(item.status)).length}</p></div>
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Awaiting insurer response</p><p className="text-2xl font-bold">{((cases ?? []) as ClaimCase[]).filter((item) => ["submitted", "acknowledged", "under_review", "queried"].includes(item.status)).length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Total cases</p><p className="text-2xl font-bold">{caseRows.length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Open cases</p><p className="text-2xl font-bold">{caseRows.filter((item) => !["closed", "reconciled"].includes(item.status)).length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Awaiting insurer response</p><p className="text-2xl font-bold">{caseRows.filter((item) => ["submitted", "acknowledged", "under_review", "queried"].includes(item.status)).length}</p></div>
     </div>
 
     {offline && <div role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm">Individual claim cases require an online connection. Your existing offline monthly claims workflow remains available; no offline claim-case writes are queued yet.</div>}
@@ -214,7 +222,7 @@ export default function ClaimCases() {
     {showCreate && canWrite && !offline && <section className="stat-card space-y-4">
       <div className="flex items-center gap-2"><FilePlus2 className="h-5 w-5" /><h2 className="font-semibold">Register a new claim case</h2></div>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => void createCase(event)}>
-        <div className="space-y-2"><Label htmlFor="case-insurer">Insurance company *</Label><select id="case-insurer" required value={form.insurance_company_id} onChange={(event) => setForm((old) => ({ ...old, insurance_company_id: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">Select insurer</option>{(insurers ?? []).filter((item: any) => item.is_active).map((item: any) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="case-preauth">Link pre-authorization (optional)</Label><select id="case-preauth" value={form.preauth_id} onChange={(event) => { const selected = (preauthorizations ?? []).find((item: any) => item.id === event.target.value); setForm((old) => ({ ...old, preauth_id: event.target.value, insurance_company_id: selected?.insurance_company_id ?? old.insurance_company_id, date_of_service: selected?.procedure_date ?? old.date_of_service })); }} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">No pre-authorization link</option>{(preauthorizations ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.request_number || item.id.slice(0, 8)} · {item.provider_name || "Provider not specified"}</option>)}</select><p className="text-xs text-muted-foreground">Only pre-authorizations belonging to the selected facility are listed. The server also verifies that the insurer matches.</p></div>
+        <div className="space-y-2"><Label htmlFor="case-insurer">Insurance company *</Label><select id="case-insurer" required value={form.insurance_company_id} onChange={(event) => setForm((old) => ({ ...old, insurance_company_id: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">Select insurer</option>{insurerRows.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="case-preauth">Link pre-authorization (optional)</Label><select id="case-preauth" value={form.preauth_id} onChange={(event) => { const selected = preauthorizationRows.find((item) => item.id === event.target.value); setForm((old) => ({ ...old, preauth_id: event.target.value, insurance_company_id: selected?.insurance_company_id ?? old.insurance_company_id, date_of_service: selected?.procedure_date ?? old.date_of_service })); }} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="">No pre-authorization link</option>{preauthorizationRows.map((item) => <option key={item.id} value={item.id}>{item.request_number || item.id.slice(0, 8)} · {item.provider_name || "Provider not specified"}</option>)}</select><p className="text-xs text-muted-foreground">Only pre-authorizations belonging to the selected facility are listed. The server also verifies that the insurer matches.</p></div>
         <div className="space-y-2"><Label htmlFor="case-patient">Patient name *</Label><Input id="case-patient" required value={form.patient_name} onChange={(event) => setForm((old) => ({ ...old, patient_name: event.target.value }))} maxLength={180} /></div>
         <div className="space-y-2"><Label htmlFor="case-member">Membership number</Label><Input id="case-member" value={form.member_number} onChange={(event) => setForm((old) => ({ ...old, member_number: event.target.value }))} maxLength={100} /></div>
         <div className="space-y-2"><Label htmlFor="case-service-date">Date of service *</Label><Input id="case-service-date" type="date" required value={form.date_of_service} onChange={(event) => setForm((old) => ({ ...old, date_of_service: event.target.value }))} /></div>
@@ -234,7 +242,7 @@ export default function ClaimCases() {
           <div className="space-y-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{item.claim_number}</span><Badge variant={item.status === "rejected" ? "destructive" : item.status === "paid" || item.status === "closed" ? "secondary" : "outline"}>{titleCase(item.status)}</Badge></div><p className="text-sm">{item.patient_name}{item.member_number ? <span className="text-muted-foreground"> · {item.member_number}</span> : null}</p><p className="text-xs text-muted-foreground">{String(insurerById.get(item.insurance_company_id) ?? "Insurer unavailable")} · Service {item.date_of_service}{item.procedure_name ? ` · ${item.procedure_name}` : ""}</p><p className="text-sm font-medium">{money(item.submitted_amount, item.currency)} submitted{item.approved_amount != null ? ` · ${money(item.approved_amount, item.currency)} approved` : ""}{item.paid_amount > 0 ? ` · ${money(item.paid_amount, item.currency)} paid` : ""}</p>{item.denial_reason && <p className="text-xs text-destructive">Denial: {item.denial_reason}</p>}</div>
           <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setSelectedCaseId((current) => current === item.id ? null : item.id)}><History className="mr-1 h-4 w-4" />{selectedCaseId === item.id ? "Hide history" : "History"}</Button>{canWrite && getAvailableClaimTransitions(item.status).map((target) => <Button key={target} size="sm" variant={target === "rejected" || target === "closed" ? "outline" : "default"} disabled={transitioningId === item.id} onClick={() => void transitionCase(item, target)}>{transitioningId === item.id ? "Saving…" : titleCase(target)}</Button>)}</div>
         </div>
-        {selectedCaseId === item.id && <div className="border-t pt-3 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Lifecycle history</div>{eventsLoading ? <p className="text-xs text-muted-foreground">Loading history…</p> : !(events ?? []).length ? <p className="text-xs text-muted-foreground">No history events found.</p> : (events as ClaimCaseEvent[]).map((entry) => <div key={entry.id} className="flex flex-col gap-1 border-l-2 pl-3 py-1"><p className="text-sm font-medium">{entry.from_status ? `${titleCase(entry.from_status)} → ${titleCase(entry.to_status)}` : titleCase(entry.to_status)}</p><p className="text-sm text-muted-foreground">{entry.note}</p><p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()} · {entry.actor_id}</p></div>)}</div>}
+        {selectedCaseId === item.id && <div className="border-t pt-3 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Lifecycle history</div>{eventsLoading ? <p className="text-xs text-muted-foreground">Loading history…</p> : !(events ?? []).length ? <p className="text-xs text-muted-foreground">No history events found.</p> : eventRows.map((entry) => <div key={entry.id} className="flex flex-col gap-1 border-l-2 pl-3 py-1"><p className="text-sm font-medium">{entry.from_status ? `${titleCase(entry.from_status)} → ${titleCase(entry.to_status)}` : titleCase(entry.to_status)}</p><p className="text-sm text-muted-foreground">{entry.note}</p><p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()} · {entry.actor_id}</p></div>)}</div>}
       </article>)}</div>}
       {!canWrite && <p className="text-xs text-muted-foreground">Read-only access. Claims write permission is required to register or transition claim cases.</p>}
     </section>
