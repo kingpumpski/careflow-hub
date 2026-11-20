@@ -45,7 +45,9 @@
 ## Backup and recovery gates
 
 - [x] Full-system Backup Center, scheduled/on-demand worker, encrypted off-site archive flow, manifest and checksum verification, and Storage restore tooling are implemented in source (PR #42).
-- [x] Backup/recovery integrity tests and script syntax checks pass in CI (PR #42 checks 44727060252 and 44727060336).
+- [x] Full custom-format PostgreSQL dump includes and validates Auth users/identities, Storage metadata and migration history; database and Storage restore scripts are guarded by target confirmation (PR #45).
+- [x] Backup integrity tests, Node/Bash syntax checks and Deno Edge Function typecheck pass (PR #45 checks 44729717302 and 44729717264).
+- [x] Production database deployment workflow now requires a fresh successful encrypted backup before migrations can run.
 - [ ] Supabase project access, `production-backup` environment secrets, private R2 bucket and `backup-control` Edge Function are configured.
 - [ ] First encrypted full-system backup completes and its manifest verifies.
 - [ ] Restore rehearsal succeeds against a disposable replacement Supabase project, including database, Auth, Storage objects, Edge Functions and login/RLS smoke tests.
@@ -56,7 +58,7 @@
 - [x] Pull request to `main` passes the current full quality/security checks.
 - [x] GitHub Pages build includes the SPA `404.html` fallback.
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
-- [x] HTTPS live smoke test passes after deployment; root, same-origin JS/CSS assets and SPA deep-link fallback are verified (main run 44720398737).
+- [x] HTTPS live smoke test passes after deployment; root, same-origin JS/CSS assets and SPA deep-link fallback are verified (main run 44727328070).
 - [x] HTTP redirects to HTTPS; verified by main Pages run 44727328070 on 2026-11-20.
 - [ ] Supabase production project is accessible and healthy; the owner-confirmed ref is `jajfdgknctzqypdtvmxo`, but the connected Supabase account currently does not list or authorize access to it.
 - [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
@@ -87,4 +89,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The published app shell and JS/CSS assets pass the HTTPS smoke test, and HTTP now redirects to HTTPS (main run 44727328070). The full-system Backup Center and recovery tooling are merged, but the backup service is not yet operational: the configured Supabase project is inaccessible to the connected Supabase account and Cloudflare R2 is not enabled. No production backup or restore rehearsal has been completed. Production schema application, migration-ledger reconciliation, organization-level tenant isolation and first legitimate administrator bootstrap also remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
+The repository is not production-certified. Main-branch CI, quality checks and the strict dependency audit passed on 2026-11-20; the dependency report contains zero vulnerabilities. The published app shell and JS/CSS assets pass the HTTPS smoke test, and HTTP now redirects to HTTPS (main run 44727328070). The full-system Backup Center and recovery tooling (including full PostgreSQL/Auth/Storage backup, guarded database restore, Storage restore, and pre-migration backup enforcement) are merged, but the service is not yet operational: the owner-confirmed Supabase project is inaccessible to the connected Supabase account and Cloudflare R2 is not enabled. No production backup or restore rehearsal has been completed. Production schema application, migration-ledger reconciliation, organization-level tenant isolation and first legitimate administrator bootstrap also remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
