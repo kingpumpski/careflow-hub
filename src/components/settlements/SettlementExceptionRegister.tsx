@@ -99,7 +99,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
             facilityId: period.facility_id,
             periodEnd: period.period_end,
             totalClaimsSubmitted: Number(period.total_claims_submitted ?? 0),
-            settlementStatus: period.settlement_status as "awaiting_payment" | "advice_received" | "partially_paid" | "paid" | "reconciled",
+            settlementStatus: period.settlement_status as "awaiting_payment" | "payment_advice_received" | "reconciled",
             paymentReceived: period.payment_received ?? null,
             rejectionAmount: period.rejection_amount ?? null,
             actualWithholdingTax: period.actual_withholding_tax ?? null,
