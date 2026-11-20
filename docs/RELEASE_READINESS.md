@@ -28,10 +28,11 @@
 - [x] WHT updates use the existing `payments.write` permission boundary.
 - [x] Production data changes are performed through application workflows or controlled SQL/migration procedures.
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
+- [ ] Duplicate migration version prefixes are reconciled against the production migration ledger; see [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
 
 ## Security gates
 
-- [x] Dependency audit passes.
+- [ ] Dependency audit passes (latest main-branch audit on 2026-11-16 failed: 8 production dependency findings, including 1 critical, 3 high and 4 moderate; full-tree report contains 19 findings).
 - [x] Edge Function authentication and origin controls pass.
 - [x] Sensitive secrets exist only in server-side configuration.
 - [x] Admin/self-role escalation protections are verified.
@@ -46,6 +47,7 @@
 - [x] Pages deployment workflow is configured with the required Pages permissions and artifact/deploy actions.
 - [ ] Production URL has been independently browser-smoke-tested after the latest release candidate.
 - [ ] Supabase production project is healthy and the outstanding/WHT/document-ingest migrations are applied.
+- [ ] The production migration ledger is reconciled with the repository migration files and a restored backup passes a migration replay test.
 - [ ] Supabase production deployment is unblocked by the required GitHub Actions repository secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_PASSWORD`).
 
 > **Deployment boundary:** repository implementation and CI validation continue while production Supabase deployment is intentionally deferred. The application must not claim that pending migrations or Edge Functions are live until the controlled deployment workflow succeeds.
@@ -73,4 +75,4 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 
 ## Current release gate
 
-PR #21 (`release: consolidate enterprise claims hardening`) remains open until the production smoke test and first legitimate administrator bootstrap are completed. The latest development head is validated by CI, CareFlow Quality Gate, and Dependency Security Audit; production Supabase deployment remains a separate blocked gate until its required repository secrets are configured.
+The repository is not production-certified. The latest main-branch code-quality and build workflows passed on 2026-11-04, but the dependency audit failed on 2026-11-16. Production URL smoke testing, Supabase project health, production migration application, migration-ledger reconciliation, and first legitimate administrator bootstrap remain unverified. Do not interpret a successful static-site deployment as proof that the backend is live.
