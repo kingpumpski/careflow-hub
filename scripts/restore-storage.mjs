@@ -44,6 +44,7 @@ for (const bucket of storage.buckets) {
     }),
   });
   for (const object of bucket.objects) {
+    if (typeof object.key !== "string" || !object.key || object.key.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("Unsafe Storage object key in backup manifest.");
     const candidate = path.resolve(root, object.path);
     if (!candidate.startsWith(root + path.sep)) throw new Error("Unsafe Storage path in backup manifest.");
     const file = await realpath(candidate);
