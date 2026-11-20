@@ -18,6 +18,7 @@ type SystemBackup = {
   database_bytes: number;
   storage_bucket_count: number;
   storage_object_count: number;
+  storage_public_bucket_count: number;
   verification: string;
   source_commit: string;
 };
@@ -648,11 +649,12 @@ export default function SettingsPage() {
                       </div>
                       <span className="text-xs rounded-full border border-emerald-600/40 px-2 py-1 text-emerald-700 dark:text-emerald-400">SHA-256 verified</span>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
                       <div><p className="text-muted-foreground">Encrypted file</p><p className="font-medium">{formatBackupBytes(backup.encrypted_bytes)}</p></div>
                       <div><p className="text-muted-foreground">Database</p><p className="font-medium">{formatBackupBytes(backup.database_bytes)}</p></div>
                       <div><p className="text-muted-foreground">Storage buckets</p><p className="font-medium">{backup.storage_bucket_count}</p></div>
                       <div><p className="text-muted-foreground">Storage objects</p><p className="font-medium">{backup.storage_object_count}</p></div>
+                      <div><p className="text-muted-foreground">Public buckets</p><p className="font-medium">{backup.storage_public_bucket_count}</p></div>
                     </div>
                     <p className="text-[11px] text-muted-foreground break-all">Encrypted SHA-256: {backup.encrypted_sha256}</p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
