@@ -51,6 +51,7 @@ jobs:
           node --check scripts/system-backup.mjs
           node --check scripts/verify-system-backup.mjs
           node --check scripts/restore-storage.mjs
+          bash -n scripts/restore-system-backup.sh scripts/restore-database.sh
 
       - name: Production build
         run: npm run build
