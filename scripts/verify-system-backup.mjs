@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-const root = path.resolve(process.argv[2] ?? "");
+const root = process.argv[2] ? await realpath(path.resolve(process.argv[2])) : "";
 if (!process.argv[2]) throw new Error("Usage: node scripts/verify-system-backup.mjs <extracted-backup-directory>");
 const manifestPath = path.join(root, "manifest.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -16,13 +16,15 @@ async function sha256(file) {
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest("hex");
 }
-function safePath(relative) {
+async function safePath(relative) {
   if (typeof relative !== "string" || path.isAbsolute(relative) || relative.split(/[\\/]/).includes("..")) throw new Error("Unsafe path in backup manifest.");
   const resolved = path.resolve(root, relative);
   if (!resolved.startsWith(root + path.sep)) throw new Error("Manifest path escapes backup root.");
-  return resolved;
+  const actual = await realpath(resolved);
+  if (!actual.startsWith(root + path.sep)) throw new Error("Manifest path resolves outside backup root.");
+  return actual;
 }
-const dbPath = safePath(manifest.database.path);
+const dbPath = await safePath(manifest.database.path);
 const dbStat = await stat(dbPath);
 if (dbStat.size !== manifest.database.bytes || await sha256(dbPath) !== manifest.database.sha256) throw new Error("Database backup checksum/size validation failed.");
 
@@ -32,7 +34,7 @@ let objects = 0;
 for (const bucket of storageManifest.buckets) {
   if (!bucket.name || !Array.isArray(bucket.objects)) throw new Error("Invalid Storage bucket manifest.");
   for (const object of bucket.objects) {
-    const objectPath = safePath(object.path);
+    const objectPath = await safePath(object.path);
     const info = await stat(objectPath);
     if (info.size !== object.bytes || await sha256(objectPath) !== object.sha256) throw new Error("Storage object integrity failed: " + bucket.name + "/" + object.key);
     objects += 1;
