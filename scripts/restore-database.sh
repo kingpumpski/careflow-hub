@@ -36,10 +36,7 @@ if [[ ! "$POSTGRES_MAJOR" =~ ^(14|15|16|17|18)$ ]]; then
 fi
 
 echo "Checking target database version before any changes..."
-TARGET_VERSION="$(docker run --rm -e TARGET_DB_URL -e PGPASSWORD -e PGSSLMODE -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE postgres:"$POSTGRES_MAJOR"-alpine sh -c 'psql "$TARGET_DB_URL" -Atqc "SHOW server_version_num"' 2>/dev/null || true)"
-if [[ -z "$TARGET_VERSION" ]]; then
-  TARGET_VERSION="$(docker run --rm -e TARGET_DB_URL postgres:"$POSTGRES_MAJOR"-alpine sh -c 'psql "$TARGET_DB_URL" -Atqc "SHOW server_version_num"')"
-fi
+TARGET_VERSION="$(docker run --rm -e TARGET_DB_URL="$RESTORE_TARGET_DB_URL" postgres:"$POSTGRES_MAJOR"-alpine sh -c 'psql "$TARGET_DB_URL" -Atqc "SHOW server_version_num"')"
 TARGET_MAJOR="$((TARGET_VERSION / 10000))"
 if [[ "$TARGET_MAJOR" != "$POSTGRES_MAJOR" ]]; then
   echo "Target PostgreSQL major version ($TARGET_MAJOR) does not match backup version ($POSTGRES_MAJOR)." >&2
