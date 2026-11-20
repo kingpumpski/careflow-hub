@@ -1,0 +1,45 @@
+name: Deploy CareFlow backup portal
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_project_ref:
+        description: "Type jajfdgknctzqypdtvmxo to confirm the target project."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: careflow-backup-function-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-backup
+    env:
+      SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: \${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify target project and deployment approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "\${{ inputs.confirm_project_ref }}" = "jajfdgknctzqypdtvmxo"
+          test "$SUPABASE_PROJECT_ID" = "jajfdgknctzqypdtvmxo"
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          grep -q '^\[functions.backup-control\]$' supabase/config.toml
+          grep -q '^verify_jwt = true$' supabase/config.toml
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy only the backup portal function
+        run: supabase functions deploy backup-control --project-ref "$SUPABASE_PROJECT_ID"
