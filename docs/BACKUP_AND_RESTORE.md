@@ -49,7 +49,7 @@ Set these secrets for the `backup-control` Edge Function:
 - `GITHUB_BACKUP_REPOSITORY=kingpumpski/careflow-hub`
 - `ALLOWED_ORIGINS=https://kingpumpski.github.io`
 
-Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to the function runtime. Never add a service-role key to a Vite environment variable. The `production-backup` GitHub Environment also needs `SUPABASE_ACCESS_TOKEN` (authorised to deploy Edge Functions) and `SUPABASE_PROJECT_ID` for the manually confirmed `deploy-backup-control.yml` workflow. The `production-database` environment separately retains its deployment token and database password.
+Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to the function runtime. Never add a service-role key to a Vite environment variable. The `production-backup` GitHub Environment also needs `SUPABASE_ACCESS_TOKEN` (authorised to deploy Edge Functions) for the manually confirmed `deploy-backup-control.yml` workflow. The `SUPABASE_DB_URL` value is the Session Pooler connection string from the Supabase Connect dialog, not the transaction pooler. The `production-database` environment separately retains its deployment token and database password.
 
 ## How to operate
 
