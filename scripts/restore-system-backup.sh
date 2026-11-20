@@ -26,5 +26,5 @@ tar --no-same-owner --no-same-permissions -xzf "$WORK/backup.tar.gz" -C "$OUTPUT
 node scripts/verify-system-backup.mjs "$OUTPUT"
 echo
 echo "Backup integrity verified and extracted to: $OUTPUT"
-echo "Database file: inspect $OUTPUT/manifest.json and follow docs/BACKUP_AND_RESTORE.md before any database restore."
+echo "Database restore: after verification, run scripts/restore-database.sh with explicit target-project confirmation as described in docs/BACKUP_AND_RESTORE.md."
 echo "Storage objects: after restoring the database to the intended target, run scripts/restore-storage.mjs with the explicit confirmation described in docs/BACKUP_AND_RESTORE.md."
