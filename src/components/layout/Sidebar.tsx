@@ -48,6 +48,7 @@ export const NAV_GROUPS: NavGroup[] = [
   ] },
   { label: "Administration", icon: Settings2, children: [
     { label: "Users & Roles", path: "/users", permission: "users.manage" },
+    { label: "Facilities & Access", path: "/facilities", permission: "settings.manage" },
     { label: "Audit Logs", path: "/audit-trail", permission: "audit.read" },
     { label: "Messages", path: "/chat" },
     { label: "Notifications", path: "/notifications" },
