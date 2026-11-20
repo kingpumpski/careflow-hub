@@ -12,7 +12,37 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { useQueryClient } from "@tanstack/react-query";
 
-function toExceptionRow(row: any): SettlementException {
+type SettlementPeriodInput = {
+  id?: string;
+  facility_id?: string;
+  period_end?: string;
+  total_claims_submitted?: number | string | null;
+  settlement_status?: string;
+  payment_received?: number | null;
+  rejection_amount?: number | null;
+  actual_withholding_tax?: number | null;
+  withholding_tax_variance?: number | null;
+  payment_advice_reference?: string | null;
+  payment_advice_date?: string | null;
+};
+
+type SettlementExceptionRow = {
+  id: string;
+  facility_id: string;
+  settlement_period_id: string;
+  type: SettlementException["type"];
+  severity: SettlementException["severity"];
+  status: SettlementExceptionStatus;
+  title: string;
+  description: string;
+  detected_at: string;
+  assigned_to?: string | null;
+  resolution_note?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+};
+
+function toExceptionRow(row: SettlementExceptionRow): SettlementException {
   return {
     id: row.id,
     facilityId: row.facility_id,
@@ -30,7 +60,16 @@ function toExceptionRow(row: any): SettlementException {
   };
 }
 
-export default function SettlementExceptionRegister({ periods }: { periods: any[] }) {
+const callSettlementRpc = (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ error: { message: string } | null }> =>
+  (supabase.rpc as unknown as (
+    functionName: string,
+    parameters: Record<string, unknown>,
+  ) => Promise<{ error: { message: string } | null }>)(name, args);
+
+export default function SettlementExceptionRegister({ periods }: { periods: SettlementPeriodInput[] }) {
   const { user } = useAuth();
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
@@ -41,7 +80,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: any[
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const onlineQuery = useSupabaseQuery("settlement_exceptions", { orderBy: "detected_at", enabled: !offline });
-  const exceptions = offline ? offlineExceptions : ((onlineQuery.data ?? []) as any[]).map(toExceptionRow);
+  const exceptions = offline ? offlineExceptions : ((onlineQuery.data ?? []) as SettlementExceptionRow[]).map(toExceptionRow);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -50,39 +89,37 @@ export default function SettlementExceptionRegister({ periods }: { periods: any[
       if (offline) {
         await syncOfflineSettlementExceptions(periods);
         setOfflineExceptions(await listOfflineSettlementExceptions());
+      } else if (!canWrite) {
+        await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
       } else {
-        if (!canWrite) {
-          await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
-        } else {
-          for (const period of periods) {
-            if (!period.facility_id || !period.id) continue;
-            const candidates = detectSettlementExceptions({
-              id: period.id,
-              facilityId: period.facility_id,
-              periodEnd: period.period_end,
-              totalClaimsSubmitted: Number(period.total_claims_submitted ?? 0),
-              settlementStatus: period.settlement_status,
-              paymentReceived: period.payment_received ?? null,
-              rejectionAmount: period.rejection_amount ?? null,
-              actualWithholdingTax: period.actual_withholding_tax ?? null,
-              withholdingTaxVariance: period.withholding_tax_variance ?? null,
-              paymentAdviceReference: period.payment_advice_reference ?? null,
-              paymentAdviceDate: period.payment_advice_date ?? null,
+        for (const period of periods) {
+          if (!period.facility_id || !period.id || !period.period_end || !period.settlement_status) continue;
+          const candidates = detectSettlementExceptions({
+            id: period.id,
+            facilityId: period.facility_id,
+            periodEnd: period.period_end,
+            totalClaimsSubmitted: Number(period.total_claims_submitted ?? 0),
+            settlementStatus: period.settlement_status as "awaiting_payment" | "advice_received" | "partially_paid" | "paid" | "reconciled",
+            paymentReceived: period.payment_received ?? null,
+            rejectionAmount: period.rejection_amount ?? null,
+            actualWithholdingTax: period.actual_withholding_tax ?? null,
+            withholdingTaxVariance: period.withholding_tax_variance ?? null,
+            paymentAdviceReference: period.payment_advice_reference ?? null,
+            paymentAdviceDate: period.payment_advice_date ?? null,
+          });
+          for (const candidate of candidates) {
+            const { error: rpcError } = await callSettlementRpc("record_settlement_exception", {
+              p_settlement_period_id: candidate.settlementPeriodId,
+              p_type: candidate.type,
+              p_severity: candidate.severity,
+              p_title: candidate.title,
+              p_description: candidate.description,
+              p_detected_at: candidate.detectedAt,
             });
-            for (const candidate of candidates) {
-              const { error: rpcError } = await (supabase as any).rpc("record_settlement_exception", {
-                p_settlement_period_id: candidate.settlementPeriodId,
-                p_type: candidate.type,
-                p_severity: candidate.severity,
-                p_title: candidate.title,
-                p_description: candidate.description,
-                p_detected_at: candidate.detectedAt,
-              });
-              if (rpcError) throw rpcError;
-            }
+            if (rpcError) throw new Error(rpcError.message);
           }
-          await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
         }
+        await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to synchronize settlement exceptions.");
@@ -114,12 +151,12 @@ export default function SettlementExceptionRegister({ periods }: { periods: any[
         await updateOfflineSettlementExceptionStatus(id, status, user.id, note);
         setOfflineExceptions(await listOfflineSettlementExceptions());
       } else {
-        const { error: rpcError } = await (supabase as any).rpc("transition_settlement_exception_atomic", {
+        const { error: rpcError } = await callSettlementRpc("transition_settlement_exception_atomic", {
           p_exception_id: id,
           p_target_status: status,
           p_note: note.trim(),
         });
-        if (rpcError) throw rpcError;
+        if (rpcError) throw new Error(rpcError.message);
         await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
       }
     } catch (cause) {
