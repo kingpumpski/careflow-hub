@@ -250,7 +250,7 @@ try {
   const manifestFile = path.join(root, "public-manifest.json");
   await writeFile(manifestFile, JSON.stringify(publicManifest, null, 2));
   await exec("aws", ["s3", "cp", manifestFile, manifestPath, ...aws, "--content-type", "application/json", "--cache-control", "no-store", "--only-show-errors"]);
-  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "backup_id=" + backupId + "\\n");
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "backup_id=" + backupId + "\n");
   console.log(JSON.stringify({ backup_id: backupId, encrypted_bytes: encryptedInfo.size, storage_objects: storage.objectCount, verification: publicManifest.verification, manifest_key: manifestKey }));
 } finally {
   await rm(root, { recursive: true, force: true });
