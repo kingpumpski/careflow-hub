@@ -34,6 +34,7 @@ const ProcedureTemplates = lazy(() => import("@/pages/ProcedureTemplates"));
 const CatalogItems = lazy(() => import("@/pages/CatalogItems"));
 const InsuranceCompanies = lazy(() => import("@/pages/InsuranceCompanies"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
+const FacilityManagement = lazy(() => import("@/pages/FacilityManagement"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const Ledger = lazy(() => import("@/pages/Ledger"));
 const AuditTrail = lazy(() => import("@/pages/AuditTrail"));
@@ -103,6 +104,7 @@ function ProtectedRoutes() {
     <Route path="/catalog" element={<PermissionRoute permission="preauth.read"><CatalogItems /></PermissionRoute>} />
     <Route path="/insurance" element={<PermissionRoute permission="claims.read"><InsuranceCompanies /></PermissionRoute>} />
     <Route path="/users" element={<PermissionRoute permission="users.manage"><UsersPage /></PermissionRoute>} />
+    <Route path="/facilities" element={<PermissionRoute permission="settings.manage"><FacilityManagement /></PermissionRoute>} />
     <Route path="/ledger" element={<PermissionRoute permission="ledger.read"><Ledger /></PermissionRoute>} />
     <Route path="/settings" element={<PermissionRoute permission="settings.manage"><SettingsPage /></PermissionRoute>} />
     <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></PermissionRoute>} />
