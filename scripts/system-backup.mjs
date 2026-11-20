@@ -91,8 +91,11 @@ async function downloadDatabaseBackup() {
     ["supabase_migrations", "schema_migrations"],
   ];
   for (const [schema, table] of requiredTables) {
-    const pattern = new RegExp("\\bTABLE\\s+" + schema + "\\s+" + table + "\\b");
-    if (!pattern.test(toc.stdout)) throw new Error("Database dump is missing required managed table " + schema + "." + table + ". Refusing to publish an incomplete backup.");
+    const definitionPattern = new RegExp("\\bTABLE\\s+" + schema + "\\s+" + table + "\\b");
+    const dataPattern = new RegExp("\\bTABLE DATA\\s+" + schema + "\\s+" + table + "\\b");
+    if (!definitionPattern.test(toc.stdout) || !dataPattern.test(toc.stdout)) {
+      throw new Error("Database dump is missing the definition or data entry for required managed table " + schema + "." + table + ". Refusing to publish an incomplete backup.");
+    }
   }
   return {
     path: path.relative(stage, target),
