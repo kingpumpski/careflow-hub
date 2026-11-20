@@ -49,6 +49,20 @@ async function sha256File(filePath) {
 }
 
 async function downloadDatabaseBackup() {
+  const listResponse = await fetch("https://api.supabase.com/v1/projects/" + projectRef + "/database/backups", {
+    headers: { Authorization: "Bearer " + managementToken, Accept: "application/json" },
+  });
+  if (!listResponse.ok) {
+    throw new Error("Unable to list Supabase backups (" + listResponse.status + "): " + (await listResponse.text()).slice(0, 1000));
+  }
+  const backupListing = await listResponse.json();
+  const downloadable = (backupListing.backups ?? [])
+    .filter((item) => item.status === "COMPLETED" && item.is_physical_backup === false)
+    .sort((a, b) => Date.parse(b.inserted_at) - Date.parse(a.inserted_at));
+  if (downloadable.length === 0) {
+    throw new Error("No completed downloadable logical database backup is available. Supabase physical backups are not directly downloadable, and Free projects do not receive daily platform backups. This worker will not publish a partial backup as a full-system recovery point. A tested logical-dump fallback or a supported downloadable backup is required.");
+  }
+  const selected = downloadable[0];
   const response = await fetch("https://api.supabase.com/v2/projects/" + projectRef + "/backups/download", {
     method: "POST",
     headers: {
@@ -56,10 +70,10 @@ async function downloadDatabaseBackup() {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ data: { type: "project_backup_file" } }),
+    body: JSON.stringify({ data: { type: "project_backup_file_url", id: selected.id } }),
   });
   const text = await response.text();
-  if (!response.ok) throw new Error("Supabase database backup request failed (" + response.status + "): " + text.slice(0, 1200));
+  if (!response.ok) throw new Error("Supabase database backup download request failed (" + response.status + "): " + text.slice(0, 1200));
   let payload;
   try { payload = JSON.parse(text); } catch { throw new Error("Supabase backup API did not return JSON."); }
   const fileUrl = payload?.data?.attributes?.file_url ?? payload?.data?.file_url ?? payload?.file_url;
@@ -75,9 +89,16 @@ async function downloadDatabaseBackup() {
   await pipeline(Readable.fromWeb(fileResponse.body), createWriteStream(target, { flags: "wx" }));
   const info = await stat(target);
   if (info.size < 1024) throw new Error("Downloaded database backup is unexpectedly small; refusing to publish.");
-  return { path: path.relative(stage, target), bytes: info.size, sha256: await sha256File(target), contentType: fileResponse.headers.get("content-type") ?? "application/octet-stream" };
+  return {
+    path: path.relative(stage, target),
+    bytes: info.size,
+    sha256: await sha256File(target),
+    contentType: fileResponse.headers.get("content-type") ?? "application/octet-stream",
+    platformBackupId: selected.id,
+    platformBackupInsertedAt: selected.inserted_at,
+    isPhysicalBackup: selected.is_physical_backup,
+  };
 }
-
 async function storageRequest(route, options = {}) {
   return fetch(supabaseUrl + "/storage/v1" + route, {
     ...options,
@@ -206,7 +227,7 @@ try {
       archive_encrypted_with_age: true,
       external_secrets_included: false,
       database_resident_credentials_included: true,
-      auth_and_database_users: "Included only to the extent provided by the Supabase platform database backup file; verify with a restore test.",
+      auth_and_database_users: "Included only to the extent provided by the Supabase downloadable logical database backup file; verify with a restore test.",
       supabase_storage_files: "Separately exported from every bucket.",
     },
   };
@@ -230,6 +251,8 @@ try {
     encrypted_bytes: encryptedInfo.size,
     encrypted_sha256: encryptedSha,
     database_bytes: database.bytes,
+    platform_database_backup_id: database.platformBackupId,
+    platform_database_backup_inserted_at: database.platformBackupInsertedAt,
     storage_bucket_count: storage.bucketCount,
     storage_object_count: storage.objectCount,
     storage_bytes: storage.totalBytes,
