@@ -213,6 +213,35 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION security_internal.claim_case_transition_allowed(
+  p_from_status text,
+  p_to_status text
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+  SELECT CASE p_from_status
+    WHEN 'draft' THEN p_to_status = 'verified'
+    WHEN 'verified' THEN p_to_status IN ('submitted', 'draft')
+    WHEN 'submitted' THEN p_to_status IN ('acknowledged', 'under_review', 'queried', 'rejected')
+    WHEN 'acknowledged' THEN p_to_status IN ('under_review', 'queried', 'rejected')
+    WHEN 'under_review' THEN p_to_status IN ('queried', 'approved', 'partially_approved', 'rejected')
+    WHEN 'queried' THEN p_to_status IN ('verified', 'submitted', 'under_review', 'rejected')
+    WHEN 'approved' THEN p_to_status IN ('partially_paid', 'paid', 'reconciled')
+    WHEN 'partially_approved' THEN p_to_status IN ('partially_paid', 'paid', 'appealed', 'reconciled')
+    WHEN 'rejected' THEN p_to_status IN ('appealed', 'closed', 'submitted')
+    WHEN 'appealed' THEN p_to_status IN ('approved', 'partially_approved', 'rejected', 'closed')
+    WHEN 'partially_paid' THEN p_to_status IN ('paid', 'reconciled')
+    WHEN 'paid' THEN p_to_status IN ('reconciled', 'closed')
+    WHEN 'reconciled' THEN p_to_status = 'closed'
+    ELSE false
+  END;
+$function$;
+
+REVOKE ALL ON FUNCTION security_internal.claim_case_transition_allowed(text, text) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.transition_individual_claim_case(
   p_claim_case_id uuid,
   p_target_status text,
@@ -265,22 +294,7 @@ BEGIN
     RAISE EXCEPTION 'You do not have access to this claim case';
   END IF;
 
-  v_allowed := CASE v_case.status
-    WHEN 'draft' THEN p_target_status = 'verified'
-    WHEN 'verified' THEN p_target_status IN ('submitted', 'draft')
-    WHEN 'submitted' THEN p_target_status IN ('acknowledged', 'under_review', 'queried', 'rejected')
-    WHEN 'acknowledged' THEN p_target_status IN ('under_review', 'queried', 'rejected')
-    WHEN 'under_review' THEN p_target_status IN ('queried', 'approved', 'partially_approved', 'rejected')
-    WHEN 'queried' THEN p_target_status IN ('verified', 'submitted', 'under_review', 'rejected')
-    WHEN 'approved' THEN p_target_status IN ('partially_paid', 'paid', 'reconciled')
-    WHEN 'partially_approved' THEN p_target_status IN ('partially_paid', 'paid', 'appealed', 'reconciled')
-    WHEN 'rejected' THEN p_target_status IN ('appealed', 'closed', 'submitted')
-    WHEN 'appealed' THEN p_target_status IN ('approved', 'partially_approved', 'rejected', 'closed')
-    WHEN 'partially_paid' THEN p_target_status IN ('paid', 'reconciled')
-    WHEN 'paid' THEN p_target_status IN ('reconciled', 'closed')
-    WHEN 'reconciled' THEN p_target_status = 'closed'
-    ELSE false
-  END;
+  v_allowed := security_internal.claim_case_transition_allowed(v_case.status, p_target_status);
   IF NOT v_allowed THEN
     RAISE EXCEPTION 'Invalid claim lifecycle transition: % -> %', v_case.status, p_target_status;
   END IF;
