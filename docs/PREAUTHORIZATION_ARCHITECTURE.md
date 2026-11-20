@@ -17,7 +17,7 @@ CareFlow Hub's Pre-Authorization Studio is designed as a reusable operational ca
 
 ## Facility onboarding
 
-A deployment should create a facility, create active `facility_memberships` for its operators, and then allow the Pre-Authorization Studio to select the operator's active facility. Historical requests without a facility must be explicitly backfilled before a deployment can enforce `NOT NULL` at the database level.
+A deployment should create a facility, create active `facility_memberships` for its operators, and then allow the Pre-Authorization Studio to select the operator's active facility. Branch `feat/admin-facility-onboarding` adds an administrator-only Facilities & Access screen backed by server-side RPCs. Facility creation assigns the creating administrator as the first owner; additional memberships can only be granted to existing CareFlow accounts. Facility membership is separate from global application roles and does not grant claims/payments permissions. The implementation is not yet merged or deployed. Historical requests without a facility must be explicitly backfilled before a deployment can enforce `NOT NULL` at the database level.
 
 ## Document integrity
 
