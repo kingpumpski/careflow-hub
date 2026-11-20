@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_INPUT="\${1:-}"
+ROOT_INPUT="${1:-}"
 if [[ -z "$ROOT_INPUT" || ! -d "$ROOT_INPUT" ]]; then
   echo "Usage: RESTORE_TARGET_PROJECT_REF=<target-ref> RESTORE_TARGET_DB_URL=<session-pooler-uri> RESTORE_CONFIRMATION=RESTORE-DATABASE-TO:<target-ref> $0 <verified-extracted-backup-directory>" >&2
   exit 2
 fi
-: "\${RESTORE_TARGET_PROJECT_REF:?Set the replacement Supabase project ref.}"
-: "\${RESTORE_TARGET_DB_URL:?Set the target PostgreSQL session-pooler connection URI.}"
-: "\${RESTORE_CONFIRMATION:?Explicit target confirmation is required.}"
+: "${RESTORE_TARGET_PROJECT_REF:?Set the replacement Supabase project ref.}"
+: "${RESTORE_TARGET_DB_URL:?Set the target PostgreSQL session-pooler connection URI.}"
+: "${RESTORE_CONFIRMATION:?Explicit target confirmation is required.}"
 if [[ "$RESTORE_CONFIRMATION" != "RESTORE-DATABASE-TO:$RESTORE_TARGET_PROJECT_REF" ]]; then
   echo "Restore confirmation does not match the target project ref." >&2
   exit 1
@@ -25,7 +25,7 @@ fi
 ROOT="$(cd "$ROOT_INPUT" && pwd)"
 node scripts/verify-system-backup.mjs "$ROOT"
 SOURCE_REF="$(node -e 'const m=require(process.argv[1]); process.stdout.write(m.project_ref)' "$ROOT/manifest.json")"
-if [[ "$RESTORE_TARGET_PROJECT_REF" == "$SOURCE_REF" && "\${RESTORE_ALLOW_SOURCE_OVERWRITE:-}" != "I_UNDERSTAND_THIS_OVERWRITES_PRODUCTION" ]]; then
+if [[ "$RESTORE_TARGET_PROJECT_REF" == "$SOURCE_REF" && "${RESTORE_ALLOW_SOURCE_OVERWRITE:-}" != "I_UNDERSTAND_THIS_OVERWRITES_PRODUCTION" ]]; then
   echo "Refusing to overwrite the source project. Restore to a replacement project first. For an explicitly approved in-place recovery, set RESTORE_ALLOW_SOURCE_OVERWRITE=I_UNDERSTAND_THIS_OVERWRITES_PRODUCTION." >&2
   exit 1
 fi
