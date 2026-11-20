@@ -39,6 +39,7 @@ if (sourceInfo.size !== manifest.source?.archive_bytes || await sha256(sourcePat
 const storageManifest = JSON.parse(await readFile(path.join(root, "storage", "manifest.json"), "utf8"));
 if (!Array.isArray(storageManifest.buckets)) throw new Error("Storage manifest is invalid.");
 if (storageManifest.buckets.length !== manifest.storage?.bucketCount) throw new Error("Storage bucket count does not match the package manifest.");
+if (storageManifest.buckets.filter((bucket) => bucket.public).length !== manifest.storage?.publicBucketCount) throw new Error("Public Storage bucket count does not match the package manifest.");
 let objects = 0;
 let storageBytes = 0;
 const bucketNames = new Set();
