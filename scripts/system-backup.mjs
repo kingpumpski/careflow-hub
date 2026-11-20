@@ -13,7 +13,7 @@ const projectRef = process.env.SUPABASE_PROJECT_ID;
 const expectedRef = "jajfdgknctzqypdtvmxo";
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const managementToken = process.env.SUPABASE_ACCESS_TOKEN;
+const databaseUrl = process.env.SUPABASE_DB_URL;
 const ageRecipient = process.env.BACKUP_AGE_RECIPIENT;
 const r2Endpoint = process.env.BACKUP_R2_ENDPOINT;
 const r2Bucket = process.env.BACKUP_R2_BUCKET;
@@ -24,7 +24,7 @@ for (const [name, value] of Object.entries({
   SUPABASE_PROJECT_ID: projectRef,
   SUPABASE_URL: supabaseUrl,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
-  SUPABASE_ACCESS_TOKEN: managementToken,
+  SUPABASE_DB_URL: databaseUrl,
   BACKUP_AGE_RECIPIENT: ageRecipient,
   BACKUP_R2_ENDPOINT: r2Endpoint,
   BACKUP_R2_BUCKET: r2Bucket,
@@ -34,6 +34,7 @@ if (projectRef !== expectedRef || !supabaseUrl.includes(projectRef + ".supabase.
   throw new Error("Refusing backup: SUPABASE_PROJECT_ID and SUPABASE_URL must identify the approved CareFlow project.");
 }
 if (!ageRecipient.startsWith("age1")) throw new Error("BACKUP_AGE_RECIPIENT must be a valid age public recipient.");
+if (!/^postgres(ql)?:\/\//i.test(databaseUrl)) throw new Error("SUPABASE_DB_URL must be a PostgreSQL connection URI.");
 if (!r2Endpoint.startsWith("https://")) throw new Error("BACKUP_R2_ENDPOINT must use HTTPS.");
 
 const backupId = new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "") + "-" + randomUUID().slice(0, 8);
@@ -49,54 +50,51 @@ async function sha256File(filePath) {
 }
 
 async function downloadDatabaseBackup() {
-  const listResponse = await fetch("https://api.supabase.com/v1/projects/" + projectRef + "/database/backups", {
-    headers: { Authorization: "Bearer " + managementToken, Accept: "application/json" },
-  });
-  if (!listResponse.ok) {
-    throw new Error("Unable to list Supabase backups (" + listResponse.status + "): " + (await listResponse.text()).slice(0, 1000));
+  const versionProbe = await exec("docker", [
+    "run", "--rm", "-e", "DATABASE_URL", "postgres:18-alpine",
+    "sh", "-c", 'psql "$DATABASE_URL" -Atqc "SHOW server_version_num"',
+  ], { env: { ...process.env, DATABASE_URL: databaseUrl } });
+  const serverVersionNum = Number(versionProbe.stdout.trim());
+  const postgresMajor = Math.floor(serverVersionNum / 10000);
+  if (!Number.isInteger(postgresMajor) || postgresMajor < 14 || postgresMajor > 18) {
+    throw new Error("Unsupported PostgreSQL server version number: " + versionProbe.stdout.trim());
   }
-  const backupListing = await listResponse.json();
-  const downloadable = (backupListing.backups ?? [])
-    .filter((item) => item.status === "COMPLETED" && item.is_physical_backup === false)
-    .sort((a, b) => Date.parse(b.inserted_at) - Date.parse(a.inserted_at));
-  if (downloadable.length === 0) {
-    throw new Error("No completed downloadable logical database backup is available. Supabase physical backups are not directly downloadable, and Free projects do not receive daily platform backups. This worker will not publish a partial backup as a full-system recovery point. A tested logical-dump fallback or a supported downloadable backup is required.");
-  }
-  const selected = downloadable[0];
-  const response = await fetch("https://api.supabase.com/v2/projects/" + projectRef + "/backups/download", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + managementToken,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ data: { type: "project_backup_file_url", id: selected.id } }),
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error("Supabase database backup download request failed (" + response.status + "): " + text.slice(0, 1200));
-  let payload;
-  try { payload = JSON.parse(text); } catch { throw new Error("Supabase backup API did not return JSON."); }
-  const fileUrl = payload?.data?.attributes?.file_url ?? payload?.data?.file_url ?? payload?.file_url;
-  if (typeof fileUrl !== "string" || !/^https:\/\//.test(fileUrl)) {
-    throw new Error("Supabase backup API did not return a valid HTTPS file_url. Refusing to create an incomplete backup.");
-  }
-  const fileResponse = await fetch(fileUrl);
-  if (!fileResponse.ok || !fileResponse.body) throw new Error("Unable to download the generated database backup: HTTP " + fileResponse.status);
-  const contentDisposition = fileResponse.headers.get("content-disposition") ?? "";
-  const extension = contentDisposition.match(/filename="?([^";]+)"?/i)?.[1]?.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "backup";
-  const target = path.join(stage, "database", "project-database." + (extension || "backup"));
-  await mkdir(path.dirname(target), { recursive: true });
-  await pipeline(Readable.fromWeb(fileResponse.body), createWriteStream(target, { flags: "wx" }));
+
+  const databaseDir = path.join(stage, "database");
+  await mkdir(databaseDir, { recursive: true });
+  const target = path.join(databaseDir, "project-database.dump");
+  await exec("docker", [
+    "run", "--rm", "-v", databaseDir + ":/backup",
+    "postgres:" + postgresMajor + "-alpine",
+    "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
+    "--file", "/backup/project-database.dump",
+  ]);
   const info = await stat(target);
-  if (info.size < 1024) throw new Error("Downloaded database backup is unexpectedly small; refusing to publish.");
+  if (info.size < 1024) throw new Error("Database dump is unexpectedly small; refusing to publish.");
+
+  const toc = await exec("docker", [
+    "run", "--rm", "-v", databaseDir + ":/backup",
+    "postgres:" + postgresMajor + "-alpine",
+    "pg_restore", "--list", "/backup/project-database.dump",
+  ]);
+  const requiredTables = [
+    ["auth", "users"],
+    ["auth", "identities"],
+    ["storage", "buckets"],
+    ["storage", "objects"],
+    ["supabase_migrations", "schema_migrations"],
+  ];
+  for (const [schema, table] of requiredTables) {
+    const pattern = new RegExp("\\\\bTABLE\\\\s+" + schema + "\\\\s+" + table + "\\\\b");
+    if (!pattern.test(toc.stdout)) throw new Error("Database dump is missing required managed table " + schema + "." + table + ". Refusing to publish an incomplete backup.");
+  }
   return {
     path: path.relative(stage, target),
     bytes: info.size,
     sha256: await sha256File(target),
-    contentType: fileResponse.headers.get("content-type") ?? "application/octet-stream",
-    platformBackupId: selected.id,
-    platformBackupInsertedAt: selected.inserted_at,
-    isPhysicalBackup: selected.is_physical_backup,
+    format: "pg_dump_custom",
+    postgresMajor,
+    includedSchemas: ["public", "auth", "storage", "supabase_migrations", "extensions"],
   };
 }
 async function storageRequest(route, options = {}) {
@@ -227,7 +225,7 @@ try {
       archive_encrypted_with_age: true,
       external_secrets_included: false,
       database_resident_credentials_included: true,
-      auth_and_database_users: "Included only to the extent provided by the Supabase downloadable logical database backup file; verify with a restore test.",
+      auth_and_database_users: "Included from auth.users and auth.identities in the full PostgreSQL logical dump; encrypted password hashes are included and therefore the archive is highly confidential.",
       supabase_storage_files: "Separately exported from every bucket.",
     },
   };
@@ -251,8 +249,8 @@ try {
     encrypted_bytes: encryptedInfo.size,
     encrypted_sha256: encryptedSha,
     database_bytes: database.bytes,
-    platform_database_backup_id: database.platformBackupId,
-    platform_database_backup_inserted_at: database.platformBackupInsertedAt,
+    postgres_major: database.postgresMajor,
+    database_format: database.format,
     storage_bucket_count: storage.bucketCount,
     storage_object_count: storage.objectCount,
     storage_bytes: storage.totalBytes,
