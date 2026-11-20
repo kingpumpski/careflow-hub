@@ -91,7 +91,7 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
    export RESTORE_CONFIRMATION="RESTORE-STORAGE-TO:${RESTORE_TARGET_PROJECT_REF}"
    node scripts/restore-storage.mjs <verified-extracted-directory>
    ```
-   The script creates missing buckets, uploads objects, and downloads each uploaded object again to verify SHA-256.
+   The script creates or updates bucket configuration, uploads objects, and downloads each uploaded object again to verify SHA-256. If the source backup contains public buckets, review them first and explicitly set `RESTORE_ALLOW_PUBLIC_BUCKETS=YES` only when public access is intended; otherwise the restore script refuses to make any bucket public.
 7. Deploy the exact source commit recorded in the manifest. Re-deploy Edge Functions and configure all secrets independently; secret values are intentionally not backed up.
 8. Validate Auth login, role assignments, RLS, claims, pre-authorizations, settlements, ledger balances, reports, Storage downloads, Edge Functions, email configuration and audit logging.
 9. Only after successful acceptance should DNS/frontend environment be switched to the replacement project. Keep the old project untouched until sign-off.
