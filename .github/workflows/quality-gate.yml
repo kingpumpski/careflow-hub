@@ -28,5 +28,12 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test -- --run
+      - name: Backup and recovery tests
+        run: npm run test:backup
+      - name: Backup script syntax
+        run: |
+          node --check scripts/system-backup.mjs
+          node --check scripts/verify-system-backup.mjs
+          node --check scripts/restore-storage.mjs
       - name: Production build
         run: npm run build
