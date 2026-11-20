@@ -45,7 +45,7 @@ async function fixture() {
       format: "pg_dump_custom",
       postgresMajor: 17,
     },
-    storage: { bucketCount: 1, objectCount: 1, totalBytes: object.length },
+    storage: { bucketCount: 1, publicBucketCount: 0, objectCount: 1, totalBytes: object.length },
     source: {
       commit: "test-commit",
       archive_path: "source/careflow-source.tar",
