@@ -29,9 +29,11 @@ describe("individual claim case migration contract", () => {
     const helper = migration.match(/FUNCTION security_internal\.claim_case_transition_allowed[\s\S]*?AS \$function\$([\s\S]*?)\$function\$;/i)?.[1];
     expect(helper).toBeTruthy();
     const sqlTransitions = new Map<string, string[]>();
-    for (const match of helper!.matchAll(/WHEN '([^']+)' THEN p_to_status (?:= '([^']+)'|IN \(([^)]+)\))/g)) {
-      const [, from, single, list] = match;
-      const allowed = single ? [single] : Array.from(list.matchAll(/'([^']+)'/g), (entry) => entry[1]);
+    for (const match of helper!.matchAll(/WHEN '([^']+)' THEN (.+)$/gm)) {
+      const [, from, expression] = match;
+      const single = expression.match(/^p_to_status = '([^']+)'/);
+      const list = expression.match(/^p_to_status IN \((.+)\)/);
+      const allowed = single ? [single[1]] : list ? Array.from(list[1].matchAll(/'([^']+)'/g), (entry) => entry[1]) : [];
       sqlTransitions.set(from, allowed);
     }
     expect([...sqlTransitions.keys()].sort()).toEqual([...CLAIM_STATUSES].sort());
