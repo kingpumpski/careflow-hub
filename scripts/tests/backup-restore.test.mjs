@@ -13,13 +13,17 @@ async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "careflow-verify-test-"));
   await mkdir(path.join(root, "database"), { recursive: true });
   await mkdir(path.join(root, "storage", "objects", "claims"), { recursive: true });
+  await mkdir(path.join(root, "source"), { recursive: true });
   const db = Buffer.from("verified-database-backup-fixture");
   const object = Buffer.from("verified-storage-object-fixture");
   await writeFile(path.join(root, "database", "project-database.backup"), db);
   await writeFile(path.join(root, "storage", "objects", "claims", "sample.bin"), object);
+  const source = Buffer.from("careflow-source-snapshot-fixture");
+  await writeFile(path.join(root, "source", "careflow-source.tar"), source);
   await writeFile(path.join(root, "storage", "manifest.json"), JSON.stringify({
     buckets: [{
       name: "claims",
+      object_count: 1,
       objects: [{
         key: "sample.bin",
         path: "storage/objects/claims/sample.bin",
@@ -39,8 +43,13 @@ async function fixture() {
       bytes: db.length,
       sha256: hash(db),
     },
-    storage: { objectCount: 1 },
-    source: { commit: "test-commit" },
+    storage: { bucketCount: 1, objectCount: 1, totalBytes: object.length },
+    source: {
+      commit: "test-commit",
+      archive_path: "source/careflow-source.tar",
+      archive_bytes: source.length,
+      archive_sha256: hash(source),
+    },
   }));
   return root;
 }
@@ -52,6 +61,7 @@ test("verifies a complete database and Storage fixture", async () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /"status": "verified"/);
     assert.match(result.stdout, /"storage_objects": 1/);
+    assert.match(result.stdout, /"source_snapshot_bytes":/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
