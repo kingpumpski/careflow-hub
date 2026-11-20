@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
 const root = process.argv[2] ? await realpath(path.resolve(process.argv[2])) : "";
 if (!process.argv[2]) throw new Error("Usage: node scripts/restore-storage.mjs <verified-extracted-backup-directory>");
+execFileSync(process.execPath, [path.resolve("scripts/verify-system-backup.mjs"), root], { stdio: "inherit" });
 const targetUrl = process.env.RESTORE_TARGET_SUPABASE_URL?.replace(/\/+$/, "");
 const targetRef = process.env.RESTORE_TARGET_PROJECT_REF;
 const serviceKey = process.env.RESTORE_TARGET_SERVICE_ROLE_KEY;
