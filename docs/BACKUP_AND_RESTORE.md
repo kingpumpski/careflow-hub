@@ -27,6 +27,7 @@ Create this environment in repository Settings → Environments. Configure these
 | `SUPABASE_URL` | Must equal `https://jajfdgknctzqypdtvmxo.supabase.co` |
 | `SUPABASE_DB_URL` | PostgreSQL Session Pooler connection URI for this project, using port 5432, a database password and `sslmode=require`; URL-encode special characters in the password |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side key used only by the backup runner to enumerate and download Storage objects |
+| `SUPABASE_ACCESS_TOKEN` | Supabase personal access token used by the manually confirmed `deploy-backup-control.yml` workflow to deploy the Edge Function; keep it as an environment secret |
 | `BACKUP_AGE_RECIPIENT` | Public age recipient (`age1...`); the private identity is kept offline by the recovery operator |
 | `BACKUP_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `BACKUP_R2_BUCKET` | Private R2 bucket name dedicated to CareFlow backups |
