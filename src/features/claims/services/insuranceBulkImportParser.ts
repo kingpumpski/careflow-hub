@@ -45,7 +45,7 @@ function detectMonth(value: unknown): number | null {
     const month = Number(raw);
     return month >= 1 && month <= 12 ? month : null;
   }
-  const namedMonth = raw.match(/^([a-z]{3,9})(?:[\s/-]+\d{2,4})?$/);
+  const namedMonth = raw.match(/^([a-z]{3,9})(?:[\s/-]*\d{2,4})?$/);
   return namedMonth ? MONTHS[namedMonth[1]] ?? null : null;
 }
 
