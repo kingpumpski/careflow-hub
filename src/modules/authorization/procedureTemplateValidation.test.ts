@@ -38,6 +38,12 @@ describe("procedure template validation", () => {
       .toBe("General Surgery Bundle");
   });
 
+  it("detects duplicate names among rows staged in the same bulk import", () => {
+    expect(() => validateProcedureTemplate(validInput, {
+      existing: [{ template_name: "General Surgery Bundle" }],
+    })).toThrow("already exists");
+  });
+
   it("rejects a procedure reference that is no longer available", () => {
     expect(() => validateProcedureTemplate(validInput, { procedureIds: ["procedure-2"] }))
       .toThrow("selected procedure no longer exists");
