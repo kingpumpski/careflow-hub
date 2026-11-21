@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Plus, Search, Pencil, Archive, ArchiveRestore, Trash2, Upload, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label"; import { Badge } from "@/components/ui/badge"; import { Skeleton } from "@/components/ui/skeleton"; import EntityDialog from "@/components/shared/EntityDialog"; import BulkImportDialog from "@/components/shared/BulkImportDialog"; import DownloadTemplate from "@/components/shared/DownloadTemplate"; import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery"; import { toast } from "@/hooks/use-toast"; import { aiDuplicateCheck } from "@/lib/dedupCheck"; import { useMasterSearch } from "@/hooks/useMasterSearch"; import { usePermissions } from "@/modules/security/usePermissions";
+type DiagnosisCodeRecord = { id: string; code?: string | null; description?: string | null; category?: string | null; archived?: boolean };
 const ICD_CATEGORIES=["Infectious & Parasitic","Neoplasms","Blood & Immune","Endocrine & Metabolic","Mental & Behavioral","Nervous System","Eye & Adnexa","Ear & Mastoid","Circulatory","Respiratory","Digestive","Skin & Subcutaneous","Musculoskeletal","Genitourinary","Pregnancy & Childbirth","Perinatal","Congenital","Symptoms & Signs","Injury & Poisoning","External Causes","Other"];
 const DIAGNOSIS_IMPORT_COLUMNS=[
  {key:"code",label:"ICD-10 Code",required:true,unique:true,aliases:["Code","ICD10 Code","Diagnosis Code"],hint:"Use the ICD-10 code format, for example A09 or A09.0."},
@@ -22,7 +23,7 @@ export default function DiagnosisCodes(){
   if(!normalizedForm.description){
    toast({title:"Description required",description:"Enter the diagnosis description.",variant:"destructive"});return;
   }
-  const duplicate=((codes || []) as any[]).find((record:any)=>
+  const duplicate=((codes || []) as DiagnosisCodeRecord[]).find((record)=>
    String(record.code||"").trim().toUpperCase()===normalizedForm.code&&record.id!==editing?.id
   );
   if(duplicate){
@@ -30,7 +31,7 @@ export default function DiagnosisCodes(){
   }
   try{
    if(!editing){
-    const ai=await aiDuplicateCheck("diagnosis",normalizedForm,(codes||[]) as any);
+    const ai=await aiDuplicateCheck("diagnosis",normalizedForm,codes||[]);
     if(ai.duplicate&&ai.confidence>=0.75&&!confirm("AI flagged this as a possible duplicate: "+ai.reason+"\n\nSave anyway?"))return;
    }
    if(editing)await updateM.mutateAsync({id:editing.id,...normalizedForm});
@@ -44,7 +45,7 @@ export default function DiagnosisCodes(){
   if(!canWrite)return deny();
   const seen=new Map<string,any>();
   const duplicateExisting=new Set<string>();
-  ((codes || []) as any[]).forEach((record:any)=>{
+  ((codes || []) as DiagnosisCodeRecord[]).forEach((record)=>{
     const code=String(record.code||"").trim().toUpperCase();
     if(seen.has(code))duplicateExisting.add(code);
     else if(code)seen.set(code,record);
