@@ -167,7 +167,6 @@ export default function InsuranceBulkImport() {
       const existing = insurerIndex.get(norm(row.insurerNameRaw));
       const decision = missingMap[row.insurerNameRaw];
       const insurerId = existing?.id || (decision?.action === "map" ? decision.insurerId : null);
-      if (!insurerId) continue;
       const targetInsurer = existing || (decision?.action === "map" ? (insurers || []).find((item: any) => item.id === decision.insurerId) : null);
       if (targetInsurer && !targetInsurer.facility_id) {
         setError("The selected insurer " + row.insurerNameRaw + " is not linked to a facility. Assign it to the correct facility before importing payment records.");
@@ -177,6 +176,7 @@ export default function InsuranceBulkImport() {
         setError("Select a facility before creating an insurer that has payment history.");
         return;
       }
+      if (!insurerId) continue;
       const currentTotal = existingPaymentTotals.get(insurerId + "|" + row.month + "|" + row.year) || 0;
       if (currentTotal > 0 && Math.round(currentTotal * 100) !== Math.round(row.paid * 100)) {
         setError("Imported paid total for " + row.insurerNameRaw + " " + row.month + "/" + row.year
