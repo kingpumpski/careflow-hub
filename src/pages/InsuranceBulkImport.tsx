@@ -5,21 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { aiDuplicateCheck } from "@/lib/dedupCheck";
 import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import type { ImportColumn } from "@/lib/importUtils";
-
-type ParsedRow = {
-  sheet: string;
-  year: number;
-  month: number;
-  insurerNameRaw: string;
-  submitted: number;
-  rejected: number;
-  paid: number;
-};
+import { assertNoConflictingInsurancePeriods, parseInsuranceHistorySheet, type InsuranceHistoryRow as ParsedRow } from "@/features/claims/services/insuranceBulkImportParser";
 
 type MissingMap = Record<string, {
   action: "map" | "create" | "skip";
@@ -29,91 +19,16 @@ type MissingMap = Record<string, {
   aiReason?: string;
 }>;
 
-const MONTHS: Record<string, number> = {
-  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
-  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
-  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
-};
-
 const importColumns: ImportColumn[] = [
   { key: "insurance_company", label: "Insurance Company", required: true, example: "Example Health Insurer" },
-  { key: "year", label: "Year", required: true, type: "integer", example: new Date().getFullYear() },
-  { key: "month", label: "Month", required: true, type: "integer", example: 1, hint: "1-12 or month name" },
-  { key: "submitted", label: "Submitted", required: true, type: "number" },
-  { key: "rejected", label: "Rejected", type: "number" },
-  { key: "paid", label: "Paid", type: "number" },
+  { key: "year", label: "Year", required: true, type: "integer", min: 1900, max: 2100, example: new Date().getFullYear() },
+  { key: "month", label: "Month", required: true, type: "integer", min: 1, max: 12, example: 1, hint: "1-12 or a full/short month name" },
+  { key: "submitted", label: "Submitted", required: true, type: "number", min: 0, hint: "Non-negative amount; use digits and optional comma thousands separators" },
+  { key: "rejected", label: "Rejected", type: "number", min: 0 },
+  { key: "paid", label: "Paid", type: "number", min: 0 },
 ];
 
-function norm(s: any) { return String(s ?? "").trim().toLowerCase(); }
-function num(v: any) { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return Number.isFinite(n) ? n : 0; }
-function detectMonth(v: any): number | null {
-  if (v == null) return null;
-  const s = norm(v);
-  if (!s) return null;
-  if (MONTHS[s]) return MONTHS[s];
-  const n = parseInt(s, 10);
-  if (n >= 1 && n <= 12) return n;
-  for (const k of Object.keys(MONTHS)) if (s.startsWith(k)) return MONTHS[k];
-  return null;
-}
-
-function parseSheet(sheetName: string, rows: any[][], fallbackYear: number): ParsedRow[] {
-  if (!rows.length) return [];
-  const year = (() => {
-    const m = sheetName.match(/(20\d{2}|19\d{2})/);
-    return m ? parseInt(m[1], 10) : fallbackYear;
-  })();
-  // Find header row (first row with an insurer-like column)
-  let headerIdx = 0;
-  for (let i = 0; i < Math.min(rows.length, 5); i++) {
-    const r = rows[i].map(norm);
-    if (r.some((c) => c.includes("insur") || c.includes("company"))) { headerIdx = i; break; }
-  }
-  const header = rows[headerIdx].map(norm);
-  const insurerCol = header.findIndex((c) => c.includes("insur") || c.includes("company") || c === "name");
-  if (insurerCol < 0) return [];
-
-  // Two supported layouts:
-  //  A) Long: columns include "month", "submitted", "rejected", "paid"
-  //  B) Wide: one row per insurer, columns are month names (each cell = submitted amount)
-  const monthCol = header.findIndex((c) => c === "month" || c === "period");
-  const yearCol = header.findIndex((c) => c === "year" || c === "claimyear");
-  const submittedCol = header.findIndex((c) => c.includes("submit"));
-  const rejectedCol = header.findIndex((c) => c.includes("reject"));
-  const paidCol = header.findIndex((c) => c.includes("paid"));
-
-  const out: ParsedRow[] = [];
-  if (monthCol >= 0 && submittedCol >= 0) {
-    for (let i = headerIdx + 1; i < rows.length; i++) {
-      const r = rows[i]; if (!r || !r.length) continue;
-      const insurer = String(r[insurerCol] ?? "").trim();
-      const m = detectMonth(r[monthCol]);
-      if (!insurer || !m) continue;
-      out.push({
-        sheet: sheetName, year: yearCol >= 0 && num(r[yearCol]) ? num(r[yearCol]) : year, month: m, insurerNameRaw: insurer,
-        submitted: num(r[submittedCol]),
-        rejected: rejectedCol >= 0 ? num(r[rejectedCol]) : 0,
-        paid: paidCol >= 0 ? num(r[paidCol]) : 0,
-      });
-    }
-  } else {
-    // Wide layout: locate month columns
-    const monthCols: { col: number; month: number }[] = [];
-    header.forEach((c, idx) => { const m = detectMonth(c); if (m) monthCols.push({ col: idx, month: m }); });
-    if (!monthCols.length) return [];
-    for (let i = headerIdx + 1; i < rows.length; i++) {
-      const r = rows[i]; if (!r || !r.length) continue;
-      const insurer = String(r[insurerCol] ?? "").trim();
-      if (!insurer) continue;
-      for (const mc of monthCols) {
-        const v = num(r[mc.col]);
-        if (!v) continue;
-        out.push({ sheet: sheetName, year, month: mc.month, insurerNameRaw: insurer, submitted: v, rejected: 0, paid: 0 });
-      }
-    }
-  }
-  return out;
-}
+function norm(s: any) { return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " "); }
 
 export default function InsuranceBulkImport() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -146,6 +61,11 @@ export default function InsuranceBulkImport() {
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(""); setSummary(null); setRows([]); setMissingMap({});
     const file = e.target.files?.[0]; if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setError("The selected workbook is larger than 20 MB. Split it into smaller files and import them separately.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
@@ -154,17 +74,22 @@ export default function InsuranceBulkImport() {
       for (const name of wb.SheetNames) {
         const sheet = wb.Sheets[name];
         const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, blankrows: false, defval: null });
-        parsed.push(...parseSheet(name, aoa as any[][], fallbackYear));
+        parsed.push(...parseInsuranceHistorySheet(name, aoa as any[][], fallbackYear));
       }
-      if (!parsed.length) { setError("Could not detect an insurer column or any month/amount data in this workbook."); return; }
+      if (parsed.length > 25000) throw new Error("This workbook contains more than 25,000 claim-period rows. Split it into smaller imports.");
+      if (!parsed.length) throw new Error("Could not detect an insurer column or any month/amount data in this workbook.");
+      assertNoConflictingInsurancePeriods(parsed);
       setRows(parsed);
-      // Prime missing map with default action=map
       const init: MissingMap = {};
-      Array.from(new Set(parsed.map((p) => p.insurerNameRaw))).forEach((n) => {
-        if (!insurerIndex.get(norm(n))) init[n] = { action: "map" };
+      Array.from(new Set(parsed.map((p) => p.insurerNameRaw))).forEach((name) => {
+        if (!insurerIndex.get(norm(name))) init[name] = { action: "map" };
       });
       setMissingMap(init);
-    } catch (err: any) { setError("Failed to parse file: " + err.message); }
+    } catch (err: any) {
+      setError("Failed to parse workbook: " + (err?.message || "Unknown parsing error"));
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   const resolveInsurerId = async (nameRaw: string): Promise<string | null> => {
@@ -228,11 +153,17 @@ export default function InsuranceBulkImport() {
 
       // Index existing rows by (insurer|month|year|status) so we can upsert instead of blind-inserting.
       const claimIdx = new Map<string, { id: string; amount: number }>();
-      (existingClaims || []).forEach((c: any) =>
-        claimIdx.set(`${c.insurance_company_id}|${c.claim_month}|${c.claim_year}|${c.status}`, { id: c.id, amount: Number(c.claim_amount || 0) }));
+      (existingClaims || []).forEach((c: any) => {
+        const key = `${c.insurance_company_id}|${c.claim_month}|${c.claim_year}|${c.status}`;
+        if (claimIdx.has(key)) throw new Error("Existing claims contain duplicate insurer/month/year/status records. Resolve these records before importing.");
+        claimIdx.set(key, { id: c.id, amount: Number(c.claim_amount || 0) });
+      });
       const payIdx = new Map<string, { id: string; amount: number }>();
-      (existingPayments || []).forEach((p: any) =>
-        payIdx.set(`${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`, { id: p.id, amount: Number(p.amount_paid || 0) }));
+      (existingPayments || []).forEach((p: any) => {
+        const key = `${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`;
+        if (payIdx.has(key)) throw new Error("Existing payments contain duplicate insurer/month/year records. Resolve these records before importing.");
+        payIdx.set(key, { id: p.id, amount: Number(p.amount_paid || 0) });
+      });
 
       const logDuplicate = async (r: ParsedRow, kind: string, amount: number) => {
         duplicates++;
@@ -290,7 +221,7 @@ export default function InsuranceBulkImport() {
       setSummary({ inserted, updated, duplicates, created });
       toast({ title: "Import complete", description: `${inserted} inserted · ${updated} updated · ${duplicates} duplicates rejected · ${created} insurers created` });
     } catch (err: any) {
-      setError(err.message || "Import failed");
+      setError((err.message || "Import failed") + " Earlier rows may already have been saved; review the import summary and affected records before retrying.");
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
     } finally { setImporting(false); }
   };
