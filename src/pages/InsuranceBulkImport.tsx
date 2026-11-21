@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { aiDuplicateCheck } from "@/lib/dedupCheck";
 import DownloadTemplate from "@/components/shared/DownloadTemplate";
 import type { ImportColumn } from "@/lib/importUtils";
@@ -35,7 +37,6 @@ export default function InsuranceBulkImport() {
   const { data: existingClaims } = useSupabaseQuery("claims");
   const { data: existingPayments } = useSupabaseQuery("payments");
   const insertClaim = useSupabaseInsert("claims");
-  const insertPayment = useSupabaseInsert("payments");
   const insertAudit = useSupabaseInsert("audit_logs");
   const insertInsurer = useSupabaseInsert("insurance_companies");
   const updateClaim = useSupabaseUpdate("claims");
@@ -99,7 +100,8 @@ export default function InsuranceBulkImport() {
     if (decision.action === "map" && decision.insurerId) return decision.insurerId;
     if (decision.action === "create") {
       const newName = (decision.newName || nameRaw).trim();
-      const created = await insertInsurer.mutateAsync({ company_name: newName, is_active: true, color: "#3b82f6" });
+      const facilityId = getStoredFacilityId();
+      const created = await insertInsurer.mutateAsync({ company_name: newName, is_active: true, color: "#3b82f6", ...(facilityId ? { facility_id: facilityId } : {}) });
       insurerIndex.set(norm(newName), created);
       return (created as any).id;
     }
@@ -166,6 +168,15 @@ export default function InsuranceBulkImport() {
       const decision = missingMap[row.insurerNameRaw];
       const insurerId = existing?.id || (decision?.action === "map" ? decision.insurerId : null);
       if (!insurerId) continue;
+      const targetInsurer = existing || (decision?.action === "map" ? (insurers || []).find((item: any) => item.id === decision.insurerId) : null);
+      if (targetInsurer && !targetInsurer.facility_id) {
+        setError("The selected insurer " + row.insurerNameRaw + " is not linked to a facility. Assign it to the correct facility before importing payment records.");
+        return;
+      }
+      if (!targetInsurer && decision?.action === "create" && !getStoredFacilityId()) {
+        setError("Select a facility before creating an insurer that has payment history.");
+        return;
+      }
       const currentTotal = existingPaymentTotals.get(insurerId + "|" + row.month + "|" + row.year) || 0;
       if (currentTotal > 0 && Math.round(currentTotal * 100) !== Math.round(row.paid * 100)) {
         setError("Imported paid total for " + row.insurerNameRaw + " " + row.month + "/" + row.year
@@ -235,10 +246,20 @@ export default function InsuranceBulkImport() {
             throw new Error("Imported paid total for " + r.insurerNameRaw + " " + r.month + "/" + r.year
               + " differs from the sum of existing payment transactions. Payment history is transaction-based and was not overwritten; reconcile this period in Payment Tracking first.");
           } else {
-            await insertPayment.mutateAsync({
-              insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
-              payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
+            const paymentDate = new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10);
+            const reference = "BULK-" + r.year + "-" + String(r.month).padStart(2, "0") + "-" + insurerId.slice(0, 8);
+            const { error } = await (supabase.rpc as any)("import_payments_with_ledger", {
+              p_rows: [{
+                insurance_company_id: insurerId,
+                amount_paid: r.paid,
+                payment_date: paymentDate,
+                claim_month: r.month,
+                claim_year: r.year,
+                payment_method: "bulk_import",
+                reference_number: reference,
+              }],
             });
+            if (error) throw error;
             payIdx.set(key, { amount: r.paid }); inserted++;
           }
         }
