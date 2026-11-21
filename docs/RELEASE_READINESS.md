@@ -147,3 +147,15 @@ A read-only database contract test, `supabase/tests/settlement_exception_lifecyc
 ### Backup readiness detail
 
 The backup runbook defines the required GitHub Environment secrets, age encryption recipient, private R2 credentials, Supabase database connection and Edge Function secrets. The current release-readiness record confirms these credentials/key are not yet configured, no encrypted backup has completed, and no restore rehearsal has passed. Treat this as an operational configuration gate, not a code-only task.
+
+
+### Browser console triage — 2026-11-21
+
+The latest user-reported production browser console confirms two release issues:
+
+- **Settlement exception REST 404:** the browser requests `/rest/v1/settlement_exceptions`. The last read-only inspection of Supabase project `jajfdgknctzqypdtvmxo` found `public.claims_settlement_periods`, but not `public.settlement_exceptions` or `public.settlement_exception_audit_events`. This is consistent with PostgREST returning 404 for a relation that is absent from the exposed schema (or not exposed to the Data API). The known schema gap must be resolved through migration-history reconciliation, disposable-database replay and RLS/transaction integration tests, followed by the backup-gated deployment. Do not patch this by creating tables manually in production, disabling RLS, or exposing broader grants. Confirm the Data API schema exposure/grants as part of deployment verification.
+- **Favicon 404 at the domain root:** the browser requests `https://kingpumpski.github.io/favicon.ico`, while the repository's Pages app is hosted at `/careflow-hub/`. Main's current `index.html` lacks an explicit favicon link. PR #62 adds `<link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />`, and the Vite Pages build sets `base: "/careflow-hub/"`. PR #62 remains an unmerged draft at head `cae2e6118cf46701e212292e7888ab35e2e54838`; its passing checks do not change the deployed site. The fix must be merged through the normal review process and Pages redeployed, then verify the browser requests `/careflow-hub/favicon.ico` and receives HTTP 200.
+- **Asynchronous message-channel errors:** repeated `A listener indicated an asynchronous response ... message channel closed` messages are not currently tied to a CareFlow source location. Browser extensions commonly emit this class of message. Re-test in a clean Edge profile or with extensions disabled; treat as an application defect only if reproducible there and attributable to a CareFlow listener/message handler.
+
+No production schema, Data API settings, Pages deployment, or other production configuration was changed in response to these console messages.
+
