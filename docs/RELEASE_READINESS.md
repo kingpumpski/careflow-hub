@@ -111,7 +111,7 @@ This section records the latest implementation and live-schema checks. It does n
 
 ### Verified pull-request implementation status
 
-- [x] PR #48 online settlement-exception lifecycle: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `3f72ecedbfe41357112886111c5d2a500fc5542d` (runs 44890716793, 44890716802, 44890716783). These are repository checks only; no disposable-database execution has been completed.
+- [x] PR #48 online settlement-exception lifecycle: after adding the database contract test, CI (44924895215), CareFlow Quality Gate (44924895202), and Dependency Security Audit (44924895207) passed on head `e4aea3868074ef690eab0059576fe0818110e082`. These are repository checks only; no disposable-database execution has been completed.
 - [x] PR #61 atomic monthly claim and rejection submission: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `aed5b08d04d3156e3d943e039922203f888edd82` (runs 44923023928, 44923023923, 44923023985). SQL/RLS integration testing remains outstanding.
 - [x] PR #62 GitHub Pages favicon base-path correction: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `cae2e6118cf46701e212292e7888ab35e2e54838` (runs 44923920293, 44923920288, 44923920289).
 - [ ] These pull requests remain unmerged drafts. Passing checks do not mean their changes are present in production.
