@@ -30,6 +30,7 @@
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
 - [ ] Duplicate migration version prefixes are reconciled against the production migration ledger; see [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
 - [ ] Organization-level tenant schema, active-organization context and cross-tenant RLS tests are implemented (facility scoping alone is not organization tenancy).
+- [ ] Facility onboarding and membership RPC/UI in branch `feat/admin-facility-onboarding` passes disposable-database tests and is merged/deployed. The linked project currently has zero facilities and zero active memberships.
 - [ ] Claim lifecycle transitions are enforced by a server-side transactional RPC and Claims UI.
 - [ ] Settlement exception register supports atomic online/offline lifecycle transitions and audit. PR #48 contains the online implementation and passed code CI, but remains draft pending disposable-database integration tests; its migration is not applied.
 
