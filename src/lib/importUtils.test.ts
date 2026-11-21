@@ -85,6 +85,16 @@ describe("mapRows", () => {
     expect(row.errors).toContain("Active must be yes or no");
   });
 
+  it("accepts valid leap dates, day-first dates and explicit false booleans", () => {
+    const [row] = mapRows([{ ISODate: "2024-02-29", LocalDate: "31/12/2026", Enabled: "No" }], [
+      { key: "iso_date", label: "ISO Date", type: "date" },
+      { key: "local_date", label: "Local Date", type: "date" },
+      { key: "enabled", label: "Enabled", type: "boolean" },
+    ]);
+    expect(row.errors).toEqual([]);
+    expect(row.values).toEqual({ iso_date: "2024-02-29", local_date: "2026-12-31", enabled: false });
+  });
+
   it("flags repeated unique diagnosis codes in the same file", () => {
     const [first, second] = mapRows([
       { Code: "a09.0", Description: "First" },
