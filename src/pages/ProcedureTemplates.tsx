@@ -40,7 +40,7 @@ export default function ProcedureTemplates() {
   const [items, setItems] = useState<TemplateItem[]>([{ description: "", quantity: 1, unitCharge: 0 }]);
 
   const totalAmount = useMemo(
-    () => items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitCharge) || 0), 0),
+    () => items.reduce((sum, item) => sum + Math.round(Number(item.unitCharge) * 100) * Number(item.quantity), 0) / 100,
     [items],
   );
 
@@ -82,7 +82,7 @@ export default function ProcedureTemplates() {
       }, {
         existing: (templates || []) as Array<{ id: string; template_name: string }>,
         editingId: editing?.id,
-        procedureIds: (procedures || []).map((procedure: any) => procedure.id),
+        procedureIds: procedures?.map((procedure: any) => procedure.id),
       });
       const payload = {
         ...validated,
@@ -205,7 +205,7 @@ export default function ProcedureTemplates() {
           <div className="space-y-2">
             <div className="flex items-center justify-between"><Label>Cost Items</Label><Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { description: "", quantity: 1, unitCharge: 0 }])}>+ Item</Button></div>
             <div className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 text-xs font-medium text-muted-foreground px-1"><span>Description</span><span>Qty</span><span>Unit (GH¢)</span><span className="text-right">Line Total</span><span></span></div>
-            {items.map((item, i) => { const line = (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0); return <div key={i} className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 items-center"><Input placeholder="Description" value={item.description} onChange={(e) => { const n = [...items]; n[i].description = e.target.value; setItems(n); }} className="h-8" /><Input type="number" min="1" value={item.quantity} onChange={(e) => { const n = [...items]; n[i].quantity = parseInt(e.target.value) || 1; setItems(n); }} className="h-8" /><Input type="number" step="0.01" min="0" value={item.unitCharge} onChange={(e) => { const n = [...items]; n[i].unitCharge = parseFloat(e.target.value) || 0; setItems(n); }} className="h-8" /><div className="text-right font-semibold text-sm">{line.toLocaleString()}</div><button type="button" onClick={() => { if (items.length > 1) setItems(items.filter((_, j) => j !== i)); }} className="text-destructive text-xs">✕</button></div>; })}
+            {items.map((item, i) => { const line = (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0); return <div key={i} className="grid grid-cols-[1fr_70px_100px_100px_30px] gap-2 items-center"><Input placeholder="Description" value={item.description} onChange={(e) => { const n = [...items]; n[i].description = e.target.value; setItems(n); }} className="h-8" /><Input type="number" min="1" value={item.quantity} onChange={(e) => { const n = [...items]; n[i].quantity = e.target.value === "" ? 0 : Number(e.target.value); setItems(n); }} className="h-8" /><Input type="number" step="0.01" min="0" value={item.unitCharge} onChange={(e) => { const n = [...items]; n[i].unitCharge = parseFloat(e.target.value) || 0; setItems(n); }} className="h-8" /><div className="text-right font-semibold text-sm">{line.toLocaleString()}</div><button type="button" onClick={() => { if (items.length > 1) setItems(items.filter((_, j) => j !== i)); }} className="text-destructive text-xs">✕</button></div>; })}
             <div className="flex justify-end pt-2 border-t border-border"><div className="text-sm">Total: <span className="font-bold text-primary text-base">GH¢ {totalAmount.toLocaleString()}</span></div></div>
           </div>
           <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="mt-1" /></div>
@@ -228,7 +228,7 @@ export default function ProcedureTemplates() {
         onImport={async (rows) => {
           if (!canWrite) throw new Error("Master-data write permission is required for imports.");
           const payload: Array<ReturnType<typeof validateProcedureTemplate>> = [];
-          const procedureIds = (procedures || []).map((procedure: any) => procedure.id);
+          const procedureIds = procedures?.map((procedure: any) => procedure.id);
           for (const row of rows) {
             const validated = validateProcedureTemplate({
               templateName: row.template_name,
@@ -243,7 +243,7 @@ export default function ProcedureTemplates() {
             payload.push(validated);
           }
           await bulkInsert.mutateAsync(payload);
-        }}}
+        }}
       />}
     </div>
   );
