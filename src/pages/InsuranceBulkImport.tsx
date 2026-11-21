@@ -143,6 +143,19 @@ export default function InsuranceBulkImport() {
       if (d.action === "map" && !d.insurerId) { setError(`Pick a target insurer for "${n}"`); return; }
       if (d.action === "create" && !(d.newName || n).trim()) { setError(`Give a name for the new insurer for "${n}"`); return; }
     }
+    try {
+      assertNoConflictingInsurancePeriods(rows, (row) => {
+        const existing = insurerIndex.get(norm(row.insurerNameRaw));
+        if (existing) return "id:" + existing.id;
+        const decision = missingMap[row.insurerNameRaw];
+        if (!decision || decision.action === "skip") return null;
+        if (decision.action === "map") return decision.insurerId ? "id:" + decision.insurerId : null;
+        return "new:" + norm((decision.newName || row.insurerNameRaw).trim());
+      });
+    } catch (err: any) {
+      setError(err.message || "Conflicting insurer-period entries were found.");
+      return;
+    }
     setError(""); setImporting(true);
     let inserted = 0, updated = 0, duplicates = 0, created = 0;
     try {
