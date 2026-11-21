@@ -133,3 +133,17 @@ The online register therefore remains unavailable against the inspected live sch
 - [ ] Re-run live security advisors after remediation; review the five SECURITY DEFINER findings and role_permissions RLS policy gap, and enable leaked-password protection after confirming the intended auth policy.
 
 No production database schema, data, migration ledger, Auth configuration, grants, policies or indexes were changed during this verification. The 76 unused-index notices remain informational and must not trigger index removal without workload evidence.
+
+### Facility onboarding and individual claim-case prerequisites
+
+- PR #53 (`feat/admin-facility-onboarding`) adds administrator-only facility onboarding and member-management RPCs. Its CI, CareFlow Quality Gate and Dependency Security Audit passed on the recorded head. The included `supabase/tests/facility_admin_onboarding.test.sql` is a read-only privilege/schema contract test and still must be run with `supabase test db` against a disposable project.
+- PR #52 (`feat/individual-claim-case-lifecycle`) keeps the insurer-level monthly aggregate `claims` model separate from facility-scoped individual claim cases and immutable case events. Its CI, CareFlow Quality Gate and Dependency Security Audit passed on the recorded head. The included `supabase/tests/individual_claim_case_lifecycle.test.sql` is a schema/security contract test and still must be run against a disposable database.
+- At the last recorded connected-project check, there were zero facilities and zero active facility memberships. Consequently, facility onboarding/bootstrap is a real operational prerequisite for testing and enabling individual claim cases and other facility-scoped workflows. No facility or membership was provisioned by this work.
+
+### Settlement exception SQL contract test added
+
+A read-only database contract test, `supabase/tests/settlement_exception_lifecycle.test.sql`, was added to the PR #48 branch at commit `e4aea3868074ef690eab0059576fe0818110e082`. It checks table presence, RLS enablement, authenticated read-only grants, anonymous RPC denial, authenticated RPC grants, SECURITY DEFINER/search-path configuration, facility SELECT policies, immutable audit trigger presence, and the active-exception uniqueness index. This improves regression coverage but does not prove row-level isolation or execute lifecycle transactions. PR #48's new head checks are pending; run this SQL test against a disposable database after the migration sequence is reconciled.
+
+### Backup readiness detail
+
+The backup runbook defines the required GitHub Environment secrets, age encryption recipient, private R2 credentials, Supabase database connection and Edge Function secrets. The current release-readiness record confirms these credentials/key are not yet configured, no encrypted backup has completed, and no restore rehearsal has passed. Treat this as an operational configuration gate, not a code-only task.
