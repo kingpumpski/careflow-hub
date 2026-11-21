@@ -42,6 +42,15 @@ describe("individual claim case migration contract", () => {
     }
   });
 
+  it("only changes approved and paid amounts at their matching lifecycle stages", () => {
+    expect(migration).toContain("v_approved := v_case.approved_amount;");
+    expect(migration).toContain("v_paid := v_case.paid_amount;");
+    expect(migration).toMatch(/IF p_target_status IN \('approved', 'partially_approved'\) THEN\s+v_approved := coalesce\(p_approved_amount, v_case\.approved_amount\);/);
+    expect(migration).toMatch(/IF p_target_status IN \('partially_paid', 'paid'\) THEN\s+v_paid := coalesce\(p_paid_amount, v_case\.paid_amount\);/);
+    expect(migration).toContain("IF v_paid < v_case.paid_amount THEN");
+    expect(migration).toContain("Cumulative paid amount cannot decrease");
+  });
+
   it("records creation and each status transition in the event table", () => {
     expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?Individual claim case created/i);
     expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?v_case\.status, p_target_status/i);

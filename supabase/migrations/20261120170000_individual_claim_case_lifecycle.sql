@@ -300,8 +300,16 @@ BEGIN
     RAISE EXCEPTION 'Invalid claim lifecycle transition: % -> %', v_case.status, p_target_status;
   END IF;
 
-  v_approved := coalesce(p_approved_amount, v_case.approved_amount);
-  v_paid := coalesce(p_paid_amount, v_case.paid_amount);
+  -- Financial amounts may only change at the lifecycle stages that adjudicate
+  -- or record payment. Later status-only transitions must preserve settled values.
+  v_approved := v_case.approved_amount;
+  v_paid := v_case.paid_amount;
+  IF p_target_status IN ('approved', 'partially_approved') THEN
+    v_approved := coalesce(p_approved_amount, v_case.approved_amount);
+  END IF;
+  IF p_target_status IN ('partially_paid', 'paid') THEN
+    v_paid := coalesce(p_paid_amount, v_case.paid_amount);
+  END IF;
   v_denial_reason := coalesce(nullif(trim(coalesce(p_denial_reason, '')), ''), nullif(trim(coalesce(p_note, '')), ''));
 
   IF p_target_status IN ('approved', 'partially_approved') THEN
@@ -316,6 +324,9 @@ BEGIN
   IF p_target_status IN ('partially_paid', 'paid') THEN
     IF v_approved IS NULL OR v_approved <= 0 OR v_paid <= 0 OR v_paid > v_approved THEN
       RAISE EXCEPTION 'Payment amount must be positive and cannot exceed the approved amount';
+    END IF;
+    IF v_paid < v_case.paid_amount THEN
+      RAISE EXCEPTION 'Cumulative paid amount cannot decrease';
     END IF;
     IF p_target_status = 'partially_paid' AND v_paid >= v_approved THEN
       RAISE EXCEPTION 'Use Paid when the full approved amount has been received';
