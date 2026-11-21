@@ -19,23 +19,23 @@ describe("buildMonthlyClaimSubmissionArgs", () => {
   });
 
   it("rejects a missing or malformed insurer", () => {
-    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, insurance_company_id: "" })).toThrow("insurance company");
+    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, insurance_company_id: "" })).toThrow(/insurance company/i);
     expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, insurance_company_id: "not-a-uuid" })).toThrow("insurance company");
   });
 
   it.each(["", "0", "0.00", "-1.00", "1.234", "1e3", "1,000.00", "Infinity"])(
     "rejects invalid claim amount %s",
     (claim_amount) => {
-      expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_amount })).toThrow("claim amount");
+      expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_amount })).toThrow(/claim amount/i);
     },
   );
 
   it.each(["0", "13", "1.5", "January"])("rejects invalid claim month %s", (claim_month) => {
-    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_month })).toThrow("claim month");
+    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_month })).toThrow(/claim month/i);
   });
 
   it.each(["0", "10000", "2026.5", "2e3", ""])("rejects invalid claim year %s", (claim_year) => {
-    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_year })).toThrow("claim year");
+    expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_year })).toThrow(/claim year/i);
   });
 });
 
