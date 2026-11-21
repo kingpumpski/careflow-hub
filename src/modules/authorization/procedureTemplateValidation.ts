@@ -106,7 +106,7 @@ export function validateProcedureTemplate(
     }
 
     const priceText = String(item.unitCharge ?? "").trim();
-    if (!/^\d+(?:\\.\d{1,2})?$/.test(priceText)) {
+    if (!/^\d+(?:\.\d{1,2})?$/.test(priceText)) {
       throw new Error("Unit charge for " + description + " must be a non-negative amount with up to two decimal places.");
     }
     const unitCharge = Number(priceText);
