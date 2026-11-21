@@ -13,6 +13,7 @@ import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDele
 import { toast } from "@/hooks/use-toast";
 import { useMasterSearch } from "@/hooks/useMasterSearch";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { validateProcedureTemplate } from "@/modules/authorization/procedureTemplateValidation";
 
 interface TemplateItem {
   description: string;
@@ -71,17 +72,23 @@ export default function ProcedureTemplates() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canWrite) return deny();
-    const cleaned = items.filter(i => i.description);
-    const payload = {
-      template_name: form.template_name,
-      procedure_id: form.procedure_id || null,
-      diagnosis_code_id: diagnosisIds[0] || null,
-      diagnosis_code_ids: diagnosisIds,
-      items: cleaned,
-      total_amount: cleaned.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitCharge) || 0), 0),
-      notes: form.notes || null,
-    };
     try {
+      const validated = validateProcedureTemplate({
+        templateName: form.template_name,
+        procedureId: form.procedure_id,
+        items,
+        notes: form.notes,
+        archived: editing?.archived ?? false,
+      }, {
+        existing: (templates || []) as Array<{ id: string; template_name: string }>,
+        editingId: editing?.id,
+        procedureIds: (procedures || []).map((procedure: any) => procedure.id),
+      });
+      const payload = {
+        ...validated,
+        diagnosis_code_id: diagnosisIds[0] || null,
+        diagnosis_code_ids: diagnosisIds,
+      };
       if (editing) {
         await updateMutation.mutateAsync({ id: editing.id, ...payload });
         toast({ title: "Template updated" });
@@ -90,8 +97,12 @@ export default function ProcedureTemplates() {
         toast({ title: "Template created" });
       }
       setDialogOpen(false);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "Unable to save template",
+        description: err instanceof Error ? err.message : "Check the template details and try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -215,16 +226,24 @@ export default function ProcedureTemplates() {
           { key: "archived", label: "Archived", type: "boolean", example: "No" },
         ]}
         onImport={async (rows) => {
-          if (!canWrite) return deny();
-          const payload = rows.map((row) => {
-            let items: TemplateItem[];
-            try { items = JSON.parse(String(row.items)); } catch { throw new Error(`Invalid items JSON for ${row.template_name}`); }
-            if (!Array.isArray(items) || items.some((item) => !item.description)) throw new Error(`Items JSON for ${row.template_name} must be a non-empty array with descriptions`);
-            const total = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitCharge) || 0), 0);
-            return { template_name: String(row.template_name).trim(), procedure_id: row.procedure_id || null, items, total_amount: total, notes: row.notes || null, archived: Boolean(row.archived), diagnosis_code_id: null, diagnosis_code_ids: [] };
-          });
+          if (!canWrite) throw new Error("Master-data write permission is required for imports.");
+          const payload: Array<ReturnType<typeof validateProcedureTemplate>> = [];
+          const procedureIds = (procedures || []).map((procedure: any) => procedure.id);
+          for (const row of rows) {
+            const validated = validateProcedureTemplate({
+              templateName: row.template_name,
+              procedureId: row.procedure_id,
+              items: row.items,
+              notes: row.notes,
+              archived: row.archived,
+            }, {
+              existing: [...((templates || []) as Array<{ id: string; template_name: string }>), ...payload.map((item) => ({ template_name: item.template_name }))],
+              procedureIds,
+            });
+            payload.push(validated);
+          }
           await bulkInsert.mutateAsync(payload);
-        }}
+        }}}
       />}
     </div>
   );
