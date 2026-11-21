@@ -82,7 +82,7 @@ export default function ProcedureTemplates() {
       }, {
         existing: (templates || []) as Array<{ id: string; template_name: string }>,
         editingId: editing?.id,
-        procedureIds: procedures?.map((procedure: any) => procedure.id),
+        procedureIds: procedures?.map((procedure) => procedure.id),
       });
       const payload = {
         ...validated,
@@ -228,7 +228,7 @@ export default function ProcedureTemplates() {
         onImport={async (rows) => {
           if (!canWrite) throw new Error("Master-data write permission is required for imports.");
           const payload: Array<ReturnType<typeof validateProcedureTemplate>> = [];
-          const procedureIds = procedures?.map((procedure: any) => procedure.id);
+          const procedureIds = procedures?.map((procedure) => procedure.id);
           for (const row of rows) {
             const validated = validateProcedureTemplate({
               templateName: row.template_name,
