@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMonthlyClaimSubmissionArgs } from "./monthlyClaimSubmission";
+import { buildClaimRejectionSubmissionArgs, buildMonthlyClaimSubmissionArgs } from "./monthlyClaimSubmission";
 
 const validForm = {
   insurance_company_id: "123e4567-e89b-42d3-a456-426614174000",
@@ -40,8 +40,7 @@ describe("buildMonthlyClaimSubmissionArgs", () => {
 });
 
 describe("buildClaimRejectionSubmissionArgs", () => {
-  it("preserves the rejected amount and optional denial details", async () => {
-    const { buildClaimRejectionSubmissionArgs } = await import("./monthlyClaimSubmission");
+  it("preserves the rejected amount and optional denial details", () => {
     expect(buildClaimRejectionSubmissionArgs({
       insurance_company_id: validForm.insurance_company_id,
       rejected_amount: "250.75",
@@ -63,8 +62,7 @@ describe("buildClaimRejectionSubmissionArgs", () => {
     });
   });
 
-  it("uses the same strict amount and period validation as monthly submissions", async () => {
-    const { buildClaimRejectionSubmissionArgs } = await import("./monthlyClaimSubmission");
+  it("uses the same strict amount and period validation as monthly submissions", () => {
     expect(() => buildClaimRejectionSubmissionArgs({
       insurance_company_id: validForm.insurance_company_id,
       rejected_amount: "250.999",
