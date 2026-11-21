@@ -104,3 +104,32 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 ## Current release gate
 
 The repository is not production-certified. Main-branch CI, the quality gate and dependency security audit passed on 2026-11-20; the latest dependency audit reports zero vulnerabilities. PR #49 merged a per-file/rule/message ESLint regression gate, and PR #50 removed one warning; the current observed count is 719 warnings against a 720-warning baseline. The last verified GitHub Pages HTTPS smoke test and HTTP-to-HTTPS redirect were recorded in run 44727328070; the newest merged commit still needs a fresh live smoke test. Supabase project `jajfdgknctzqypdtvmxo` is accessible and ACTIVE_HEALTHY, Cloudflare R2 is enabled with private bucket `careflow-system-backups`, and `backup-control` is deployed. However, no worker/portal credentials or encryption key have been configured, no encrypted backup has completed, and no restore rehearsal has passed. The live migration ledger currently contains 74 entries while the repository has 116 local migration files and three duplicate timestamp groups; do not infer that the difference is simply unapplied migrations. No production schema migration or ledger repair has been performed. Organization-level tenant isolation, server-enforced claim lifecycle, settlement exception database integration, and first legitimate administrator bootstrap remain unverified. The connected project also has unresolved security-advisor findings: five authenticated-callable SECURITY DEFINER functions, an RLS-enabled `role_permissions` table without a client policy, and leaked-password protection disabled. Do not interpret a successful static-site deployment as proof that every backend workflow is live.
+
+## Implementation verification update — 2026-11-21
+
+This section records the latest implementation and live-schema checks. It does not supersede the deployment gates above.
+
+### Verified pull-request implementation status
+
+- [x] PR #48 online settlement-exception lifecycle: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `3f72ecedbfe41357112886111c5d2a500fc5542d` (runs 44890716793, 44890716802, 44890716783). These are repository checks only; no disposable-database execution has been completed.
+- [x] PR #61 atomic monthly claim and rejection submission: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `aed5b08d04d3156e3d943e039922203f888edd82` (runs 44923023928, 44923023923, 44923023985). SQL/RLS integration testing remains outstanding.
+- [x] PR #62 GitHub Pages favicon base-path correction: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `cae2e6118cf46701e212292e7888ab35e2e54838` (runs 44923920293, 44923920288, 44923920289).
+- [ ] These pull requests remain unmerged drafts. Passing checks do not mean their changes are present in production.
+
+### Settlement exception live-schema gap
+
+A fresh read-only inspection of the connected Supabase project found `public.claims_settlement_periods`, but did not find `public.settlement_exceptions` or `public.settlement_exception_audit_events`. The repository contains the base table migration `20260908150000_settlement_exception_register.sql`; PR #48 adds the online atomic lifecycle RPC migration `20261120160000_settlement_exception_atomic_lifecycle.sql`.
+
+The online register therefore remains unavailable against the inspected live schema until the migration sequence is reconciled, replayed and tested in a disposable database, then deployed through the approved backup-gated release process. Do not apply either migration directly to production as an ad hoc repair. The remote migration ledger currently reports 74 entries; its normalized version values mean that a missing original filename timestamp alone is not proof of drift. Reconcile by comparing migration names, schema state and repository history together.
+
+### Remaining release blockers
+
+- [ ] Disposable Supabase integration tests for settlement-exception permissions, facility isolation, idempotent detection, status transitions and immutable audit events.
+- [ ] Disposable Supabase integration tests for PR #61 monthly claim/rejection RPC atomicity, financial invariants and RLS/grants.
+- [ ] Full migration-history reconciliation (remote ledger: 74 entries; repository inventory: 116 migration files; duplicate timestamp groups remain documented).
+- [ ] First encrypted full-system backup and verified restore rehearsal.
+- [ ] Organization-tenancy foundation and data-ownership implementation, after approved initial organization mapping and backup/migration gates.
+- [ ] End-to-end acceptance testing across claims, pre-authorizations, settlement, accounting, offline synchronization, permissions and reporting.
+- [ ] Re-run live security advisors after remediation; review the five SECURITY DEFINER findings and role_permissions RLS policy gap, and enable leaked-password protection after confirming the intended auth policy.
+
+No production database schema, data, migration ledger, Auth configuration, grants, policies or indexes were changed during this verification. The 76 unused-index notices remain informational and must not trigger index removal without workload evidence.
