@@ -80,7 +80,9 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
   const [isLoading, setIsLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const onlineQuery = useSupabaseQuery("settlement_exceptions", { orderBy: "detected_at", enabled: !offline });
+  // Do not issue a PostgREST request until the permission check has completed.
+  // RLS remains the server-side boundary; this avoids unnecessary unauthorized reads.
+  const onlineQuery = useSupabaseQuery("settlement_exceptions", { orderBy: "detected_at", enabled: !offline && canRead });
   const exceptions = offline ? offlineExceptions : ((onlineQuery.data ?? []) as SettlementExceptionRow[]).map(toExceptionRow);
 
   const refresh = useCallback(async () => {
