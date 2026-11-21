@@ -38,3 +38,42 @@ describe("buildMonthlyClaimSubmissionArgs", () => {
     expect(() => buildMonthlyClaimSubmissionArgs({ ...validForm, claim_year })).toThrow("claim year");
   });
 });
+
+describe("buildClaimRejectionSubmissionArgs", () => {
+  it("preserves the rejected amount and optional denial details", async () => {
+    const { buildClaimRejectionSubmissionArgs } = await import("./monthlyClaimSubmission");
+    expect(buildClaimRejectionSubmissionArgs({
+      insurance_company_id: validForm.insurance_company_id,
+      rejected_amount: "250.75",
+      claim_month: "2",
+      claim_year: "2026",
+      denial_category: "coding_error",
+      denial_reason: "Missing supporting code",
+      root_cause: "coding",
+      denial_notes: "",
+    })).toEqual({
+      p_insurance_company_id: validForm.insurance_company_id,
+      p_rejected_amount: "250.75",
+      p_claim_month: 2,
+      p_claim_year: 2026,
+      p_denial_category: "coding_error",
+      p_denial_reason: "Missing supporting code",
+      p_root_cause: "coding",
+      p_denial_notes: null,
+    });
+  });
+
+  it("uses the same strict amount and period validation as monthly submissions", async () => {
+    const { buildClaimRejectionSubmissionArgs } = await import("./monthlyClaimSubmission");
+    expect(() => buildClaimRejectionSubmissionArgs({
+      insurance_company_id: validForm.insurance_company_id,
+      rejected_amount: "250.999",
+      claim_month: "2",
+      claim_year: "2026",
+      denial_category: "",
+      denial_reason: "",
+      root_cause: "",
+      denial_notes: "",
+    })).toThrow("claim amount");
+  });
+});
