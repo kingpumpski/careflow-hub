@@ -246,7 +246,7 @@ export default function InsuranceBulkImport() {
             throw new Error("Imported paid total for " + r.insurerNameRaw + " " + r.month + "/" + r.year
               + " differs from the sum of existing payment transactions. Payment history is transaction-based and was not overwritten; reconcile this period in Payment Tracking first.");
           } else {
-            const paymentDate = new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10);
+            const paymentDate = r.year + "-" + String(r.month).padStart(2, "0") + "-01";
             const reference = "BULK-" + r.year + "-" + String(r.month).padStart(2, "0") + "-" + insurerId.slice(0, 8);
             const { error } = await (supabase.rpc as any)("import_payments_with_ledger", {
               p_rows: [{
