@@ -45,7 +45,7 @@ function detectMonth(value: unknown): number | null {
     const month = Number(raw);
     return month >= 1 && month <= 12 ? month : null;
   }
-  const namedMonth = raw.match(/^([a-z]{3,9})(?:[\\s/-]+\\d{2,4})?$/);
+  const namedMonth = raw.match(/^([a-z]{3,9})(?:[\s/-]+\d{2,4})?$/);
   return namedMonth ? MONTHS[namedMonth[1]] ?? null : null;
 }
 
@@ -151,7 +151,7 @@ export function parseInsuranceHistorySheet(
 }
 
 /** Rejects conflicting duplicate insurer-period rows before any database writes begin. */
-export function assertNoConflictingInsurancePeriods(rows: InsuranceHistoryRow[], getInsurerKey: (row: InsuranceHistoryRow) => string | null = (row) => row.insurerNameRaw.trim().toLowerCase().replace(/\\s+/g, " ")): void {
+export function assertNoConflictingInsurancePeriods(rows: InsuranceHistoryRow[], getInsurerKey: (row: InsuranceHistoryRow) => string | null = (row) => row.insurerNameRaw.trim().toLowerCase().replace(/\s+/g, " ")): void {
   const seen = new Map<string, InsuranceHistoryRow>();
   for (const row of rows) {
     const insurerKey = getInsurerKey(row);
