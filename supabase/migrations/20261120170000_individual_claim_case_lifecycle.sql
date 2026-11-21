@@ -325,6 +325,9 @@ BEGIN
     IF v_approved IS NULL OR v_approved <= 0 OR v_paid <= 0 OR v_paid > v_approved THEN
       RAISE EXCEPTION 'Payment amount must be positive and cannot exceed the approved amount';
     END IF;
+    IF v_paid < v_case.paid_amount THEN
+      RAISE EXCEPTION 'Cumulative paid amount cannot decrease';
+    END IF;
     IF p_target_status = 'partially_paid' AND v_paid >= v_approved THEN
       RAISE EXCEPTION 'Use Paid when the full approved amount has been received';
     END IF;
