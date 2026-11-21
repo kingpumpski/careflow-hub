@@ -39,7 +39,6 @@ export default function InsuranceBulkImport() {
   const insertAudit = useSupabaseInsert("audit_logs");
   const insertInsurer = useSupabaseInsert("insurance_companies");
   const updateClaim = useSupabaseUpdate("claims");
-  const updatePayment = useSupabaseUpdate("payments");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -168,11 +167,11 @@ export default function InsuranceBulkImport() {
         if (claimIdx.has(key)) throw new Error("Existing claims contain duplicate insurer/month/year/status records. Resolve these records before importing.");
         claimIdx.set(key, { id: c.id, amount: Number(c.claim_amount || 0) });
       });
-      const payIdx = new Map<string, { id: string; amount: number }>();
+      const payIdx = new Map<string, { amount: number }>();
       (existingPayments || []).forEach((p: any) => {
         const key = `${p.insurance_company_id}|${p.claim_month}|${p.claim_year}`;
-        if (payIdx.has(key)) throw new Error("Existing payments contain duplicate insurer/month/year records. Resolve these records before importing.");
-        payIdx.set(key, { id: p.id, amount: Number(p.amount_paid || 0) });
+        const current = payIdx.get(key);
+        payIdx.set(key, { amount: (current?.amount || 0) + Number(p.amount_paid || 0) });
       });
 
       const logDuplicate = async (r: ParsedRow, kind: string, amount: number) => {
@@ -212,17 +211,17 @@ export default function InsuranceBulkImport() {
         if (r.paid > 0) {
           const key = `${insurerId}|${r.month}|${r.year}`;
           const hit = payIdx.get(key);
-          if (hit && hit.amount === r.paid) { await logDuplicate(r, "paid", r.paid); }
-          else if (hit) {
-            await updatePayment.mutateAsync({ id: hit.id, amount_paid: r.paid });
-            await insertAudit.mutateAsync({ table_name: "payments", record_id: hit.id, action: "bulk_import_update", old_data: { amount_paid: hit.amount }, new_data: { amount_paid: r.paid, sheet: r.sheet } });
-            payIdx.set(key, { id: hit.id, amount: r.paid }); updated++;
+          if (hit && hit.amount === r.paid) {
+            await logDuplicate(r, "paid", r.paid);
+          } else if (hit) {
+            throw new Error("Imported paid total for " + r.insurerNameRaw + " " + r.month + "/" + r.year
+              + " differs from the sum of existing payment transactions. Payment history is transaction-based and was not overwritten; reconcile this period in Payment Tracking first.");
           } else {
-            const row: any = await insertPayment.mutateAsync({
+            await insertPayment.mutateAsync({
               insurance_company_id: insurerId, amount_paid: r.paid, claim_month: r.month, claim_year: r.year,
               payment_date: new Date(r.year, r.month - 1, 1).toISOString().slice(0, 10), payment_method: "bulk_import",
             });
-            payIdx.set(key, { id: row?.id, amount: r.paid }); inserted++;
+            payIdx.set(key, { amount: r.paid }); inserted++;
           }
         }
 
