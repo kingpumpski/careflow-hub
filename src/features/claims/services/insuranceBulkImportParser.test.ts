@@ -39,6 +39,15 @@ describe("parseInsuranceHistorySheet", () => {
     }]);
   });
 
+  it("accepts month labels that include a year suffix", () => {
+    const rows = parseInsuranceHistorySheet("Claims", [
+      ["Insurance Company", "Month", "Year", "Submitted"],
+      ["Example Health", "Jan-26", 2026, 100],
+    ], 2026);
+    expect(rows[0].month).toBe(1);
+    expect(rows[0].year).toBe(2026);
+  });
+
   it("rejects malformed and negative financial values rather than converting them to zero", () => {
     expect(() => parseInsuranceHistorySheet("2026", [
       ["Insurance Company", "Month", "Submitted", "Rejected", "Paid"],
@@ -54,7 +63,7 @@ describe("parseInsuranceHistorySheet", () => {
   it("rejects invalid month and year values with sheet and row context", () => {
     expect(() => parseInsuranceHistorySheet("Claims", [
       ["Insurance Company", "Month", "Year", "Submitted"],
-      ["Example Health", "Jan-26", 2026, 100],
+      ["Example Health", "Jan-XX", 2026, 100],
     ], 2026)).toThrow("Month must be 1-12");
 
     expect(() => parseInsuranceHistorySheet("Claims", [
@@ -78,6 +87,13 @@ describe("assertNoConflictingInsurancePeriods", () => {
 
   it("allows exact duplicate source rows to be handled by the existing duplicate audit flow", () => {
     expect(() => assertNoConflictingInsurancePeriods([base, { ...base, sheet: "Jan 2026", sourceRow: 4 }])).not.toThrow();
+  });
+
+  it("detects conflicting rows that map to the same insurer ID", () => {
+    const first = { ...base, insurerNameRaw: "Example Health Ltd" };
+    const second = { ...base, insurerNameRaw: "Example H. Ltd", submitted: 250 };
+    expect(() => assertNoConflictingInsurancePeriods([first, second], () => "insurer-id-1"))
+      .toThrow("Conflicting entries for Example H. Ltd");
   });
 
   it("rejects conflicting values for the same insurer and period", () => {
