@@ -24,7 +24,7 @@ describe("parseInsuranceHistorySheet", () => {
 
   it("parses wide month columns and ignores blank cells", () => {
     const rows = parseInsuranceHistorySheet("2026", [
-      ["Insurance Company", "Jan", "February", "Mar"],
+      ["Insurance Company", "Jan", "February 2026", "Mar"],
       ["Example Health", "1,000.25", "", 0],
     ], 2025);
     expect(rows).toEqual([{
