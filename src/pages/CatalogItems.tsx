@@ -11,7 +11,7 @@ export default function CatalogItems() {
  const handleSubmit=async(e:React.FormEvent)=>{
   e.preventDefault();
   if(!canWrite)return deny();
-  const itemName=form.item_name.trim().replace(/\\s+/g," ");
+  const itemName=form.item_name.trim().replace(/\s+/g," ");
   const priceText=form.unit_price.trim();
   const unitPrice=Number(priceText);
   if(!itemName){
@@ -21,7 +21,7 @@ export default function CatalogItems() {
    toast({title:"Invalid unit price",description:"Enter a non-negative GH¢ amount with no more than two decimal places.",variant:"destructive"});return;
   }
   const duplicate=((items||[]) as any[]).find((item:any)=>
-   String(item.item_name||"").trim().replace(/\\s+/g," ").toLowerCase()===itemName.toLowerCase()&&item.id!==editing?.id
+   String(item.item_name||"").trim().replace(/\s+/g," ").toLowerCase()===itemName.toLowerCase()&&item.id!==editing?.id
   );
   if(duplicate){
    toast({title:"Duplicate detected",description:"An item with this name already exists.",variant:"destructive"});return;
@@ -42,10 +42,10 @@ export default function CatalogItems() {
  {isLoading?<div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-12 w-full"/>)}</div>:<table className="data-table"><thead><tr><th>Item Name</th><th>Unit Price (GH¢)</th><th>Category</th><th>Status</th>{canWrite&&<th>Actions</th>}</tr></thead><tbody>{filtered.map((i:any)=><tr key={i.id} className="hover:bg-muted/50 transition-colors"><td className="font-medium">{i.item_name}</td><td className="font-semibold">GH¢ {Number(i.unit_price).toLocaleString()}</td><td className="text-muted-foreground">{i.category||"—"}</td><td>{i.archived?<Badge variant="outline" className="text-muted-foreground">Archived</Badge>:<Badge className="bg-success/10 text-success border-success/20">Active</Badge>}</td>{canWrite&&<td><div className="flex items-center gap-1"><button onClick={()=>openEdit(i)} className="p-1.5 rounded hover:bg-muted" aria-label="Edit item"><Pencil className="w-4 h-4 text-muted-foreground"/></button><button onClick={()=>handleArchive(i)} className="p-1.5 rounded hover:bg-muted" aria-label={i.archived?"Restore item":"Archive item"}>{i.archived?<ArchiveRestore className="w-4 h-4 text-success"/>:<Archive className="w-4 h-4 text-warning"/>}</button><button onClick={()=>handleDelete(i.id)} className="p-1.5 rounded hover:bg-destructive/10" aria-label="Delete item"><Trash2 className="w-4 h-4 text-destructive"/></button></div></td>}</tr>)}{filtered.length===0&&<tr><td colSpan={canWrite?5:4} className="text-center text-muted-foreground py-8">No {showArchived?"archived ":""}catalog items.</td></tr>}</tbody></table>}
  </div>{canWrite&&<><EntityDialog open={dialogOpen} onOpenChange={setDialogOpen} title={editing?"Edit Catalog Item":"Add Catalog Item"}><form onSubmit={handleSubmit} className="space-y-4"><div><Label>Item Name *</Label><Input value={form.item_name} onChange={e=>setForm({...form,item_name:e.target.value})} required className="mt-1"/></div><div><Label>Unit Price (GH¢) *</Label><Input type="number" step="0.01" value={form.unit_price} onChange={e=>setForm({...form,unit_price:e.target.value})} required className="mt-1"/></div><div><Label>Category</Label><Input value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="mt-1"/></div><Button type="submit" className="w-full" disabled={insertMutation.isPending||updateMutation.isPending}>{editing?"Update Item":"Add Item"}</Button></form></EntityDialog><BulkImportDialog open={importOpen} onOpenChange={setImportOpen} title="Import Catalog Items" columns={importColumns} onImport={async(rows)=>{
   if(!canWrite)throw new Error("Master-data write permission is required for imports.");
-  const existingNames=new Set(((items||[]) as any[]).map((item:any)=>String(item.item_name||"").trim().replace(/\\s+/g," ").toLowerCase()));
+  const existingNames=new Set(((items||[]) as any[]).map((item:any)=>String(item.item_name||"").trim().replace(/\s+/g," ").toLowerCase()));
   const toInsert:any[]=[];let skipped=0;
   for(const row of rows){
-   const itemName=String(row.item_name||"").trim().replace(/\\s+/g," ");
+   const itemName=String(row.item_name||"").trim().replace(/\s+/g," ");
    const unitPrice=Number(row.unit_price);
    if(!itemName||!Number.isFinite(unitPrice)||unitPrice<0||Math.abs(unitPrice*100-Math.round(unitPrice*100))>1e-8){
     throw new Error("Catalog import contains an invalid item name or unit price. No rows were inserted.");
