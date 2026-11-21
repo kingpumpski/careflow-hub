@@ -30,7 +30,7 @@ export interface ParsedRow {
 }
 
 /** Normalizes template and human-entered headers, including required markers and BOMs. */
-const normalize = (s: any) => String(s ?? "").replace(/^\\uFEFF/, "").trim().toLowerCase().replace(/[*\\s_/-]+/g, "");
+const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_/-]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function toNumber(raw: any): number | null {
