@@ -57,3 +57,47 @@ export function buildMonthlyClaimSubmissionArgs(
     p_claim_year: year,
   };
 }
+
+export type ClaimRejectionFormValues = {
+  insurance_company_id: string;
+  rejected_amount: string;
+  claim_month: string;
+  claim_year: string;
+  denial_category: string;
+  denial_reason: string;
+  root_cause: string;
+  denial_notes: string;
+};
+
+export type ClaimRejectionSubmissionArgs = {
+  p_insurance_company_id: string;
+  p_rejected_amount: string;
+  p_claim_month: number;
+  p_claim_year: number;
+  p_denial_category: string | null;
+  p_denial_reason: string | null;
+  p_root_cause: string | null;
+  p_denial_notes: string | null;
+};
+
+export function buildClaimRejectionSubmissionArgs(
+  values: ClaimRejectionFormValues,
+): ClaimRejectionSubmissionArgs {
+  const base = buildMonthlyClaimSubmissionArgs({
+    insurance_company_id: values.insurance_company_id,
+    claim_amount: values.rejected_amount,
+    claim_month: values.claim_month,
+    claim_year: values.claim_year,
+  });
+
+  return {
+    p_insurance_company_id: base.p_insurance_company_id,
+    p_rejected_amount: base.p_claim_amount,
+    p_claim_month: base.p_claim_month,
+    p_claim_year: base.p_claim_year,
+    p_denial_category: values.denial_category.trim() || null,
+    p_denial_reason: values.denial_reason.trim() || null,
+    p_root_cause: values.root_cause.trim() || null,
+    p_denial_notes: values.denial_notes.trim() || null,
+  };
+}
