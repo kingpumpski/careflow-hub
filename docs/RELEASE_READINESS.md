@@ -42,6 +42,18 @@
 - [x] Audit logging exists for privileged or financially material actions.
 - [x] Import/transcription inputs enforce size and type boundaries.
 
+## Latest connected-project advisor snapshot (2026-11-21 15:05 UTC)
+
+The live Supabase security advisor reported the following findings for project `jajfdgknctzqypdtvmxo`:
+
+- **One RLS configuration finding (INFO):** `public.role_permissions` has RLS enabled but no policies. This table must be reviewed against the intended permission lookup model before adding a policy; do not grant broad client reads as a shortcut.
+- **Five SECURITY DEFINER RPCs (WARN):** authenticated users can execute `public.current_user_has_any_role(public.app_role[])`, `public.current_user_has_permission(text)`, `public.finalize_preauthorization_handoff(...)`, `public.get_my_permissions()`, and `public.user_has_facility_access(uuid)`. Each function's caller contract, internal authorization checks, search path, and required execute grants must be reviewed individually. Some authenticated RPCs may be intentional; the advisor finding alone does not prove exploitability. Preserve required application workflows while removing unintended exposure.
+- **Leaked-password protection (WARN):** Supabase Auth's compromised-password protection is disabled. Enable it through the Auth configuration after confirming the intended user-facing policy and communicating any sign-in/password-change impact.
+
+The performance advisor also reported **76 unused-index INFO findings** at the same observation time. Treat these as workload-dependent review candidates only: low traffic, newly added indexes, and infrequently used operational paths can all appear unused. Do not drop indexes solely from this snapshot; validate query plans and representative workload first.
+
+These are live-project observations, not code-level fixes. No database permissions, policies, Auth settings, indexes, or migrations were changed by this audit. Re-run advisors after remediation and record the resulting clean or explicitly accepted findings.
+
 ## Backup and recovery gates
 
 - [x] Full-system Backup Center, scheduled/on-demand worker, encrypted off-site archive flow, manifest and checksum verification, and Storage restore tooling are implemented in source (PR #42).
