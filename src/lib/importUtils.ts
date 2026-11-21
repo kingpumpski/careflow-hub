@@ -33,7 +33,7 @@ export interface ParsedRow {
 const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_\\/-]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
-function toNumber(raw: any): number | null {
+function toNumber(raw: unknown): number | null {
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
   const str = String(raw ?? "").trim();
   if (!str || !/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(str)) return null;
@@ -47,7 +47,7 @@ function validDateParts(year: number, month: number, day: number): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-function toDateString(raw: any): string | null {
+function toDateString(raw: unknown): string | null {
   if (raw instanceof Date && !isNaN(raw.getTime())) return raw.toISOString().split("T")[0];
   const str = String(raw ?? "").trim();
   if (!str) return null;
@@ -78,7 +78,7 @@ function toDateString(raw: any): string | null {
   return null;
 }
 
-function coerceMonth(raw: any): number | null {
+function coerceMonth(raw: unknown): number | null {
   const str = String(raw).trim().toLowerCase();
   const named = monthNames.findIndex((m) => m.startsWith(str) && str.length >= 3);
   if (named !== -1) return named + 1;
@@ -86,7 +86,7 @@ function coerceMonth(raw: any): number | null {
   return n !== null && Number.isInteger(n) ? n : null;
 }
 
-function toBoolean(raw: any): boolean | null {
+function toBoolean(raw: unknown): boolean | null {
   if (typeof raw === "boolean") return raw;
   const value = String(raw ?? "").trim().toLowerCase();
   if (["yes", "y", "true", "1", "active"].includes(value)) return true;
