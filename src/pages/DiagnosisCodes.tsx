@@ -1,13 +1,39 @@
 import { useState, useMemo } from "react";
 import { Plus, Search, Pencil, Archive, ArchiveRestore, Trash2, Upload, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label"; import { Badge } from "@/components/ui/badge"; import { Skeleton } from "@/components/ui/skeleton"; import EntityDialog from "@/components/shared/EntityDialog"; import BulkImportDialog from "@/components/shared/BulkImportDialog"; import DownloadTemplate from "@/components/shared/DownloadTemplate"; import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery"; import { supabase } from "@/integrations/supabase/client"; import { toast } from "@/hooks/use-toast"; import { aiDuplicateCheck, localDuplicate } from "@/lib/dedupCheck"; import { useMasterSearch } from "@/hooks/useMasterSearch"; import { usePermissions } from "@/modules/security/usePermissions";
+import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label"; import { Badge } from "@/components/ui/badge"; import { Skeleton } from "@/components/ui/skeleton"; import EntityDialog from "@/components/shared/EntityDialog"; import BulkImportDialog from "@/components/shared/BulkImportDialog"; import DownloadTemplate from "@/components/shared/DownloadTemplate"; import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery"; import { supabase } from "@/integrations/supabase/client"; import { toast } from "@/hooks/use-toast"; import { aiDuplicateCheck } from "@/lib/dedupCheck"; import { useMasterSearch } from "@/hooks/useMasterSearch"; import { usePermissions } from "@/modules/security/usePermissions";
 const ICD_CATEGORIES=["Infectious & Parasitic","Neoplasms","Blood & Immune","Endocrine & Metabolic","Mental & Behavioral","Nervous System","Eye & Adnexa","Ear & Mastoid","Circulatory","Respiratory","Digestive","Skin & Subcutaneous","Musculoskeletal","Genitourinary","Pregnancy & Childbirth","Perinatal","Congenital","Symptoms & Signs","Injury & Poisoning","External Causes","Other"];
 export default function DiagnosisCodes(){
  const {can, loading: permissionsLoading}=usePermissions(); const canReadPreauth=can("preauth.read"); const canWrite=can("masterdata.write");
  const {data:codes,isLoading}=useSupabaseQuery("diagnosis_codes",{orderBy:"code",enabled:canReadPreauth&&!permissionsLoading}); const insertM=useSupabaseInsert("diagnosis_codes"); const updateM=useSupabaseUpdate("diagnosis_codes"); const deleteM=useSupabaseDelete("diagnosis_codes"); const deny=()=>toast({title:"Permission denied",description:"Master-data write permission is required for this action.",variant:"destructive"});
  const [search,setSearch]=useState(""); const [showArchived,setShowArchived]=useState(false); const [dialogOpen,setDialogOpen]=useState(false); const [editing,setEditing]=useState<any>(null); const [form,setForm]=useState({code:"",description:"",category:""}); const [importOpen,setImportOpen]=useState(false); const [aiHint,setAiHint]=useState(""); const [aiBusy,setAiBusy]=useState(false); const searchable=useMasterSearch("diagnosis_codes",["code","description","category"],search,codes as any[]);
  const openNew=()=>{if(!canWrite)return deny();setEditing(null);setForm({code:"",description:"",category:""});setDialogOpen(true)}; const openEdit=(c:any)=>{if(!canWrite)return deny();setEditing(c);setForm({code:c.code||"",description:c.description||"",category:c.category||""});setDialogOpen(true)};
- const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!canWrite)return deny();try{if(!editing){const exact=localDuplicate(form,codes||[],["code"]);if(exact){toast({title:"Duplicate ICD-10 code",description:`Code ${form.code} already exists.`,variant:"destructive"});return}const ai=await aiDuplicateCheck("diagnosis",form,(codes||[]) as any);if(ai.duplicate&&ai.confidence>=0.75&&!confirm(`AI flagged this as a possible duplicate: ${ai.reason}\n\nSave anyway?`))return}if(editing)await updateM.mutateAsync({id:editing.id,...form});else await insertM.mutateAsync({...form,archived:false});toast({title:editing?"Diagnosis updated":"Diagnosis added"});setDialogOpen(false)}catch(err:any){toast({title:"Error",description:err.message,variant:"destructive"})}};
+ const submit=async(e:React.FormEvent)=>{
+  e.preventDefault();
+  if(!canWrite)return deny();
+  const normalizedForm={code:form.code.trim().toUpperCase(),description:form.description.trim(),category:form.category.trim()};
+  if(!/^[A-Z][0-9][A-Z0-9](?:\.[A-Z0-9]{1,4})?$/.test(normalizedForm.code)){
+   toast({title:"Invalid ICD-10 code",description:"Enter a valid ICD-10 code, such as A09 or A09.0.",variant:"destructive"});return;
+  }
+  if(!normalizedForm.description){
+   toast({title:"Description required",description:"Enter the diagnosis description.",variant:"destructive"});return;
+  }
+  const duplicate=(codes||[] as any[]).find((record:any)=>
+   String(record.code||"").trim().toUpperCase()===normalizedForm.code&&record.id!==editing?.id
+  );
+  if(duplicate){
+   toast({title:"Duplicate ICD-10 code",description:"Code "+normalizedForm.code+" already exists.",variant:"destructive"});return;
+  }
+  try{
+   if(!editing){
+    const ai=await aiDuplicateCheck("diagnosis",normalizedForm,(codes||[]) as any);
+    if(ai.duplicate&&ai.confidence>=0.75&&!confirm("AI flagged this as a possible duplicate: "+ai.reason+"\n\nSave anyway?"))return;
+   }
+   if(editing)await updateM.mutateAsync({id:editing.id,...normalizedForm});
+   else await insertM.mutateAsync({...normalizedForm,archived:false});
+   toast({title:editing?"Diagnosis updated":"Diagnosis added"});
+   setDialogOpen(false);
+  }catch(err:any){toast({title:"Error",description:err.message,variant:"destructive"})}
+ };
  const runAiHint=async()=>{if(!canWrite)return deny();if(!form.code&&!form.description){setAiHint("");return}setAiBusy(true);try{const ai=await aiDuplicateCheck("diagnosis",form,(codes||[]) as any);setAiHint(ai.duplicate?`⚠ Possible duplicate (${Math.round(ai.confidence*100)}%): ${ai.reason}`:"✓ No similar code found.")}finally{setAiBusy(false)}};
  const handleBulkImport=async(rows:Record<string,any>[])=>{
   if(!canWrite)return deny();
