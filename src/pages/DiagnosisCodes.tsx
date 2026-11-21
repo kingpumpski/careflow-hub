@@ -50,9 +50,9 @@ export default function DiagnosisCodes(){
     else if(code)seen.set(code,record);
   });
   if(duplicateExisting.size)throw new Error("The existing diagnosis master contains duplicate codes: "+Array.from(duplicateExisting).join(", ")+". Resolve these records before importing.");
-  const invalidRows=rows.map((row,index)=>({row:index+2,code:String(row.code||"").trim().toUpperCase(),description:String(row.description||"").trim()}))
+  const invalidRows=rows.map((row)=>({code:String(row.code||"").trim().toUpperCase(),description:String(row.description||"").trim()}))
    .filter((entry)=>! /^[A-Z][0-9][A-Z0-9](?:\.[A-Z0-9]{1,4})?$/.test(entry.code)||!entry.description);
-  if(invalidRows.length)throw new Error("Invalid diagnosis data on import row(s): "+invalidRows.map((entry)=>entry.row).join(", ")+". Check ICD-10 code format and descriptions before importing.");
+  if(invalidRows.length)throw new Error("Invalid ICD-10 code format or missing diagnosis descriptions detected. Correct these rows before importing.");
   let created=0,updated=0,skipped=0,completed=0;
   try{
    for(const row of rows){
