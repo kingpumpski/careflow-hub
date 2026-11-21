@@ -190,7 +190,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
 
   if (format === "csv") {
     const esc = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = `${headers.map(esc).join(",")}\\n`;
+    const csv = `${headers.map(esc).join(",")}\n`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
