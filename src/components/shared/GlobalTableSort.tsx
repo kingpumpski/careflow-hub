@@ -100,7 +100,14 @@ function setupTable(table: HTMLTableElement) {
 }
 function initializeTablesIn(node: Node) {
   if (!(node instanceof Element)) return;
-  if (node.matches("table.data-table")) setupTable(node as HTMLTableElement);
+  if (node.matches("table.data-table")) {
+    setupTable(node as HTMLTableElement);
+    return;
+  }
+  // Most observed mutations are rows or controls inside an existing table.
+  // Skip those before running any descendant selector.
+  if (node.closest("table.data-table")) return;
+  if (!node.querySelector("table.data-table")) return;
   node.querySelectorAll<HTMLTableElement>("table.data-table").forEach(setupTable);
 }
 export default function GlobalTableSort() {
