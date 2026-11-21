@@ -150,10 +150,12 @@ export function parseInsuranceHistorySheet(
 }
 
 /** Rejects conflicting duplicate insurer-period rows before any database writes begin. */
-export function assertNoConflictingInsurancePeriods(rows: InsuranceHistoryRow[]): void {
+export function assertNoConflictingInsurancePeriods(rows: InsuranceHistoryRow[], getInsurerKey: (row: InsuranceHistoryRow) => string | null = (row) => row.insurerNameRaw.trim().toLowerCase().replace(/\\s+/g, " ")): void {
   const seen = new Map<string, InsuranceHistoryRow>();
   for (const row of rows) {
-    const key = row.insurerNameRaw.trim().toLowerCase().replace(/\\s+/g, " ") + "|" + row.year + "|" + row.month;
+    const insurerKey = getInsurerKey(row);
+    if (!insurerKey) continue;
+    const key = insurerKey + "|" + row.year + "|" + row.month;
     const previous = seen.get(key);
     if (!previous) {
       seen.set(key, row);
