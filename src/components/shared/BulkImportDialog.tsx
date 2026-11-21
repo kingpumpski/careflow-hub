@@ -34,8 +34,14 @@ export default function BulkImportDialog({ open, onOpenChange, title, columns, o
     const file = e.target.files?.[0];
     if (!file) return;
     reset();
+    if (file.size > 20 * 1024 * 1024) {
+      setError("The selected file is larger than 20 MB. Split it into smaller files and import them separately.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     try {
       const raw = await readTabularFile(file);
+      if (raw.length > 25000) { setError("This file contains more than 25,000 rows. Split it into smaller imports to keep validation reliable."); return; }
       if (raw.length === 0) { setError("No data rows found. Keep the header row on the Data sheet and add at least one record."); return; }
       const rows = mapRows(raw, columns);
       if (rows.length === 0) { setError("Could not match any columns. Download the template and keep its header row."); return; }
