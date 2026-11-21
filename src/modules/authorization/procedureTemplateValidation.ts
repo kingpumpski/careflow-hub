@@ -66,7 +66,7 @@ export function validateProcedureTemplate(
   } = {},
 ): ValidatedProcedureTemplate {
   const templateName = typeof input.templateName === "string"
-    ? input.templateName.trim().replace(/\\s+/g, " ")
+    ? input.templateName.trim().replace(/\s+/g, " ")
     : "";
   if (!templateName) throw new Error("Template name is required.");
   if (templateName.length > 120) throw new Error("Template name must be 120 characters or fewer.");
@@ -74,7 +74,7 @@ export function validateProcedureTemplate(
   const normalizedName = templateName.toLocaleLowerCase();
   const duplicate = (options.existing || []).some((record) =>
     record.id !== options.editingId
-    && String(record.template_name || "").trim().replace(/\\s+/g, " ").toLocaleLowerCase() === normalizedName
+    && String(record.template_name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName
   );
   if (duplicate) throw new Error("A procedure template with this name already exists.");
 
@@ -91,13 +91,13 @@ export function validateProcedureTemplate(
     }
     const item = rawItem as Record<string, unknown>;
     const description = typeof item.description === "string"
-      ? item.description.trim().replace(/\\s+/g, " ")
+      ? item.description.trim().replace(/\s+/g, " ")
       : "";
     if (!description) throw new Error("Cost item " + (index + 1) + " needs a description.");
     if (description.length > 200) throw new Error("Cost item descriptions must be 200 characters or fewer.");
 
     const quantityText = String(item.quantity ?? "").trim();
-    if (!/^\\d+$/.test(quantityText)) {
+    if (!/^\d+$/.test(quantityText)) {
       throw new Error("Quantity for " + description + " must be a positive whole number.");
     }
     const quantity = Number(quantityText);
@@ -106,7 +106,7 @@ export function validateProcedureTemplate(
     }
 
     const priceText = String(item.unitCharge ?? "").trim();
-    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(priceText)) {
+    if (!/^\d+(?:\\.\d{1,2})?$/.test(priceText)) {
       throw new Error("Unit charge for " + description + " must be a non-negative amount with up to two decimal places.");
     }
     const unitCharge = Number(priceText);
