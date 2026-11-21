@@ -42,6 +42,18 @@
 - [x] Audit logging exists for privileged or financially material actions.
 - [x] Import/transcription inputs enforce size and type boundaries.
 
+## Latest connected-project advisor snapshot (2026-11-21 15:05 UTC)
+
+The live Supabase security advisor reported the following findings for project `jajfdgknctzqypdtvmxo`:
+
+- **One RLS configuration finding (INFO):** `public.role_permissions` has RLS enabled but no policies. This table must be reviewed against the intended permission lookup model before adding a policy; do not grant broad client reads as a shortcut.
+- **Five SECURITY DEFINER RPCs (WARN):** authenticated users can execute `public.current_user_has_any_role(public.app_role[])`, `public.current_user_has_permission(text)`, `public.finalize_preauthorization_handoff(...)`, `public.get_my_permissions()`, and `public.user_has_facility_access(uuid)`. Each function's caller contract, internal authorization checks, search path, and required execute grants must be reviewed individually. Some authenticated RPCs may be intentional; the advisor finding alone does not prove exploitability. Preserve required application workflows while removing unintended exposure.
+- **Leaked-password protection (WARN):** Supabase Auth's compromised-password protection is disabled. Enable it through the Auth configuration after confirming the intended user-facing policy and communicating any sign-in/password-change impact.
+
+The performance advisor also reported **76 unused-index INFO findings** at the same observation time. Treat these as workload-dependent review candidates only: low traffic, newly added indexes, and infrequently used operational paths can all appear unused. Do not drop indexes solely from this snapshot; validate query plans and representative workload first.
+
+These are live-project observations, not code-level fixes. No database permissions, policies, Auth settings, indexes, or migrations were changed by this audit. Re-run advisors after remediation and record the resulting clean or explicitly accepted findings.
+
 ## Backup and recovery gates
 
 - [x] Full-system Backup Center, scheduled/on-demand worker, encrypted off-site archive flow, manifest and checksum verification, and Storage restore tooling are implemented in source (PR #42).
@@ -92,3 +104,58 @@ For normal records, use CareFlow's application workflows. Direct Table Editor ch
 ## Current release gate
 
 The repository is not production-certified. Main-branch CI, the quality gate and dependency security audit passed on 2026-11-20; the latest dependency audit reports zero vulnerabilities. PR #49 merged a per-file/rule/message ESLint regression gate, and PR #50 removed one warning; the current observed count is 719 warnings against a 720-warning baseline. The last verified GitHub Pages HTTPS smoke test and HTTP-to-HTTPS redirect were recorded in run 44727328070; the newest merged commit still needs a fresh live smoke test. Supabase project `jajfdgknctzqypdtvmxo` is accessible and ACTIVE_HEALTHY, Cloudflare R2 is enabled with private bucket `careflow-system-backups`, and `backup-control` is deployed. However, no worker/portal credentials or encryption key have been configured, no encrypted backup has completed, and no restore rehearsal has passed. The live migration ledger currently contains 74 entries while the repository has 116 local migration files and three duplicate timestamp groups; do not infer that the difference is simply unapplied migrations. No production schema migration or ledger repair has been performed. Organization-level tenant isolation, server-enforced claim lifecycle, settlement exception database integration, and first legitimate administrator bootstrap remain unverified. The connected project also has unresolved security-advisor findings: five authenticated-callable SECURITY DEFINER functions, an RLS-enabled `role_permissions` table without a client policy, and leaked-password protection disabled. Do not interpret a successful static-site deployment as proof that every backend workflow is live.
+
+## Implementation verification update — 2026-11-21
+
+This section records the latest implementation and live-schema checks. It does not supersede the deployment gates above.
+
+### Verified pull-request implementation status
+
+- [x] PR #48 online settlement-exception lifecycle: after adding the database contract test, CI (44924895215), CareFlow Quality Gate (44924895202), and Dependency Security Audit (44924895207) passed on head `e4aea3868074ef690eab0059576fe0818110e082`. These are repository checks only; no disposable-database execution has been completed.
+- [x] PR #61 atomic monthly claim and rejection submission: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `aed5b08d04d3156e3d943e039922203f888edd82` (runs 44923023928, 44923023923, 44923023985). SQL/RLS integration testing remains outstanding.
+- [x] PR #62 GitHub Pages favicon base-path correction: CI, CareFlow Quality Gate, and Dependency Security Audit passed on head `cae2e6118cf46701e212292e7888ab35e2e54838` (runs 44923920293, 44923920288, 44923920289).
+- [ ] These pull requests remain unmerged drafts. Passing checks do not mean their changes are present in production.
+
+### Settlement exception live-schema gap
+
+A fresh read-only inspection of the connected Supabase project found `public.claims_settlement_periods`, but did not find `public.settlement_exceptions` or `public.settlement_exception_audit_events`. The repository contains the base table migration `20260908150000_settlement_exception_register.sql`; PR #48 adds the online atomic lifecycle RPC migration `20261120160000_settlement_exception_atomic_lifecycle.sql`.
+
+The online register therefore remains unavailable against the inspected live schema until the migration sequence is reconciled, replayed and tested in a disposable database, then deployed through the approved backup-gated release process. Do not apply either migration directly to production as an ad hoc repair. The remote migration ledger currently reports 74 entries; its normalized version values mean that a missing original filename timestamp alone is not proof of drift. Reconcile by comparing migration names, schema state and repository history together.
+
+### Remaining release blockers
+
+- [ ] Disposable Supabase integration tests for settlement-exception permissions, facility isolation, idempotent detection, status transitions and immutable audit events.
+- [ ] Disposable Supabase integration tests for PR #61 monthly claim/rejection RPC atomicity, financial invariants and RLS/grants.
+- [ ] Full migration-history reconciliation (remote ledger: 74 entries; repository inventory: 116 migration files; duplicate timestamp groups remain documented).
+- [ ] First encrypted full-system backup and verified restore rehearsal.
+- [ ] Organization-tenancy foundation and data-ownership implementation, after approved initial organization mapping and backup/migration gates.
+- [ ] End-to-end acceptance testing across claims, pre-authorizations, settlement, accounting, offline synchronization, permissions and reporting.
+- [ ] Re-run live security advisors after remediation; review the five SECURITY DEFINER findings and role_permissions RLS policy gap, and enable leaked-password protection after confirming the intended auth policy.
+
+No production database schema, data, migration ledger, Auth configuration, grants, policies or indexes were changed during this verification. The 76 unused-index notices remain informational and must not trigger index removal without workload evidence.
+
+### Facility onboarding and individual claim-case prerequisites
+
+- PR #53 (`feat/admin-facility-onboarding`) adds administrator-only facility onboarding and member-management RPCs. Its CI, CareFlow Quality Gate and Dependency Security Audit passed on the recorded head. The included `supabase/tests/facility_admin_onboarding.test.sql` is a read-only privilege/schema contract test and still must be run with `supabase test db` against a disposable project.
+- PR #52 (`feat/individual-claim-case-lifecycle`) keeps the insurer-level monthly aggregate `claims` model separate from facility-scoped individual claim cases and immutable case events. Its CI, CareFlow Quality Gate and Dependency Security Audit passed on the recorded head. The included `supabase/tests/individual_claim_case_lifecycle.test.sql` is a schema/security contract test and still must be run against a disposable database.
+- At the last recorded connected-project check, there were zero facilities and zero active facility memberships. Consequently, facility onboarding/bootstrap is a real operational prerequisite for testing and enabling individual claim cases and other facility-scoped workflows. No facility or membership was provisioned by this work.
+
+### Settlement exception SQL contract test added
+
+A read-only database contract test, `supabase/tests/settlement_exception_lifecycle.test.sql`, was added to the PR #48 branch at commit `e4aea3868074ef690eab0059576fe0818110e082`. It checks table presence, RLS enablement, authenticated read-only grants, anonymous RPC denial, authenticated RPC grants, SECURITY DEFINER/search-path configuration, facility SELECT policies, immutable audit trigger presence, and the active-exception uniqueness index. This improves regression coverage but does not prove row-level isolation or execute lifecycle transactions. PR #48's new head checks are pending; run this SQL test against a disposable database after the migration sequence is reconciled.
+
+### Backup readiness detail
+
+The backup runbook defines the required GitHub Environment secrets, age encryption recipient, private R2 credentials, Supabase database connection and Edge Function secrets. The current release-readiness record confirms these credentials/key are not yet configured, no encrypted backup has completed, and no restore rehearsal has passed. Treat this as an operational configuration gate, not a code-only task.
+
+
+### Browser console triage — 2026-11-21
+
+The latest user-reported production browser console confirms two release issues:
+
+- **Settlement exception REST 404:** the browser requests `/rest/v1/settlement_exceptions`. The last read-only inspection of Supabase project `jajfdgknctzqypdtvmxo` found `public.claims_settlement_periods`, but not `public.settlement_exceptions` or `public.settlement_exception_audit_events`. This is consistent with PostgREST returning 404 for a relation that is absent from the exposed schema (or not exposed to the Data API). The known schema gap must be resolved through migration-history reconciliation, disposable-database replay and RLS/transaction integration tests, followed by the backup-gated deployment. Do not patch this by creating tables manually in production, disabling RLS, or exposing broader grants. Confirm the Data API schema exposure/grants as part of deployment verification.
+- **Favicon 404 at the domain root:** the browser requests `https://kingpumpski.github.io/favicon.ico`, while the repository's Pages app is hosted at `/careflow-hub/`. Main's current `index.html` lacks an explicit favicon link. PR #62 adds `<link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />`, and the Vite Pages build sets `base: "/careflow-hub/"`. PR #62 remains an unmerged draft at head `cae2e6118cf46701e212292e7888ab35e2e54838`; its passing checks do not change the deployed site. The fix must be merged through the normal review process and Pages redeployed, then verify the browser requests `/careflow-hub/favicon.ico` and receives HTTP 200.
+- **Asynchronous message-channel errors:** repeated `A listener indicated an asynchronous response ... message channel closed` messages are not currently tied to a CareFlow source location. Browser extensions commonly emit this class of message. Re-test in a clean Edge profile or with extensions disabled; treat as an application defect only if reproducible there and attributable to a CareFlow listener/message handler.
+
+No production schema, Data API settings, Pages deployment, or other production configuration was changed in response to these console messages.
+
