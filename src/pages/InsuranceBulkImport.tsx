@@ -107,9 +107,6 @@ export default function InsuranceBulkImport() {
     return null;
   };
 
-  const dupKey = (companyId: string, month: number, year: number, status: string, amount: number) =>
-    `${companyId}|${month}|${year}|${status}|${amount}`;
-
   /** AI-assisted routing: ask the dedup model to match each unmatched file name to an existing insurer. */
   const runAiMatch = async () => {
     if (!missing.length) return;
