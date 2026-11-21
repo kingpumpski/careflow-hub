@@ -73,7 +73,7 @@ export function validateProcedureTemplate(
 
   const normalizedName = templateName.toLocaleLowerCase();
   const duplicate = (options.existing || []).some((record) =>
-    record.id !== options.editingId
+    (!options.editingId || record.id !== options.editingId)
     && String(record.template_name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName
   );
   if (duplicate) throw new Error("A procedure template with this name already exists.");
