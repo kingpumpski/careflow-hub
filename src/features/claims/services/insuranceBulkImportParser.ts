@@ -98,7 +98,7 @@ export function parseInsuranceHistorySheet(
       const rowNumber = index + 1;
       const insurerNameRaw = String(source[insurerColumn] ?? "").trim();
       const month = detectMonth(source[monthColumn]);
-      const hasRelevantData = [monthColumn, submittedColumn, rejectedColumn, paidColumn, yearColumn]
+      const hasRelevantData = [monthColumn, submittedColumn, rejectedColumn, paidColumn]
         .some((column) => column >= 0 && !isBlank(source[column]));
       if (!hasRelevantData) continue;
       if (!insurerNameRaw) throw new Error(sheetName + ", row " + rowNumber + ": Insurance Company is required.");
