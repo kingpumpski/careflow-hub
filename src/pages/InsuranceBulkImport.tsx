@@ -155,6 +155,24 @@ export default function InsuranceBulkImport() {
       setError(err.message || "Conflicting insurer-period entries were found.");
       return;
     }
+    const existingPaymentTotals = new Map<string, number>();
+    (existingPayments || []).forEach((payment: any) => {
+      const key = payment.insurance_company_id + "|" + payment.claim_month + "|" + payment.claim_year;
+      existingPaymentTotals.set(key, (existingPaymentTotals.get(key) || 0) + Number(payment.amount_paid || 0));
+    });
+    for (const row of rows) {
+      if (row.paid <= 0) continue;
+      const existing = insurerIndex.get(norm(row.insurerNameRaw));
+      const decision = missingMap[row.insurerNameRaw];
+      const insurerId = existing?.id || (decision?.action === "map" ? decision.insurerId : null);
+      if (!insurerId) continue;
+      const currentTotal = existingPaymentTotals.get(insurerId + "|" + row.month + "|" + row.year) || 0;
+      if (currentTotal > 0 && Math.round(currentTotal * 100) !== Math.round(row.paid * 100)) {
+        setError("Imported paid total for " + row.insurerNameRaw + " " + row.month + "/" + row.year
+          + " differs from the sum of existing payment transactions. No rows were imported; reconcile this period in Payment Tracking first.");
+        return;
+      }
+    }
     setError(""); setImporting(true);
     let inserted = 0, updated = 0, duplicates = 0, created = 0;
     try {
@@ -207,13 +225,13 @@ export default function InsuranceBulkImport() {
           }
         }
 
-        // Payment — upsert on (insurer, month, year)
+        // Payment — compare monthly workbook totals with the sum of immutable payment transactions
         if (r.paid > 0) {
           const key = `${insurerId}|${r.month}|${r.year}`;
           const hit = payIdx.get(key);
           if (hit && hit.amount === r.paid) {
             await logDuplicate(r, "paid", r.paid);
-          } else if (hit) {
+          } else if (hit && hit.amount > 0) {
             throw new Error("Imported paid total for " + r.insurerNameRaw + " " + r.month + "/" + r.year
               + " differs from the sum of existing payment transactions. Payment history is transaction-based and was not overwritten; reconcile this period in Payment Tracking first.");
           } else {
