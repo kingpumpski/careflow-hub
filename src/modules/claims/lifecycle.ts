@@ -34,6 +34,10 @@ const TRANSITIONS: Record<ClaimStatus, readonly ClaimStatus[]> = {
   closed: [],
 };
 
+export function getAvailableClaimTransitions(from: ClaimStatus): readonly ClaimStatus[] {
+  return TRANSITIONS[from];
+}
+
 export function canTransitionClaim(from: ClaimStatus, to: ClaimStatus): boolean {
   return TRANSITIONS[from].includes(to);
 }
