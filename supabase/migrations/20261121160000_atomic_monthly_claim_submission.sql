@@ -165,3 +165,132 @@ $$;
 
 REVOKE ALL ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) TO authenticated;
+
+-- Rejections also update three financial records. Keep this path atomic and
+-- apply the same server-owned WHT rate and caller RLS checks as submissions.
+CREATE OR REPLACE FUNCTION public.submit_claim_rejection_atomic(
+  p_insurance_company_id uuid,
+  p_rejected_amount numeric,
+  p_claim_month integer,
+  p_claim_year integer,
+  p_denial_category text DEFAULT NULL,
+  p_denial_reason text DEFAULT NULL,
+  p_root_cause text DEFAULT NULL,
+  p_denial_notes text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_claim_id uuid;
+  v_tax_rate numeric;
+  v_tax_amount numeric;
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Authentication is required to record a claim rejection.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF p_insurance_company_id IS NULL THEN
+    RAISE EXCEPTION 'An insurance company is required.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_rejected_amount IS NULL
+     OR p_rejected_amount <= 0
+     OR p_rejected_amount <> ROUND(p_rejected_amount, 2)
+     OR p_rejected_amount::text IN ('NaN', 'Infinity', '-Infinity') THEN
+    RAISE EXCEPTION 'Rejected amount must be positive and have no more than two decimal places.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_claim_month IS NULL OR p_claim_month < 1 OR p_claim_month > 12 THEN
+    RAISE EXCEPTION 'Claim month must be between 1 and 12.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_claim_year IS NULL OR p_claim_year < 1 OR p_claim_year > 9999 THEN
+    RAISE EXCEPTION 'Claim year must be between 1 and 9999.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  v_tax_rate := security_internal.configured_withholding_tax_rate();
+  v_tax_amount := ROUND((p_rejected_amount * v_tax_rate) / 100, 2);
+
+  INSERT INTO public.claims (
+    insurance_company_id,
+    claim_amount,
+    claim_month,
+    claim_year,
+    status,
+    denial_category,
+    denial_reason,
+    root_cause,
+    denial_notes,
+    appeal_status
+  ) VALUES (
+    p_insurance_company_id,
+    p_rejected_amount,
+    p_claim_month,
+    p_claim_year,
+    'rejected',
+    NULLIF(BTRIM(p_denial_category), ''),
+    NULLIF(BTRIM(p_denial_reason), ''),
+    NULLIF(BTRIM(p_root_cause), ''),
+    NULLIF(BTRIM(p_denial_notes), ''),
+    'not_filed'
+  )
+  RETURNING id INTO v_claim_id;
+
+  INSERT INTO public.withholding_tax (
+    insurance_company_id,
+    month,
+    year,
+    claim_total,
+    tax_rate,
+    tax_amount,
+    is_actual
+  ) VALUES (
+    p_insurance_company_id,
+    p_claim_month,
+    p_claim_year,
+    -p_rejected_amount,
+    v_tax_rate,
+    -v_tax_amount,
+    false
+  );
+
+  INSERT INTO public.ledger_entries (
+    account_debit,
+    account_credit,
+    amount,
+    reference,
+    description,
+    insurance_company_id,
+    claim_month,
+    claim_year,
+    entry_type
+  ) VALUES (
+    'Revenue Adjustment',
+    'Accounts Receivable',
+    p_rejected_amount,
+    'Rejection ' || p_claim_month::text || '/' || p_claim_year::text,
+    'Claim rejection',
+    p_insurance_company_id,
+    p_claim_month,
+    p_claim_year,
+    'rejection'
+  );
+
+  RETURN jsonb_build_object(
+    'claim_id', v_claim_id,
+    'tax_rate', v_tax_rate,
+    'tax_amount', v_tax_amount
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) TO authenticated;
