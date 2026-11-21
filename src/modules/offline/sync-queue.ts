@@ -32,6 +32,11 @@ const DB_VERSION = 3;
 const STORE_NAME = "operations";
 const MAX_RETRY_DELAY_MS = 15 * 60_000;
 const MAX_AUTOMATIC_ATTEMPTS = 8;
+const SYNC_PAGE_SIZE = 250;
+const HYDRATION_INTERVAL_MS = 5 * 60_000;
+type SyncResult = { synced: number; pending: number; failed: number; blocked: number };
+let lastSuccessfulHydrationAt = 0;
+let syncInFlight: Promise<SyncResult> | null = null;
 
 const OFFLINE_PULL_TABLES: Array<{ table: string; entity: OfflineEntity }> = [
   { table: "insurance_companies", entity: "insurance_companies" },
@@ -205,31 +210,53 @@ async function applyOperation(operation: SyncOperation): Promise<void> {
 
 export async function pullSupabaseDataToOffline(): Promise<{ tables: number; records: number; skipped: number }> {
   const operations = await listSyncOperations();
+  const queuedRecordKeys = new Set(
+    operations
+      .filter((operation) => operation.status !== "blocked")
+      .map((operation) => `${operation.table}:${operation.recordId}`),
+  );
   let tables = 0;
   let records = 0;
   let skipped = 0;
+
   for (const mapping of OFFLINE_PULL_TABLES) {
-    const { data, error } = await ((supabase as any).from(mapping.table)).select("*");
-    if (error) throw error;
-    const facilityId = getStoredFacilityId();
-    const rows = ((data ?? []) as Record<string, unknown>[])
-      .filter((row) => typeof row.id === "string")
-      .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
-    const safeRows = rows.filter((row) => {
-      const changed = operations.some((queued) => queued.table === mapping.table && queued.recordId === row.id && queued.status !== "blocked");
-      if (changed) skipped += 1;
-      return !changed;
-    });
-    if (safeRows.length) {
-      await putManyOffline(mapping.entity, safeRows as Array<Record<string, unknown> & { id: string }>);
-      records += safeRows.length;
+    let offset = 0;
+    while (true) {
+      // Keep each response bounded. A full-table response can otherwise hold
+      // the browser main thread and memory for large patient/claims datasets.
+      const { data, error } = await ((supabase as any).from(mapping.table))
+        .select("*")
+        .order("id", { ascending: true })
+        .range(offset, offset + SYNC_PAGE_SIZE - 1);
+      if (error) throw error;
+
+      const facilityId = getStoredFacilityId();
+      const rows = ((data ?? []) as Record<string, unknown>[])
+        .filter((row) => typeof row.id === "string")
+        .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
+      const safeRows = rows.filter((row) => {
+        const changed = queuedRecordKeys.has(`${mapping.table}:${String(row.id)}`);
+        if (changed) skipped += 1;
+        return !changed;
+      });
+
+      if (safeRows.length) {
+        await putManyOffline(mapping.entity, safeRows as Array<Record<string, unknown> & { id: string }>);
+        records += safeRows.length;
+      }
+
+      if (((data ?? []) as unknown[]).length < SYNC_PAGE_SIZE) break;
+      offset += SYNC_PAGE_SIZE;
+      // Yield between pages so rendering and user input remain responsive.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     }
     tables += 1;
   }
+
   return { tables, records, skipped };
 }
 
-export async function syncPendingOperations(): Promise<{ synced: number; pending: number; failed: number; blocked: number }> {
+async function runSyncPendingOperations(): Promise<SyncResult> {
   const summary = await getSyncQueueSummary();
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return { synced: 0, pending: summary.pending + summary.failed, failed: summary.failed, blocked: summary.blocked };
@@ -262,9 +289,29 @@ export async function syncPendingOperations(): Promise<{ synced: number; pending
       failed += 1;
     }
   }
-  try { await pullSupabaseDataToOffline(); } catch { /* best-effort hydration; durable mutations remain queued */ }
+
+  // Replaying queued writes may run every 30 seconds, but pulling every
+  // operational table at that frequency is wasteful. Refresh the offline
+  // snapshot at most once every five minutes and never overlap a sync run.
+  if (Date.now() - lastSuccessfulHydrationAt >= HYDRATION_INTERVAL_MS) {
+    try {
+      await pullSupabaseDataToOffline();
+      lastSuccessfulHydrationAt = Date.now();
+    } catch {
+      // Best-effort hydration; durable mutations remain queued for retry.
+    }
+  }
+
   const finalSummary = await getSyncQueueSummary();
   return { synced, pending: finalSummary.pending, failed, blocked: finalSummary.blocked };
+}
+
+export function syncPendingOperations(): Promise<SyncResult> {
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = runSyncPendingOperations().finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
 }
 
 export async function getPendingSyncCount(): Promise<number> {
