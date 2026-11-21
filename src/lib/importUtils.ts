@@ -30,7 +30,7 @@ export interface ParsedRow {
 }
 
 /** Normalizes template and human-entered headers, including required markers and BOMs. */
-const normalize = (s: any) => String(s ?? "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[*\s_\\-/]+/g, "");
+const normalize = (s: any) => String(s ?? "").replace(/^\\uFEFF/, "").trim().toLowerCase().replace(/[*\\s_/-]+/g, "");
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function toNumber(raw: any): number | null {
@@ -68,11 +68,11 @@ function toDateString(raw: any): string | null {
   const dmy = str.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
   if (dmy) {
     const [, dayText, monthText, yearText] = dmy;
-    const year = yearText.length === 2 ? Number(\`20\${yearText}\`) : Number(yearText);
+    const year = yearText.length === 2 ? Number(`20${yearText}`) : Number(yearText);
     const day = Number(dayText);
     const month = Number(monthText);
     if (!validDateParts(year, month, day)) return null;
-    return \`\${year.toString().padStart(4, "0")}-\${month.toString().padStart(2, "0")}-\${day.toString().padStart(2, "0")}\`;
+    return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
   }
 
   return null;
@@ -114,7 +114,7 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
     const errors: string[] = [];
 
     columns.forEach((col) => {
-      const candidates = [col.key, col.label, ...(col.aliases || []), col.label.replace(/\*/g, ""), \`\${col.label.replace(/\*/g, "")}*\`];
+      const candidates = [col.key, col.label, ...(col.aliases || []), col.label.replace(/\*/g, ""), `${col.label.replace(/\*/g, "")}*`];
       let rawValue: any = "";
       for (const c of candidates) {
         const hit = headerMap[normalize(c)];
@@ -122,7 +122,7 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
       }
       const isEmpty = rawValue === undefined || String(rawValue).trim() === "";
       if (isEmpty) {
-        if (col.required) errors.push(\`\${col.label} is required\`);
+        if (col.required) errors.push(`${col.label} is required`);
         return;
       }
 
@@ -130,36 +130,36 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
       switch (col.type) {
         case "number": {
           const n = toNumber(rawValue);
-          if (n === null) errors.push(\`\${col.label} must be a valid number\`);
-          else if (col.min !== undefined && n < col.min) errors.push(\`\${col.label} must be at least \${col.min}\`);
-          else if (col.max !== undefined && n > col.max) errors.push(\`\${col.label} must be at most \${col.max}\`);
+          if (n === null) errors.push(`${col.label} must be a valid number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
           else parsedValue = n;
           break;
         }
         case "integer": {
           const n = /month/i.test(col.key) ? coerceMonth(rawValue) : toNumber(rawValue);
-          if (n === null || !Number.isInteger(n)) errors.push(\`\${col.label} must be a whole number\`);
-          else if (col.min !== undefined && n < col.min) errors.push(\`\${col.label} must be at least \${col.min}\`);
-          else if (col.max !== undefined && n > col.max) errors.push(\`\${col.label} must be at most \${col.max}\`);
+          if (n === null || !Number.isInteger(n)) errors.push(`${col.label} must be a whole number`);
+          else if (col.min !== undefined && n < col.min) errors.push(`${col.label} must be at least ${col.min}`);
+          else if (col.max !== undefined && n > col.max) errors.push(`${col.label} must be at most ${col.max}`);
           else parsedValue = n;
           break;
         }
         case "date": {
           const d = toDateString(rawValue);
-          if (!d) errors.push(\`\${col.label} must be a valid date (YYYY-MM-DD)\`);
+          if (!d) errors.push(`${col.label} must be a valid date (YYYY-MM-DD)`);
           else parsedValue = d;
           break;
         }
         case "boolean": {
           const b = toBoolean(rawValue);
-          if (b === null) errors.push(\`\${col.label} must be yes or no\`);
+          if (b === null) errors.push(`${col.label} must be yes or no`);
           else parsedValue = b;
           break;
         }
         case "lookup": {
           const target = normalize(rawValue);
           const match = (col.options || []).find((o) => normalize(o.label) === target || o.value === String(rawValue).trim());
-          if (!match) errors.push(\`\${col.label} "\${String(rawValue).trim()}" was not found in the system\`);
+          if (!match) errors.push(`${col.label} "${String(rawValue).trim()}" was not found in the system`);
           else parsedValue = match.value;
           break;
         }
@@ -173,7 +173,7 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
           const key = normalize(parsedValue);
           const occurrences = seenUnique.get(col.key) ?? new Map<string, number>();
           const firstRow = occurrences.get(key);
-          if (firstRow !== undefined) errors.push(\`\${col.label} "\${String(rawValue).trim()}" duplicates row \${firstRow}\`);
+          if (firstRow !== undefined) errors.push(`${col.label} "${String(rawValue).trim()}" duplicates row ${firstRow}`);
           else occurrences.set(key, i + 2);
           seenUnique.set(col.key, occurrences);
         }
@@ -186,15 +186,15 @@ export function mapRows(raw: Record<string, any>[], columns: ImportColumn[]): Pa
 
 /** Builds a downloadable template (Excel with guide sheet, or plain CSV). */
 export function buildTemplate(columns: ImportColumn[], fileName: string, format: "csv" | "excel") {
-  const headers = columns.map((c) => (c.required ? \`\${c.label}*\` : c.label));
+  const headers = columns.map((c) => (c.required ? `${c.label}*` : c.label));
 
   if (format === "csv") {
-    const esc = (v: any) => \`"\${String(v).replace(/"/g, '""')}"\`;
-    const csv = \`\${headers.map(esc).join(",")}\\n\`;
+    const esc = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = `${headers.map(esc).join(",")}\\n`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = \`\${fileName}.csv\`;
+    a.download = `${fileName}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     return;
@@ -211,7 +211,7 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
       c.label,
       c.required ? "Yes" : "No",
       c.type === "lookup"
-        ? \`One of: \${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}\`
+        ? `One of: ${(c.options || []).slice(0, 12).map((o) => o.label).join(" | ") || "(add records first)"}`
         : c.type === "date" ? "YYYY-MM-DD"
         : c.type === "integer" ? "Whole number"
         : c.type === "number" ? "Amount (numbers only)"
@@ -227,5 +227,5 @@ export function buildTemplate(columns: ImportColumn[], fileName: string, format:
   const gws = XLSX.utils.aoa_to_sheet(guide);
   gws["!cols"] = [{ wch: 26 }, { wch: 10 }, { wch: 52 }, { wch: 48 }];
   XLSX.utils.book_append_sheet(wb, gws, "Guide");
-  XLSX.writeFile(wb, \`\${fileName}.xlsx\`);
+  XLSX.writeFile(wb, `${fileName}.xlsx`);
 }
