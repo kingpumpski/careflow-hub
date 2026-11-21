@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Plus, Search, Pencil, Archive, ArchiveRestore, Trash2, Upload, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label"; import { Badge } from "@/components/ui/badge"; import { Skeleton } from "@/components/ui/skeleton"; import EntityDialog from "@/components/shared/EntityDialog"; import BulkImportDialog from "@/components/shared/BulkImportDialog"; import DownloadTemplate from "@/components/shared/DownloadTemplate"; import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery"; import { supabase } from "@/integrations/supabase/client"; import { toast } from "@/hooks/use-toast"; import { aiDuplicateCheck } from "@/lib/dedupCheck"; import { useMasterSearch } from "@/hooks/useMasterSearch"; import { usePermissions } from "@/modules/security/usePermissions";
+import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Label } from "@/components/ui/label"; import { Badge } from "@/components/ui/badge"; import { Skeleton } from "@/components/ui/skeleton"; import EntityDialog from "@/components/shared/EntityDialog"; import BulkImportDialog from "@/components/shared/BulkImportDialog"; import DownloadTemplate from "@/components/shared/DownloadTemplate"; import { useSupabaseQuery, useSupabaseInsert, useSupabaseUpdate, useSupabaseDelete } from "@/hooks/useSupabaseQuery"; import { toast } from "@/hooks/use-toast"; import { aiDuplicateCheck } from "@/lib/dedupCheck"; import { useMasterSearch } from "@/hooks/useMasterSearch"; import { usePermissions } from "@/modules/security/usePermissions";
 const ICD_CATEGORIES=["Infectious & Parasitic","Neoplasms","Blood & Immune","Endocrine & Metabolic","Mental & Behavioral","Nervous System","Eye & Adnexa","Ear & Mastoid","Circulatory","Respiratory","Digestive","Skin & Subcutaneous","Musculoskeletal","Genitourinary","Pregnancy & Childbirth","Perinatal","Congenital","Symptoms & Signs","Injury & Poisoning","External Causes","Other"];
 export default function DiagnosisCodes(){
  const {can, loading: permissionsLoading}=usePermissions(); const canReadPreauth=can("preauth.read"); const canWrite=can("masterdata.write");
@@ -17,7 +17,7 @@ export default function DiagnosisCodes(){
   if(!normalizedForm.description){
    toast({title:"Description required",description:"Enter the diagnosis description.",variant:"destructive"});return;
   }
-  const duplicate=(codes||[] as any[]).find((record:any)=>
+  const duplicate=((codes || []) as any[]).find((record:any)=>
    String(record.code||"").trim().toUpperCase()===normalizedForm.code&&record.id!==editing?.id
   );
   if(duplicate){
@@ -39,7 +39,7 @@ export default function DiagnosisCodes(){
   if(!canWrite)return deny();
   const seen=new Map<string,any>();
   const duplicateExisting=new Set<string>();
-  (codes||[] as any[]).forEach((record:any)=>{
+  ((codes || []) as any[]).forEach((record:any)=>{
     const code=String(record.code||"").trim().toUpperCase();
     if(seen.has(code))duplicateExisting.add(code);
     else if(code)seen.set(code,record);
@@ -58,16 +58,11 @@ export default function DiagnosisCodes(){
       &&String(existingRow.category||"").trim().toLowerCase()===String(candidate.category||"").trim().toLowerCase()
       &&existingRow.archived!==true;
      if(unchanged){skipped++;completed++;continue;}
-     const {data,error}=await (supabase.from("diagnosis_codes") as any)
-      .update({description:candidate.description,category:candidate.category,archived:false})
-      .eq("id",existingRow.id).select().single();
-     if(error)throw error;
+     const data=await updateM.mutateAsync({id:existingRow.id,description:candidate.description,category:candidate.category,archived:false});
      if(!data)throw new Error("The existing diagnosis code "+code+" could not be updated.");
      seen.set(code,data);updated++;completed++;
     }else{
-     const {data,error}=await (supabase.from("diagnosis_codes") as any)
-      .insert(candidate).select().single();
-     if(error)throw error;
+     const data=await insertM.mutateAsync(candidate);
      if(!data)throw new Error("The diagnosis code "+code+" was not returned after insertion.");
      seen.set(code,data);created++;completed++;
     }
