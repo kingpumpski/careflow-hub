@@ -65,4 +65,35 @@ describe("mapRows", () => {
     }], columns);
     expect(row.errors).toContain("Claim Month must be a whole number");
   });
+
+  it("rejects malformed numbers rather than stripping invalid characters", () => {
+    const [row] = mapRows([{
+      "Insurance Company": "Acme Health",
+      "Claim Amount": "12,3,4",
+      "Claim Month": 1,
+      "Claim Year": 2026,
+    }], columns);
+    expect(row.errors).toContain("Claim Amount must be a valid number");
+  });
+
+  it("rejects impossible dates and unrecognized boolean values", () => {
+    const [row] = mapRows([{ ServiceDate: "2026-02-30", Active: "maybe" }], [
+      { key: "service_date", label: "Service Date", type: "date" , aliases: ["ServiceDate"] },
+      { key: "active", label: "Active", type: "boolean" },
+    ]);
+    expect(row.errors).toContain("Service Date must be a valid date (YYYY-MM-DD)");
+    expect(row.errors).toContain("Active must be yes or no");
+  });
+
+  it("flags repeated unique diagnosis codes in the same file", () => {
+    const [first, second] = mapRows([
+      { Code: "a09.0", Description: "First" },
+      { Code: " A09.0 ", Description: "Second" },
+    ], [
+      { key: "code", label: "Code", required: true, unique: true },
+      { key: "description", label: "Description", required: true },
+    ]);
+    expect(first.errors).toEqual([]);
+    expect(second.errors).toContain('Code "A09.0" duplicates row 2');
+  });
 });
