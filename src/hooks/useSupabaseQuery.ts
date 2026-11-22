@@ -31,7 +31,7 @@ const READ_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
   ledger_entries: ["ledger.read", "reports.read"], audit_logs: ["audit.read"], user_roles: ["users.manage"],
   claims_settlement_periods: ["payments.read"], settlement_exceptions: ["payments.read"], settlement_exception_audit_events: ["payments.read"],
   claims_outstanding_periods: ["claims.read"],
-  claim_diagnosis_drafts: ["claims.read"], facilities: ["settings.manage"], facility_memberships: ["settings.manage"], claim_cases: ["claims.read"], claim_case_events: ["claims.read"],
+  claim_diagnosis_drafts: ["claims.read"], facilities: ["settings.manage"], facility_memberships: ["users.manage"], claim_cases: ["claims.read"], claim_case_events: ["claims.read"],
 };
 
 const WRITE_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
