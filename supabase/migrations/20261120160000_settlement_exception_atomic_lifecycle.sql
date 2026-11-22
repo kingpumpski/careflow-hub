@@ -1,12 +1,11 @@
 -- Online settlement exception detection and lifecycle transitions.
 -- All online state changes and audit events are committed atomically.
-CREATE OR REPLACE FUNCTION public.record_settlement_exception(
+CREATE OR REPLACE FUNCTION security_internal.record_settlement_exception(
   p_settlement_period_id uuid,
   p_type text,
   p_severity text,
   p_title text,
-  p_description text,
-  p_detected_at timestamptz DEFAULT now()
+  p_description text
 )
 RETURNS public.settlement_exceptions
 LANGUAGE plpgsql
@@ -20,7 +19,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
   END IF;
-  IF NOT public.current_user_has_permission('payments.write') THEN
+  IF NOT security_internal.current_user_has_permission('payments.write') THEN
     RAISE EXCEPTION 'PAYMENTS_WRITE_REQUIRED' USING ERRCODE = '42501';
   END IF;
   IF p_type NOT IN ('payment_variance','rejection_variance','withholding_tax_variance','missing_payment_advice','incomplete_payment_advice','overdue_settlement')
@@ -37,7 +36,7 @@ BEGIN
   IF NOT FOUND OR v_facility_id IS NULL THEN
     RAISE EXCEPTION 'SETTLEMENT_PERIOD_NOT_FOUND' USING ERRCODE = 'P0002';
   END IF;
-  IF NOT public.user_has_facility_access(v_facility_id) THEN
+  IF NOT security_internal.user_has_facility_access(v_facility_id) THEN
     RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
   END IF;
 
@@ -55,7 +54,7 @@ BEGIN
       SET severity = p_severity,
           title = trim(p_title),
           description = trim(p_description),
-          detected_at = coalesce(p_detected_at, now()),
+          detected_at = now(),
           updated_at = now()
       WHERE id = v_exception.id
       RETURNING * INTO v_exception;
@@ -93,7 +92,7 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.transition_settlement_exception_atomic(
+CREATE OR REPLACE FUNCTION security_internal.transition_settlement_exception_atomic(
   p_exception_id uuid,
   p_target_status text,
   p_note text
@@ -129,7 +128,7 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'SETTLEMENT_EXCEPTION_NOT_FOUND' USING ERRCODE = 'P0002';
   END IF;
-  IF NOT public.user_has_facility_access(v_exception.facility_id) THEN
+  IF NOT security_internal.user_has_facility_access(v_exception.facility_id) THEN
     RAISE EXCEPTION 'FACILITY_ACCESS_DENIED' USING ERRCODE = '42501';
   END IF;
   IF v_exception.status = p_target_status THEN
@@ -168,9 +167,49 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.record_settlement_exception(uuid,text,text,text,text,timestamptz) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.record_settlement_exception(uuid,text,text,text,text,timestamptz) TO authenticated;
-REVOKE ALL ON FUNCTION public.transition_settlement_exception_atomic(uuid,text,text) FROM PUBLIC, anon;
+-- Private helpers perform the authorized writes and audit inserts. Public
+-- wrappers remain SECURITY INVOKER so the exposed RPC surface has no definer
+-- privileges of its own.
+REVOKE ALL ON FUNCTION security_internal.record_settlement_exception(uuid,text,text,text,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.record_settlement_exception(uuid,text,text,text,text) TO authenticated;
+REVOKE ALL ON FUNCTION security_internal.transition_settlement_exception_atomic(uuid,text,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.transition_settlement_exception_atomic(uuid,text,text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.record_settlement_exception(
+  p_settlement_period_id uuid,
+  p_type text,
+  p_severity text,
+  p_title text,
+  p_description text
+)
+RETURNS public.settlement_exceptions
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT security_internal.record_settlement_exception(
+    p_settlement_period_id, p_type, p_severity, p_title, p_description
+  );
+$wrapper$;
+
+CREATE OR REPLACE FUNCTION public.transition_settlement_exception_atomic(
+  p_exception_id uuid,
+  p_target_status text,
+  p_note text
+)
+RETURNS public.settlement_exceptions
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT security_internal.transition_settlement_exception_atomic(
+    p_exception_id, p_target_status, p_note
+  );
+$wrapper$;
+
+REVOKE ALL ON FUNCTION public.record_settlement_exception(uuid,text,text,text,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_settlement_exception(uuid,text,text,text,text) TO authenticated;
+REVOKE ALL ON FUNCTION public.transition_settlement_exception_atomic(uuid,text,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.transition_settlement_exception_atomic(uuid,text,text) TO authenticated;
 
 -- The lifecycle RPCs are the only supported online write path. The table's
