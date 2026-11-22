@@ -48,7 +48,7 @@ export default function FacilityManagement() {
   const { data: memberships } = useSupabaseQuery("facility_memberships", {
     orderBy: "created_at",
     filters: selectedFacilityId ? { facility_id: selectedFacilityId } : undefined,
-    enabled: !offline && Boolean(selectedFacilityId) && canManageFacilities,
+    enabled: !offline && Boolean(selectedFacilityId) && canManageUsers,
   });
   const { data: profiles } = useSupabaseQuery("profiles", { enabled: !offline && canManageUsers });
   const membershipRows = useMemo(() => (memberships ?? []) as MembershipRow[], [memberships]);
