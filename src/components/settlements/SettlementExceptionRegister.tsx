@@ -121,7 +121,6 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
               p_severity: candidate.severity,
               p_title: candidate.title,
               p_description: candidate.description,
-              p_detected_at: candidate.detectedAt,
             });
             if (rpcError) throw new Error(rpcError.message);
           }
