@@ -150,8 +150,13 @@ BEGIN
   IF coalesce(length(trim(p_patient_name)), 0) = 0 THEN
     RAISE EXCEPTION 'Patient name is required';
   END IF;
-  IF p_date_of_service IS NULL OR p_submitted_amount IS NULL OR p_submitted_amount <= 0 THEN
+  IF p_date_of_service IS NULL OR p_submitted_amount IS NULL THEN
     RAISE EXCEPTION 'A service date and positive submitted amount are required';
+  END IF;
+  IF p_submitted_amount <= 0
+     OR p_submitted_amount::text IN ('NaN', 'Infinity', '-Infinity')
+     OR p_submitted_amount <> round(p_submitted_amount, 2) THEN
+    RAISE EXCEPTION 'Submitted amount must be finite, positive and have no more than two decimal places';
   END IF;
 
   SELECT f.default_currency INTO v_facility_currency
