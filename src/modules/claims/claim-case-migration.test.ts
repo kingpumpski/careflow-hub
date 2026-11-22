@@ -42,6 +42,12 @@ describe("individual claim case migration contract", () => {
     }
   });
 
+  it("rejects non-finite and over-precision submitted amounts in the database RPC", () => {
+    expect(migration).toContain("p_submitted_amount::text IN ('NaN', 'Infinity', '-Infinity')");
+    expect(migration).toContain("p_submitted_amount <> round(p_submitted_amount, 2)");
+    expect(migration).toContain("Submitted amount must be finite, positive and have no more than two decimal places");
+  });
+
   it("only changes approved and paid amounts at their matching lifecycle stages", () => {
     expect(migration).toContain("v_approved := v_case.approved_amount;");
     expect(migration).toContain("v_paid := v_case.paid_amount;");
