@@ -24,6 +24,9 @@ describe("online settlement exception migration contract", () => {
     expect(migration).toContain("INSERT INTO public.settlement_exception_audit_events");
     expect(migration).toContain("'created'");
     expect(migration).toContain("'status_changed'");
+    expect(migration).toContain("'detection_refreshed'");
+    expect(migration).toContain("before_details");
+    expect(migration).toContain("after_details");
     expect(migration).toContain("before_status");
     expect(migration).toContain("after_status");
   });
