@@ -57,6 +57,15 @@ describe("individual claim case migration contract", () => {
     expect(migration).toContain("Cumulative paid amount cannot decrease");
   });
 
+  it("rejects non-finite and over-precision adjudication and payment amounts", () => {
+    expect(migration).toContain("p_approved_amount::text IN ('NaN', 'Infinity', '-Infinity')");
+    expect(migration).toContain("p_approved_amount <> round(p_approved_amount, 2)");
+    expect(migration).toContain("p_paid_amount::text IN ('NaN', 'Infinity', '-Infinity')");
+    expect(migration).toContain("p_paid_amount <> round(p_paid_amount, 2)");
+    expect(migration).toContain("Approved amount must be finite and have no more than two decimal places");
+    expect(migration).toContain("Paid amount must be finite and have no more than two decimal places");
+  });
+
   it("records creation and each status transition in the event table", () => {
     expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?Individual claim case created/i);
     expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?v_case\.status, p_target_status/i);
