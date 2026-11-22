@@ -1,6 +1,6 @@
 -- Secure facility onboarding and membership management for global superusers/admins.
 -- Membership role is descriptive only; application permissions remain in user_roles/role_permissions.
-CREATE OR REPLACE FUNCTION public.create_facility_with_owner(
+CREATE OR REPLACE FUNCTION security_internal.create_facility_with_owner(
   p_code text,
   p_name text,
   p_country_code text DEFAULT NULL,
@@ -73,7 +73,7 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.add_facility_member_by_email(
+CREATE OR REPLACE FUNCTION security_internal.add_facility_member_by_email(
   p_facility_id uuid,
   p_email text,
   p_membership_role text DEFAULT 'member'
@@ -88,6 +88,7 @@ DECLARE
   v_target_user_id uuid;
   v_email text;
   v_membership_id uuid;
+  v_existing_membership public.facility_memberships%ROWTYPE;
   v_old_data jsonb;
 BEGIN
   IF v_actor_id IS NULL THEN
@@ -119,9 +120,24 @@ BEGIN
     RAISE EXCEPTION 'No CareFlow account exists for that email. Create the account in User Management first.';
   END IF;
 
-  SELECT to_jsonb(fm) INTO v_old_data
+  SELECT fm.* INTO v_existing_membership
   FROM public.facility_memberships fm
-  WHERE fm.facility_id = p_facility_id AND fm.user_id = v_target_user_id;
+  WHERE fm.facility_id = p_facility_id AND fm.user_id = v_target_user_id
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_old_data := to_jsonb(v_existing_membership);
+    IF v_existing_membership.role = 'owner'
+       AND v_existing_membership.status = 'active'
+       AND p_membership_role <> 'owner'
+       AND (
+         SELECT count(*) FROM public.facility_memberships fm
+         WHERE fm.facility_id = p_facility_id
+           AND fm.role = 'owner' AND fm.status = 'active'
+       ) <= 1 THEN
+      RAISE EXCEPTION 'A facility must retain at least one active owner';
+    END IF;
+  END IF;
 
   INSERT INTO public.facility_memberships (facility_id, user_id, role, status)
   VALUES (p_facility_id, v_target_user_id, p_membership_role, 'active')
@@ -141,7 +157,7 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.deactivate_facility_member(
+CREATE OR REPLACE FUNCTION security_internal.deactivate_facility_member(
   p_membership_id uuid,
   p_reason text
 )
@@ -197,6 +213,60 @@ BEGIN
   RETURN true;
 END;
 $function$;
+
+-- Keep mutation logic in the private schema. Each helper verifies the caller's
+-- system-administrator role and required settings/users permissions.
+REVOKE ALL ON FUNCTION security_internal.create_facility_with_owner(text, text, text, text, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security_internal.add_facility_member_by_email(uuid, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security_internal.deactivate_facility_member(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.create_facility_with_owner(text, text, text, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION security_internal.add_facility_member_by_email(uuid, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION security_internal.deactivate_facility_member(uuid, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.create_facility_with_owner(
+  p_code text,
+  p_name text,
+  p_country_code text DEFAULT NULL,
+  p_timezone text DEFAULT 'UTC',
+  p_default_currency text DEFAULT 'USD',
+  p_date_format text DEFAULT 'YYYY-MM-DD'
+)
+RETURNS TABLE (facility_id uuid, facility_code text, facility_name text)
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT * FROM security_internal.create_facility_with_owner(
+    p_code, p_name, p_country_code, p_timezone, p_default_currency, p_date_format
+  );
+$wrapper$;
+
+CREATE OR REPLACE FUNCTION public.add_facility_member_by_email(
+  p_facility_id uuid,
+  p_email text,
+  p_membership_role text DEFAULT 'member'
+)
+RETURNS TABLE (membership_id uuid, user_id uuid, email text, membership_role text, status text)
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT * FROM security_internal.add_facility_member_by_email(
+    p_facility_id, p_email, p_membership_role
+  );
+$wrapper$;
+
+CREATE OR REPLACE FUNCTION public.deactivate_facility_member(
+  p_membership_id uuid,
+  p_reason text
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT security_internal.deactivate_facility_member(p_membership_id, p_reason);
+$wrapper$;
 
 REVOKE ALL ON FUNCTION public.create_facility_with_owner(text, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.add_facility_member_by_email(uuid, text, text) FROM PUBLIC, anon, authenticated;
