@@ -50,6 +50,38 @@ BEGIN
     RAISE EXCEPTION 'Facility-scoped read policies are missing';
   END IF;
 
+  IF has_function_privilege('anon', 'security_internal.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'security_internal.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous execution of private claim-case helpers must remain revoked';
+  END IF;
+
+  IF NOT has_function_privilege('authenticated', 'security_internal.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'security_internal.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated execution of private claim-case helpers is not granted';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid IN (
+      'security_internal.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)'::regprocedure,
+      'security_internal.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)'::regprocedure
+    )
+    AND (NOT p.prosecdef OR NOT coalesce(array_to_string(p.proconfig, ','), '') LIKE '%search_path=%')
+  ) THEN
+    RAISE EXCEPTION 'Private claim-case helpers must be SECURITY DEFINER with a pinned search_path';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid IN (
+      'public.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)'::regprocedure,
+      'public.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)'::regprocedure
+    )
+    AND p.prosecdef
+  ) THEN
+    RAISE EXCEPTION 'Exposed claim-case RPC wrappers must remain SECURITY INVOKER';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger
     WHERE tgrelid = 'public.claim_case_events'::regclass
