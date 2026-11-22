@@ -61,5 +61,10 @@ BEGIN
      OR position('A facility must retain at least one active owner' in pg_get_functiondef(v_suspend_helper::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Facility membership operations must prevent removal or demotion of the last active owner';
   END IF;
+
+  IF position('FOR UPDATE' in pg_get_functiondef(v_add_helper::regprocedure)) = 0
+     OR position('FOR UPDATE' in pg_get_functiondef(v_suspend_helper::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'Facility membership mutations must serialize per-facility owner checks';
+  END IF;
 END;
 $test$;
