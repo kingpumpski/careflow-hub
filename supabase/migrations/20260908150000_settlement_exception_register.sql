@@ -44,12 +44,14 @@ create table if not exists public.settlement_exception_audit_events (
   id uuid primary key default gen_random_uuid(),
   facility_id uuid not null,
   exception_id uuid not null references public.settlement_exceptions(id) on delete restrict,
-  event_type text not null check (event_type in ('created','status_changed')),
+  event_type text not null check (event_type in ('created','status_changed','detection_refreshed')),
   actor_id uuid null,
   occurred_at timestamptz not null default now(),
   before_status text null,
   after_status text null,
   note text null,
+  before_details jsonb null,
+  after_details jsonb null,
   created_at timestamptz not null default now()
 );
 
