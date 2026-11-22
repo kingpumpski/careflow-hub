@@ -25,9 +25,9 @@ export function useClaimRejectionSubmission() {
         throw new Error("Permissions are still loading. Please try again in a moment.");
       }
 
-      const requiredPermissions = ["claims.write", "payments.write", "ledger.write"] as const;
+      const requiredPermissions = ["claims.write", "claims.submit_monthly"] as const;
       if (requiredPermissions.some((permission) => !can(permission))) {
-        throw new Error("Recording a claim rejection requires claims, withholding-tax and ledger write permissions.");
+        throw new Error("Recording a claim rejection requires claims.write and the dedicated monthly-claim submission permission.");
       }
 
       if (getCareFlowDataMode() === "offline") {
