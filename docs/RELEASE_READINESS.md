@@ -274,3 +274,40 @@ After PR #67 merged, main commit `fa947c424a166fed461b0edc9d2d8359a3a2c7c7` comp
 - GitHub Pages deployment run 44987168182 — build, SPA fallback, deploy and published-site/assets smoke test all passed.
 
 This confirms the repository and static-site release pipeline for that exact main commit. It does not prove interactive browser behavior on every route or certify the pending Supabase database workflows.
+
+
+## Current release candidate status — 2026-11-22 (latest)
+
+This section supersedes earlier open-PR descriptions in this document.
+
+### Merged repository changes
+- PR #69: backup workflow now reports all missing configuration variable names safely and validates the approved project, PostgreSQL URI and TLS requirement. It does not create or configure secrets.
+- PR #70: publishes the read-only 74-row production migration ledger and 116-file repository inventory, including the normalized-name comparison and all three duplicate timestamp groups.
+- PR #67: hybrid authentication startup no longer creates a synthetic offline administrator while an online Supabase reachability probe is pending.
+- PRs #55, #56, #58, #59, #60, #62, #64, #65, #66 and #68 remain merged as recorded in the earlier updates.
+
+### Consolidated open database-dependent release candidates
+
+- **PR #48 — settlement exception lifecycle.** Refactored to public SECURITY INVOKER wrappers and private `security_internal` SECURITY DEFINER helpers; requires payments permission and facility access; detection time is now server-generated. Repository checks are running. The base table migration `20260908150000_settlement_exception_register.sql` is not in the live production ledger, and the settlement exception tables are absent. Disposable-database tests remain mandatory.
+- **PR #61 — atomic monthly claims and rejections.** Uses a dedicated `claims.submit_monthly` permission for claims and data-entry roles without granting general `payments.write` or `ledger.write`. CI, CareFlow Quality Gate and Dependency Security Audit passed on the current recorded head. Its SQL contract test and transaction commit/rollback behavior have not been run against a disposable database. The PR remains draft.
+- **PR #72 — facility onboarding and individual claim cases.** Consolidates the former PRs #52, #53 and #57 into two ordered migrations: `20261120170000_individual_claim_case_lifecycle.sql` and `20261120173000_facility_admin_onboarding.sql`. It includes first-owner bootstrap, last-owner concurrency protection, facility-scoped claim cases, immutable case events, amount-transition guards, private mutation helpers and public invoker wrappers. CareFlow Quality Gate and Dependency Security Audit passed on the current recorded head; CI is still pending. SQL contract tests have not been executed against a disposable database.
+- **PR #23 — RAP.** Remains isolated and disabled by default; it is not part of this release.
+
+PRs #52, #53, #57 and #71 were closed as superseded by consolidated PR #72. No code from those PRs was separately merged.
+
+### Latest main deployment verification
+
+Main commit `ebe2f9165d33006b803b9993850f2ed1f6aa245d` passed CI, CareFlow Quality Gate and Dependency Security Audit. GitHub Pages deployment run `44987762702` completed the production build, SPA fallback verification, deployment and published-site/assets smoke test successfully.
+
+This confirms the static-site release pipeline for that exact main commit. It does not replace interactive browser acceptance tests for all routes or database integration tests.
+
+### Backup and recovery remains blocked
+
+The last observed scheduled full-system backup run, `44888297258`, failed during configuration verification before age installation or backup generation. No archive or verified manifest was produced. PR #69 improves the next preflight's diagnostics, but the required GitHub `production-backup` environment secrets, private R2 bucket credentials and offline age key must still be configured and verified by the project owner. A successful encrypted backup and a replacement-project restore rehearsal remain mandatory.
+
+### Production restrictions
+
+- No production database migration or ledger repair has been performed.
+- No production RLS, grants, indexes, Auth settings or data have been changed.
+- No paid Supabase branch or replacement project has been created.
+- The 74-row/116-file migration reconciliation, three duplicate timestamp groups, backup/restore gate and disposable-database integration tests remain release blockers.
