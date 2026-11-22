@@ -99,9 +99,15 @@ BEGIN
      OR NOT security_internal.current_user_has_permission('users.manage') THEN
     RAISE EXCEPTION 'System administrator permissions are required to manage facility membership';
   END IF;
-  IF p_facility_id IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.facilities f WHERE f.id = p_facility_id AND f.active = true
-  ) THEN
+  -- Serialize membership changes per facility so concurrent owner demotions or
+  -- suspensions cannot both pass the last-owner check.
+  IF p_facility_id IS NULL THEN
+    RAISE EXCEPTION 'Select an active facility';
+  END IF;
+  PERFORM 1 FROM public.facilities f
+  WHERE f.id = p_facility_id AND f.active = true
+  FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'Select an active facility';
   END IF;
   IF coalesce(length(trim(p_email)), 0) = 0 THEN
@@ -168,6 +174,7 @@ SET search_path = ''
 AS $function$
 DECLARE
   v_actor_id uuid := (SELECT auth.uid());
+  v_facility_id uuid;
   v_membership public.facility_memberships%ROWTYPE;
 BEGIN
   IF v_actor_id IS NULL THEN
@@ -181,6 +188,19 @@ BEGIN
   IF coalesce(length(trim(p_reason)), 0) = 0 THEN
     RAISE EXCEPTION 'A reason is required when suspending facility access';
   END IF;
+
+  -- Read the facility id first, then take locks in the same facility-before-
+  -- membership order used by add_facility_member_by_email.
+  SELECT fm.facility_id INTO v_facility_id
+  FROM public.facility_memberships fm
+  WHERE fm.id = p_membership_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Facility membership not found';
+  END IF;
+
+  PERFORM 1 FROM public.facilities f
+  WHERE f.id = v_facility_id
+  FOR UPDATE;
 
   SELECT fm.* INTO v_membership
   FROM public.facility_memberships fm
