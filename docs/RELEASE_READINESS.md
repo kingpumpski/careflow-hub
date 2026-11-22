@@ -311,3 +311,32 @@ The last observed scheduled full-system backup run, `44888297258`, failed during
 - No production RLS, grants, indexes, Auth settings or data have been changed.
 - No paid Supabase branch or replacement project has been created.
 - The 74-row/116-file migration reconciliation, three duplicate timestamp groups, backup/restore gate and disposable-database integration tests remain release blockers.
+
+
+## Consolidated candidate check results — 2026-11-22 (latest)
+
+The following results supersede the earlier "running/pending" labels in the preceding section:
+
+| Candidate | CI | Quality gate | Dependency audit | Database integration |
+|---|---|---|---|---|
+| PR #48 settlement exceptions | Passed — run 44988181981 | Passed — run 44988182130 | Passed — run 44988181973 | Not run; requires disposable DB |
+| PR #61 monthly claims/rejections | Passed — run 44987135665 | Passed — run 44987135713 | Passed — run 44987135638 | Not run; requires disposable DB |
+| PR #72 facility onboarding + claim cases | Passed — run 44987946790 | Passed — run 44987946783 | Passed — run 44987946763 | Not run; requires disposable DB |
+
+All three candidates pass their repository-level automated checks on the recorded heads. This does not authorize migration deployment: none has passed a real disposable-database replay, RLS/permission test, concurrency test or production restore rehearsal.
+
+### Current PR organization
+
+- PR #48 — settlement exception lifecycle, open.
+- PR #61 — atomic monthly claims and rejections, draft.
+- PR #72 — combined facility onboarding and individual claim-case lifecycle, open.
+- PR #23 — RAP, isolated and disabled by default.
+
+PRs #52, #53, #57 and #71 were closed as superseded by PR #72. The consolidated candidate contains the facility onboarding and claim-case work once, with two ordered migrations. No duplicate migration implementation was merged.
+
+### Remaining production gates
+
+- The last scheduled backup run `44888297258` failed before archive generation. No verified full-system backup or restore rehearsal exists.
+- The production ledger/repository snapshot records 74 ledger rows and 116 repository migration files; only 56 normalized names match directly, with 60 repository files and 18 ledger rows requiring manual source/schema mapping. Three duplicate migration timestamp groups remain.
+- The SQL contract tests included in PRs #48, #61 and #72 have not been executed against a disposable Supabase database.
+- No production migration, migration-ledger repair, RLS/grant/Auth configuration change, production data change, paid Supabase branch or replacement project has been performed.
