@@ -10,7 +10,7 @@ DECLARE
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.app_permissions
-    WHERE key = 'claims.submit_monthly'
+    WHERE permission_key = 'claims.submit_monthly'
   ) THEN
     RAISE EXCEPTION 'Dedicated monthly claim submission permission is missing';
   END IF;
