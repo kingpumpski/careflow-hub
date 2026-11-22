@@ -3,7 +3,7 @@
 **Captured:** 2026-11-22 (read-only)  
 **Project:** `jajfdgknctzqypdtvmxo`  
 **Database:** PostgreSQL 17.11, `eu-west-1`  
-**Main commit used for repository inventory:** `33a9ed8b154e2d2bf9da85224fd0fb00f6f8666c`
+**Main commit used for repository inventory:** `f79f807382f1af8a65007983f89a9f82942214f5`
 
 ## Executive result
 
@@ -11,10 +11,10 @@ This is a filename-level reconciliation aid, not authorization to deploy or repa
 
 | Measure | Count |
 |---|---:|
-| SQL migration files in repository | 116 |
+| SQL migration files in repository | 117 |
 | Rows in production `supabase_migrations.schema_migrations` | 74 |
 | Direct normalized name matches | 56 |
-| Repository files without a direct ledger-name match | 60 |
+| Repository files without a direct ledger-name match | 61 |
 | Ledger rows without a direct repository filename match | 18 |
 | Duplicate repository version-prefix groups | 3 |
 
@@ -161,6 +161,7 @@ The matching heuristic removes the `.sql` suffix, strips a leading 14-digit time
 - `20260911184000_document_ingest_wht_variable_hardening.sql`
 - `20260921161000_fix_facility_rls_runtime_recursion.sql`
 - `20261104085000_claim_diagnosis_assistant.sql`
+- `20261120160000_settlement_exception_atomic_lifecycle.sql`
 
 ## Production ledger names without a direct repository filename match
 
