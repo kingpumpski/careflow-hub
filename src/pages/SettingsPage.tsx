@@ -113,15 +113,23 @@ export default function SettingsPage() {
     }
   }, [settings]);
 
-  const saveSetting = async (key: string, value: string) => {
-    const existing = settings?.find?.((s: any) => s.key === key);
-    if (existing) {
-      await (supabase.from("system_settings") as any).update({ value, updated_at: new Date().toISOString() }).eq("id", existing.id);
-    } else {
-      await (supabase.from("system_settings") as any).insert({ key, value });
+  const saveSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
+    const updatedAt = new Date().toISOString();
+    const rows = entries.map(({ key, value }) => ({ key, value, updated_at: updatedAt }));
+    const { error } = await (supabase.from("system_settings") as any).upsert(rows, { onConflict: "key" });
+    if (error) {
+      toast({
+        title: "Settings were not saved",
+        description: error.message || "The database rejected the settings update.",
+        variant: "destructive",
+      });
+      return false;
     }
-    refetch();
+    await refetch();
+    return true;
   };
+
+  const saveSetting = (key: string, value: string) => saveSettings([{ key, value }]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,7 +148,7 @@ export default function SettingsPage() {
       if (error) throw error;
       const { data: urlData } = supabase.storage.from("logos").getPublicUrl(path);
       const url = urlData.publicUrl + "?t=" + Date.now();
-      await saveSetting("logo_url", url);
+      if (!(await saveSetting("logo_url", url))) return;
       setLogoUrl(url);
       toast({ title: "Logo uploaded successfully" });
     } catch (err: any) {
@@ -151,23 +159,23 @@ export default function SettingsPage() {
   };
 
   const handleSaveProvider = async () => {
-    await Promise.all([
-      saveSetting("provider_name", providerName),
-      saveSetting("provider_address", providerAddress),
-      saveSetting("provider_phone", providerPhone),
-      saveSetting("provider_email", providerEmail),
+    const saved = await saveSettings([
+      { key: "provider_name", value: providerName },
+      { key: "provider_address", value: providerAddress },
+      { key: "provider_phone", value: providerPhone },
+      { key: "provider_email", value: providerEmail },
     ]);
-    toast({ title: "Provider information saved" });
+    if (saved) toast({ title: "Provider information saved" });
   };
 
   const handleSaveTax = async () => {
-    await saveSetting("withholding_tax_rate", taxRate);
-    toast({ title: "Tax rate updated", description: `New rate: ${taxRate}%` });
+    if (await saveSetting("withholding_tax_rate", taxRate)) {
+      toast({ title: "Tax rate updated", description: `New rate: ${taxRate}%` });
+    }
   };
 
   const handleSaveCurrency = async () => {
-    await saveSetting("currency", currency);
-    toast({ title: "Currency saved" });
+    if (await saveSetting("currency", currency)) toast({ title: "Currency saved" });
   };
 
   const handleManualBackup = async () => {
@@ -350,7 +358,7 @@ export default function SettingsPage() {
               </Button>
               <Button size="sm" onClick={async () => {
                 const clean = bankingPartners.filter((b) => (b.bank_name || "").trim());
-                await saveSetting("banking_partners", JSON.stringify(clean));
+                if (!(await saveSetting("banking_partners", JSON.stringify(clean)))) return;
                 setBankingPartners(clean);
                 toast({ title: "Banking partners saved", description: `${clean.length} partner(s) will appear on documents` });
               }}>Save Banking Partners</Button>
@@ -435,13 +443,13 @@ export default function SettingsPage() {
             </div>
 
             <Button size="sm" onClick={async () => {
-              await Promise.all([
-                saveSetting("letterhead_accent", letterheadAccent),
-                saveSetting("letterhead_style", letterheadStyle),
-                saveSetting("letterhead_show_banking", showBanking ? "true" : "false"),
-                saveSetting("letterhead_footer_note", footerNote),
+              const saved = await saveSettings([
+                { key: "letterhead_accent", value: letterheadAccent },
+                { key: "letterhead_style", value: letterheadStyle },
+                { key: "letterhead_show_banking", value: showBanking ? "true" : "false" },
+                { key: "letterhead_footer_note", value: footerNote },
               ]);
-              toast({ title: "Letterhead design saved" });
+              if (saved) toast({ title: "Letterhead design saved" });
             }}>Save Letterhead Design</Button>
           </div>
         </TabsContent>
@@ -549,14 +557,14 @@ export default function SettingsPage() {
               </div>
             </div>
             <Button size="sm" onClick={async () => {
-              await Promise.all([
-                saveSetting("smtp_host", smtpHost),
-                saveSetting("smtp_port", smtpPort),
-                saveSetting("smtp_user", smtpUser),
-                saveSetting("smtp_password", smtpPassword),
-                saveSetting("smtp_secure", smtpSecure),
+              const saved = await saveSettings([
+                { key: "smtp_host", value: smtpHost },
+                { key: "smtp_port", value: smtpPort },
+                { key: "smtp_user", value: smtpUser },
+                { key: "smtp_password", value: smtpPassword },
+                { key: "smtp_secure", value: smtpSecure },
               ]);
-              toast({ title: "SMTP settings saved" });
+              if (saved) toast({ title: "SMTP settings saved" });
             }}>Save SMTP</Button>
 
             <div className="border-t border-border pt-4 mt-4 space-y-3">
@@ -584,16 +592,16 @@ export default function SettingsPage() {
               <div><Label>Officer Phone</Label><Input value={officerPhone} onChange={(e) => setOfficerPhone(e.target.value)} className="mt-1" /></div>
             </div>
             <Button size="sm" onClick={async () => {
-              await Promise.all([
-                saveSetting("claims_department", claimsDepartment),
-                saveSetting("claims_sender_email", claimsSenderEmail),
-                saveSetting("claims_reply_to", claimsReplyTo),
-                saveSetting("claims_cc_emails", claimsCcEmails),
-                saveSetting("officer_name", officerName),
-                saveSetting("officer_position", officerPosition),
-                saveSetting("officer_phone", officerPhone),
+              const saved = await saveSettings([
+                { key: "claims_department", value: claimsDepartment },
+                { key: "claims_sender_email", value: claimsSenderEmail },
+                { key: "claims_reply_to", value: claimsReplyTo },
+                { key: "claims_cc_emails", value: claimsCcEmails },
+                { key: "officer_name", value: officerName },
+                { key: "officer_position", value: officerPosition },
+                { key: "officer_phone", value: officerPhone },
               ]);
-              toast({ title: "Department settings saved" });
+              if (saved) toast({ title: "Department settings saved" });
             }}>Save Department</Button>
           </div>
         </TabsContent>
