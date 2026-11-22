@@ -25,10 +25,10 @@ export function useMonthlyClaimSubmission() {
         throw new Error("Permissions are still loading. Please try again in a moment.");
       }
 
-      const requiredPermissions = ["claims.write", "payments.write", "ledger.write"] as const;
+      const requiredPermissions = ["claims.write", "claims.submit_monthly"] as const;
       const missingPermissions = requiredPermissions.filter((permission) => !can(permission));
       if (missingPermissions.length > 0) {
-        throw new Error("Monthly claim submission requires claims, withholding-tax and ledger write permissions.");
+        throw new Error("Monthly claim submission requires claims.write and the dedicated monthly-claim submission permission.");
       }
 
       if (getCareFlowDataMode() === "offline") {
