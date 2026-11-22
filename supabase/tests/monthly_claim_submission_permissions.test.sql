@@ -33,6 +33,10 @@ BEGIN
     RAISE EXCEPTION 'Claims roles must not receive general payment or ledger write permissions';
   END IF;
 
+  IF has_function_privilege('authenticated', 'security_internal.configured_withholding_tax_rate()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Configured WHT rate helper must not expose the internal system setting directly';
+  END IF;
+
   IF has_function_privilege('anon', v_public_claim, 'EXECUTE')
      OR has_function_privilege('anon', v_public_rejection, 'EXECUTE')
      OR has_function_privilege('anon', v_internal_claim, 'EXECUTE')
@@ -67,6 +71,11 @@ BEGIN
       AND p.prosecdef
   ) THEN
     RAISE EXCEPTION 'Public RPC wrappers must remain SECURITY INVOKER';
+  END IF;
+
+  IF position('SECURITY DEFINER' in upper(pg_get_functiondef(v_internal_rejection::regprocedure))) = 0
+     OR position('Select an active insurance company.' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'Rejection posting helper must be privileged, pinned, and validate the active insurer';
   END IF;
 
   IF position('claims.submit_monthly' in pg_get_functiondef(v_internal_claim::regprocedure)) = 0
