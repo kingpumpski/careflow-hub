@@ -21,13 +21,14 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  SELECT COALESCE(NULLIF(BTRIM(s.value), '')::numeric, 5.00)
+  SELECT NULLIF(pg_catalog.btrim(s.value), '')::numeric
     INTO v_rate
     FROM public.system_settings AS s
    WHERE s.key = 'withholding_tax_rate';
 
-  IF NOT FOUND THEN
-    v_rate := 5.00;
+  IF NOT FOUND OR v_rate IS NULL THEN
+    RAISE EXCEPTION 'No withholding-tax rate is configured. An authorized administrator must configure the approved rate before monthly claims can be submitted.'
+      USING ERRCODE = '55000';
   END IF;
 
   IF v_rate < 0 OR v_rate > 100 THEN
