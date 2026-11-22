@@ -2,7 +2,7 @@
 
 ## Current verified source-tree finding
 
-The main branch at audit commit `7f77b4a78c35115a018127ed69696047feb3dde2` contains 116 SQL migration files and three duplicate 14-digit version prefixes:
+The main branch at audit commit `f79f807382f1af8a65007983f89a9f82942214f5` contains 117 SQL migration files and three duplicate 14-digit version prefixes:
 
 | Version | Files |
 |---|---|
@@ -35,7 +35,7 @@ Until backup, ledger comparison, clean replay and restored-backup testing are co
 
 ## Latest read-only ledger inventory — 2026-11-22
 
-See [Production migration ledger snapshot](MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md) for all 74 live ledger rows and the 116-file repository inventory. A conservative normalized-name comparison found 56 direct matches, 60 repository files without a direct ledger-name match, and 18 ledger rows without a direct repository filename match. These are candidates for manual reconciliation, not definitive applied/unapplied classifications. No production migration or ledger repair was performed.
+See [Production migration ledger snapshot](MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md) for all 74 live ledger rows and the 117-file repository inventory. A conservative normalized-name comparison found 56 direct matches, 61 repository files without a direct ledger-name match, and 18 ledger rows without a direct repository filename match. These are candidates for manual reconciliation, not definitive applied/unapplied classifications. No production migration or ledger repair was performed.
 
 
 ## Candidate source crosswalk — 2026-11-22
