@@ -103,7 +103,7 @@ CREATE TRIGGER claim_case_events_immutable
   BEFORE UPDATE OR DELETE ON public.claim_case_events
   FOR EACH ROW EXECUTE FUNCTION security_internal.reject_claim_case_event_mutation();
 
-CREATE OR REPLACE FUNCTION public.create_individual_claim_case(
+CREATE OR REPLACE FUNCTION security_internal.create_individual_claim_case(
   p_facility_id uuid,
   p_insurance_company_id uuid,
   p_patient_name text,
@@ -243,7 +243,7 @@ $function$;
 
 REVOKE ALL ON FUNCTION security_internal.claim_case_transition_allowed(text, text) FROM PUBLIC, anon, authenticated;
 
-CREATE OR REPLACE FUNCTION public.transition_individual_claim_case(
+CREATE OR REPLACE FUNCTION security_internal.transition_individual_claim_case(
   p_claim_case_id uuid,
   p_target_status text,
   p_note text,
@@ -369,6 +369,61 @@ BEGIN
     WHERE c.id = p_claim_case_id;
 END;
 $function$;
+
+-- Private mutation helpers perform the authorized writes. They are not exposed
+-- through PostgREST, and each helper independently checks auth.uid(), claims.write
+-- and facility membership before accessing the protected tables.
+REVOKE ALL ON FUNCTION security_internal.create_individual_claim_case(uuid, uuid, text, date, numeric, text, text, text, text, uuid, date, date, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security_internal.transition_individual_claim_case(uuid, text, text, numeric, numeric, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.create_individual_claim_case(uuid, uuid, text, date, numeric, text, text, text, text, uuid, date, date, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION security_internal.transition_individual_claim_case(uuid, text, text, numeric, numeric, text) TO authenticated;
+
+-- Exposed RPCs remain SECURITY INVOKER and only delegate to the private helpers.
+CREATE OR REPLACE FUNCTION public.create_individual_claim_case(
+  p_facility_id uuid,
+  p_insurance_company_id uuid,
+  p_patient_name text,
+  p_date_of_service date,
+  p_submitted_amount numeric,
+  p_member_number text DEFAULT NULL,
+  p_procedure_name text DEFAULT NULL,
+  p_diagnosis text DEFAULT NULL,
+  p_clinical_notes text DEFAULT NULL,
+  p_preauth_id uuid DEFAULT NULL,
+  p_service_period_start date DEFAULT NULL,
+  p_service_period_end date DEFAULT NULL,
+  p_currency text DEFAULT NULL
+)
+RETURNS TABLE (case_id uuid, claim_number text, status text)
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT * FROM security_internal.create_individual_claim_case(
+    p_facility_id, p_insurance_company_id, p_patient_name, p_date_of_service,
+    p_submitted_amount, p_member_number, p_procedure_name, p_diagnosis,
+    p_clinical_notes, p_preauth_id, p_service_period_start, p_service_period_end,
+    p_currency
+  );
+$wrapper$;
+
+CREATE OR REPLACE FUNCTION public.transition_individual_claim_case(
+  p_claim_case_id uuid,
+  p_target_status text,
+  p_note text,
+  p_approved_amount numeric DEFAULT NULL,
+  p_paid_amount numeric DEFAULT NULL,
+  p_denial_reason text DEFAULT NULL
+)
+RETURNS TABLE (case_id uuid, claim_number text, status text)
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT * FROM security_internal.transition_individual_claim_case(
+    p_claim_case_id, p_target_status, p_note, p_approved_amount, p_paid_amount, p_denial_reason
+  );
+$wrapper$;
 
 REVOKE ALL ON FUNCTION public.create_individual_claim_case(uuid, uuid, text, date, numeric, text, text, text, text, uuid, date, date, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.transition_individual_claim_case(uuid, text, text, numeric, numeric, text) FROM PUBLIC, anon, authenticated;
