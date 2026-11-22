@@ -262,3 +262,15 @@ The 2026-11-22 read-only inspection confirmed:
 - The security advisor still reports the RLS-enabled `public.role_permissions` table without a client policy, five authenticated-callable SECURITY DEFINER functions and disabled leaked-password protection.
 
 These are read-only observations. No production database migrations, RLS changes, grants, Auth settings or data changes were performed.
+
+
+### Latest main deployment verification — 2026-11-22
+
+After PR #67 merged, main commit `fa947c424a166fed461b0edc9d2d8359a3a2c7c7` completed all repository push checks successfully:
+
+- CI run 44987168218 — passed (migration filename integrity, TypeScript, lint, tests, backup/recovery tests, script syntax and production build).
+- CareFlow Quality Gate run 44987168216 — passed (TypeScript, lint, unit tests, backup tests, Edge Function typecheck and production build).
+- Dependency Security Audit run 44987168187 — passed.
+- GitHub Pages deployment run 44987168182 — build, SPA fallback, deploy and published-site/assets smoke test all passed.
+
+This confirms the repository and static-site release pipeline for that exact main commit. It does not prove interactive browser behavior on every route or certify the pending Supabase database workflows.
