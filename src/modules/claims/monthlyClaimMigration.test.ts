@@ -50,6 +50,13 @@ describe("monthly claim permission migration schema", () => {
 });
 
   
+describe("monthly claim withholding-tax configuration", () => {
+  it("fails closed when the approved WHT rate is not configured", () => {
+    expect(migration).toMatch(/No withholding-tax rate is configured/i);
+    expect(migration).not.toMatch(/v_rate\\s*:=\\s*5\\.00/i);
+  });
+});
+
 describe("monthly claim migration outstanding calculation", () => {
   it("preserves gross submissions and subtracts rejected claims exactly once", () => {
     expect(migration).toMatch(
