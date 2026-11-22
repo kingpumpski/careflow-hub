@@ -51,8 +51,14 @@ describe("monthly claim permission migration schema", () => {
 
   
 describe("monthly claim migration outstanding calculation", () => {
-  it("does not count rejection adjustment rows as new submissions", () => {
+  it("preserves gross submissions and subtracts rejected claims exactly once", () => {
     expect(migration).toMatch(
+      /sum\s*\(\s*coalesce\s*\(\s*c\.claim_amount/i,
+    );
+    expect(migration).toMatch(
+      /coalesce\(cp\.submitted_amount[\s\S]*?coalesce\(cp\.rejected_amount/i,
+    );
+    expect(migration).not.toMatch(
       /sum\s*\(\s*case\s*when\s*lower\s*\(\s*coalesce\s*\(\s*c\.status[\s\S]*?<>\s*'rejected'/i,
     );
   });
