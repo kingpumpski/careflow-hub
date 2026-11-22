@@ -378,3 +378,16 @@ Read-only catalog inspection confirmed that the live facility, membership, audit
 The latest observed scheduled full-system backup run `45006967540` failed before archive generation because the `production-backup` environment lacks the required configuration. No encrypted backup or verified manifest exists, and no restore rehearsal has passed. The project owner must configure the required secrets in GitHub's protected environment and run the workflow.
 
 No production migration, migration-ledger repair, RLS/grant/Auth change, production data change, paid Supabase branch or replacement project has been performed. Disposable-database transaction/RLS/concurrency testing, migration reconciliation, and verified backup/restore remain mandatory release gates.
+
+### Additional production-catalog hardening — 2026-11-22
+
+A read-only production catalog inspection found four legacy SECURITY DEFINER functions whose stored search path was `public`:
+
+- `security_internal.set_preauth_request_number()`
+- `public.audit_trigger_fn()`
+- `public.handle_new_user()`
+- `public.has_role(uuid, public.app_role)`
+
+The facility/claim candidate now includes forward-only replacements using `SET search_path = ''` and schema-qualified table/function references. The original trigger bindings and function execution ACLs are preserved; the auth signup trigger and six audit triggers were confirmed in the live catalog. The pre-authorization request-number output format is preserved. SQL catalog/trigger assertions and Vitest migration-contract checks were added. No production DDL or grants were executed.
+
+These changes are repository changes only. The exact PR head passed CI, CareFlow Quality Gate and Dependency Security Audit, but the SQL migration tests still require execution on a disposable Supabase database before any deployment or merge decision. The full-system backup/restore and migration-ledger reconciliation gates remain open.
