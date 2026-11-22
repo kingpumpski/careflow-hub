@@ -57,4 +57,13 @@ describe("individual claim case migration contract", () => {
     expect(migration).toContain("A note is required for every lifecycle transition");
     expect(migration).toContain("FOR UPDATE");
   });
+
+  it("enforces claim-write permission and facility membership before mutations", () => {
+    expect(migration).toContain("security_internal.current_user_has_permission('claims.write')");
+    expect(migration).toContain("security_internal.user_has_facility_access(p_facility_id)");
+    expect(migration).toContain("security_internal.user_has_facility_access(v_case.facility_id)");
+    expect(migration).toContain("FOR UPDATE");
+    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.create_individual_claim_case[\s\S]*?FROM PUBLIC, anon, authenticated/i);
+    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.transition_individual_claim_case[\s\S]*?FROM PUBLIC, anon, authenticated/i);
+  });
 });
