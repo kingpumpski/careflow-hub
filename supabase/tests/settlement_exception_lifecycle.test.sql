@@ -100,6 +100,28 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'settlement_exception_audit_events'
+      AND column_name = 'before_details'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'settlement_exception_audit_events'
+      AND column_name = 'after_details'
+  ) THEN
+    RAISE EXCEPTION 'Detection refresh audit snapshots are missing';
+  END IF;
+
+  IF position('detection_refreshed' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
+     OR position('before_details' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
+     OR position('after_details' in pg_get_functiondef(v_record_helper::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'Detection refresh must write immutable before/after snapshots';
+  END IF;
+
+  IF NOT EXISTS (
     SELECT 1 FROM pg_trigger
     WHERE tgrelid = 'public.settlement_exception_audit_events'::regclass
       AND tgname = 'trg_settlement_exception_audit_immutable'
