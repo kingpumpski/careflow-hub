@@ -53,13 +53,13 @@ VALUES (
 ON CONFLICT (permission_key) DO UPDATE
 SET label = EXCLUDED.label, description = EXCLUDED.description;
 
-INSERT INTO public.role_permissions (role, permission_key, granted)
+INSERT INTO public.role_permissions (role, permission_key)
 VALUES
-  ('superuser', 'claims.submit_monthly', true),
-  ('admin', 'claims.submit_monthly', true),
-  ('claims_officer', 'claims.submit_monthly', true),
-  ('data_entry_officer', 'claims.submit_monthly', true)
-ON CONFLICT (role, permission_key) DO UPDATE SET granted = EXCLUDED.granted;
+  ('superuser', 'claims.submit_monthly'),
+  ('admin', 'claims.submit_monthly'),
+  ('claims_officer', 'claims.submit_monthly'),
+  ('data_entry_officer', 'claims.submit_monthly')
+ON CONFLICT (role, permission_key) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION security_internal.submit_monthly_claim_atomic(
   p_insurance_company_id uuid,
