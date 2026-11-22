@@ -37,6 +37,11 @@ BEGIN
     RAISE EXCEPTION 'Configured WHT rate helper must not expose the internal system setting directly';
   END IF;
 
+  IF position('No withholding-tax rate is configured' in pg_get_functiondef('security_internal.configured_withholding_tax_rate()'::regprocedure)) = 0
+     OR position('5.00' in pg_get_functiondef('security_internal.configured_withholding_tax_rate()'::regprocedure)) > 0 THEN
+    RAISE EXCEPTION 'Monthly claim posting must fail closed when the approved WHT rate is not configured; no implicit tax rate is permitted';
+  END IF;
+
   IF has_function_privilege('anon', v_public_claim, 'EXECUTE')
      OR has_function_privilege('anon', v_public_rejection, 'EXECUTE')
      OR has_function_privilege('anon', v_internal_claim, 'EXECUTE')
