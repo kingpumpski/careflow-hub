@@ -236,7 +236,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $$
 DECLARE
   v_claim_id uuid;
   v_tax_rate numeric;
