@@ -38,3 +38,13 @@ describe("monthly claim migration financial aggregation", () => {
     expect(migration).toMatch(/WITH \(security_invoker = true\)/i);
   });
 });
+
+  
+describe("monthly claim permission migration schema", () => {
+  it("seeds the existing permission tables without invented columns", () => {
+    expect(migration).toMatch(/INSERT INTO public\.app_permissions \(permission_key, label, description\)/i);
+    expect(migration).toMatch(/INSERT INTO public\.role_permissions \(role, permission_key\)/i);
+    expect(migration).not.toMatch(/role_permissions \([^)]*granted/i);
+    expect(migration).not.toMatch(/app_permissions \([^)]*category/i);
+  });
+});
