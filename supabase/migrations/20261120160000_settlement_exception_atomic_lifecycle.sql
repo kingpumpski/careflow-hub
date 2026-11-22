@@ -75,7 +75,7 @@ BEGIN
   )
   VALUES (
     v_facility_id, p_settlement_period_id, p_type, p_severity, 'open',
-    trim(p_title), trim(p_description), coalesce(p_detected_at, now())
+    trim(p_title), trim(p_description), now()
   )
   RETURNING * INTO v_exception;
 
@@ -111,7 +111,7 @@ BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
   END IF;
-  IF NOT public.current_user_has_permission('payments.write') THEN
+  IF NOT security_internal.current_user_has_permission('payments.write') THEN
     RAISE EXCEPTION 'PAYMENTS_WRITE_REQUIRED' USING ERRCODE = '42501';
   END IF;
   IF p_target_status NOT IN ('open','under_review','resolved','waived') THEN
