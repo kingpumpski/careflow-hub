@@ -7,6 +7,7 @@ DECLARE
   v_public_rejection text := 'public.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text)';
   v_internal_rejection text := 'security_internal.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text)';
   v_role text;
+  v_view_definition text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.app_permissions
@@ -83,7 +84,13 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
-  IF position('greatest(sum(coalesce(t.tax_amount' in lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass))) = 0 THEN
+  v_view_definition := lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass));
+
+  IF position('sum(case when lower(coalesce(c.status' in v_view_definition) = 0 THEN
+    RAISE EXCEPTION 'Submitted claim totals must exclude separate rejected-claim adjustment rows';
+  END IF;
+
+  IF position('greatest(sum(coalesce(t.tax_amount' in v_view_definition) = 0 THEN
     RAISE EXCEPTION 'Period WHT aggregation must not allow negative reversal totals to create a phantom outstanding balance';
   END IF;
 
