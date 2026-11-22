@@ -340,3 +340,8 @@ PRs #52, #53, #57 and #71 were closed as superseded by PR #72. The consolidated 
 - The production ledger/repository snapshot records 74 ledger rows and 116 repository migration files; only 56 normalized names match directly, with 60 repository files and 18 ledger rows requiring manual source/schema mapping. Three duplicate migration timestamp groups remain.
 - The SQL contract tests included in PRs #48, #61 and #72 have not been executed against a disposable Supabase database.
 - No production migration, migration-ledger repair, RLS/grant/Auth configuration change, production data change, paid Supabase branch or replacement project has been performed.
+
+
+### Monthly claims withholding-tax configuration safety — 2026-11-22
+
+A read-only production query found no `system_settings` row with key `withholding_tax_rate`. The atomic monthly-claims migration therefore now fails closed when that setting is missing or blank; it no longer silently assumes 5%. An authorized administrator must enter the approved rate in CareFlow Settings before monthly claim submissions can proceed. The helper continues to reject rates outside 0–100. No production setting was inserted or changed.
