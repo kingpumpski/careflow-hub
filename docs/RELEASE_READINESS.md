@@ -159,3 +159,51 @@ The latest user-reported production browser console confirms two release issues:
 
 No production schema, Data API settings, Pages deployment, or other production configuration was changed in response to these console messages.
 
+
+
+## Implementation verification update — 2026-11-22
+
+This update supersedes earlier pull-request state descriptions above where they conflict. It records repository changes only; it does not certify live database workflows or replace the backup, migration, security, and operational release gates.
+
+### Merged repository changes
+
+The following pull requests are merged into `main`:
+
+- [x] PR #55 — records the connected Supabase security-advisor findings and cautions against unreviewed RLS, SECURITY DEFINER, or index changes.
+- [x] PR #56 — documents the organization-tenancy target model, ownership boundaries, migration phases and acceptance requirements. This is a design document, not tenant isolation implementation.
+- [x] PR #58 — strengthens bulk import validation and diagnosis/catalog master-data integrity.
+- [x] PR #59 — validates insurance-history imports and prevents conflicting monthly claim/payment writes.
+- [x] PR #60 — validates procedure-template costs, duplicate names, imported values and arithmetic.
+- [x] PR #62 — fixes the GitHub Pages favicon path using Vite's base URL.
+- [x] PR #64 — saves related Settings values through a single upsert request, reports database write errors, and awaits the settings refresh.
+- [x] PR #65 — aligns public document/social metadata with the configured Claims Informatics identity and retains the Pages-safe favicon reference.
+
+The implementation PRs above passed their recorded CI, CareFlow Quality Gate and Dependency Security Audit checks before merge. These checks are repository validation; they do not establish that pending database migrations have been applied or that production workflows have passed interactive acceptance testing.
+
+PR #63 was closed as superseded by PR #65. No code from PR #63 was separately merged.
+
+### Remaining database-dependent pull requests
+
+The following work remains unmerged and must not be deployed to production until migration reconciliation, backup/restore verification and disposable-database tests are complete:
+
+- [ ] PR #48 — online settlement exception lifecycle and audit transactions.
+- [ ] PR #52 — facility-scoped individual claim-case lifecycle.
+- [ ] PR #53 — facility onboarding and membership administration.
+- [ ] PR #57 — claim-case financial amount transition integrity.
+- [ ] PR #61 — atomic monthly claim/rejection and financial ledger submission.
+
+PR #52 depends on the facility model supplied by PR #53. Review and test the facility foundation first, then the individual claim-case workflow and its financial transition protections. PR #57 overlaps the claim-case lifecycle work and must be reconciled with PR #52 rather than merged as an independent migration without checking the shared migration and schema contracts.
+
+### Still-open operational gates
+
+- [ ] Configure and validate the GitHub `production-backup` environment and Supabase/R2/age secrets without disclosing them in source control or chat.
+- [ ] Complete a real encrypted full-system backup and verify its published manifest and R2 read-back checksum.
+- [ ] Restore the backup to a separate replacement project and verify PostgreSQL, Auth, Storage, source snapshot, login, RLS and Edge Functions.
+- [ ] Reconcile the production migration ledger against all repository migrations and resolve the three duplicate timestamp groups without rewriting applied migration history.
+- [ ] Run database contract and transaction tests for PRs #48, #52, #53, #57 and #61 against a disposable database.
+- [ ] Review the five SECURITY DEFINER RPC findings individually, confirm the intended `role_permissions` access model, and enable leaked-password protection through the appropriate Auth configuration.
+- [ ] Complete organization-level tenancy implementation and cross-tenant RLS tests; the merged PR #56 is design documentation only.
+- [ ] Verify a legitimate first administrator and facility bootstrap path without assuming the last recorded zero-facility state has changed.
+- [ ] Run current Pages deployment and interactive application acceptance tests after the latest merged commits, including large-table performance and offline/online transitions.
+
+No production schema, data, migration ledger, RLS policy, database grant, Auth setting, index, or Supabase deployment was changed by the repository merges recorded in this update. The no-paid-Supabase-branch restriction remains in force.
