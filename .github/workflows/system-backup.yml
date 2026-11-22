@@ -42,12 +42,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$SUPABASE_PROJECT_ID" = "jajfdgknctzqypdtvmxo"
-          test "$SUPABASE_URL" = "https://jajfdgknctzqypdtvmxo.supabase.co"
-          for name in SUPABASE_SERVICE_ROLE_KEY SUPABASE_DB_URL BACKUP_AGE_RECIPIENT BACKUP_R2_ACCOUNT_ID BACKUP_R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-            if [[ -z "${!name:-}" ]]; then echo "::error::Missing required secret $name"; exit 1; fi
+
+          missing=()
+          for name in SUPABASE_PROJECT_ID SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_DB_URL BACKUP_AGE_RECIPIENT BACKUP_R2_ACCOUNT_ID BACKUP_R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
           done
-          [[ "$BACKUP_AGE_RECIPIENT" == age1* ]]
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required backup configuration (secret names only): %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          if [[ "$SUPABASE_PROJECT_ID" != "jajfdgknctzqypdtvmxo" ]]; then
+            echo "::error::SUPABASE_PROJECT_ID does not match the approved CareFlow production project."
+            exit 1
+          fi
+          if [[ "$SUPABASE_URL" != "https://jajfdgknctzqypdtvmxo.supabase.co" ]]; then
+            echo "::error::SUPABASE_URL does not match the approved CareFlow production project."
+            exit 1
+          fi
+          if [[ "$BACKUP_AGE_RECIPIENT" != age1* ]]; then
+            echo "::error::BACKUP_AGE_RECIPIENT must be an age public recipient (age1...)."
+            exit 1
+          fi
+          if [[ "$SUPABASE_DB_URL" != postgresql://* && "$SUPABASE_DB_URL" != postgres://* ]]; then
+            echo "::error::SUPABASE_DB_URL must be a PostgreSQL Session Pooler URI."
+            exit 1
+          fi
+          if [[ "$SUPABASE_DB_URL" != *"sslmode=require"* ]]; then
+            echo "::error::SUPABASE_DB_URL must require TLS with sslmode=require."
+            exit 1
+          fi
 
       - name: Install age encryption utility
         run: |
