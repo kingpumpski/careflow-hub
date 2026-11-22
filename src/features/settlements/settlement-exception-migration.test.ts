@@ -10,9 +10,9 @@ const migration = readFileSync(
 describe("online settlement exception migration contract", () => {
   it("requires an authenticated user with payment-write permission and facility access", () => {
     expect(migration).toContain("auth.uid() IS NULL");
-    expect(migration).toContain("public.current_user_has_permission('payments.write')");
-    expect(migration).toContain("public.user_has_facility_access(v_facility_id)");
-    expect(migration).toContain("public.user_has_facility_access(v_exception.facility_id)");
+    expect(migration).toContain("security_internal.current_user_has_permission('payments.write')");
+    expect(migration).toContain("security_internal.user_has_facility_access(v_facility_id)");
+    expect(migration).toContain("security_internal.user_has_facility_access(v_exception.facility_id)");
   });
 
   it("locks settlement periods and exception rows before making lifecycle decisions", () => {
@@ -44,11 +44,17 @@ describe("online settlement exception migration contract", () => {
     expect(migration).toContain("TO authenticated");
   });
 
-  it("pins the security-definer search path for both RPCs", () => {
-    const functions = migration.split("CREATE OR REPLACE FUNCTION").slice(1);
-    expect(functions).toHaveLength(2);
-    for (const definition of functions) {
+  it("keeps exposed RPC wrappers invoker-only and private mutation helpers definer-only", () => {
+    const helpers = migration.split("CREATE OR REPLACE FUNCTION security_internal.").slice(1);
+    const wrappers = migration.split("CREATE OR REPLACE FUNCTION public.").slice(1);
+    expect(helpers).toHaveLength(2);
+    expect(wrappers).toHaveLength(2);
+    for (const definition of helpers) {
       expect(definition).toMatch(/SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
     }
+    for (const definition of wrappers) {
+      expect(definition).toMatch(/SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
+    }
+    expect(migration).not.toContain("p_detected_at");
   });
 });
