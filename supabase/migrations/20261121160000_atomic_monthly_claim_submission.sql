@@ -39,8 +39,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION security_internal.configured_withholding_tax_rate() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION security_internal.configured_withholding_tax_rate() TO authenticated;
+REVOKE ALL ON FUNCTION security_internal.configured_withholding_tax_rate() FROM PUBLIC, anon, authenticated;
 
 -- A monthly aggregate submission creates fixed, server-derived WHT and ledger
 -- side effects. Grant this narrowly scoped capability to claims roles without
@@ -235,9 +234,9 @@ CREATE OR REPLACE FUNCTION security_internal.submit_claim_rejection_atomic(
 )
 RETURNS jsonb
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = ''
-AS $$
+AS $
 DECLARE
   v_claim_id uuid;
   v_tax_rate numeric;
@@ -256,6 +255,14 @@ BEGIN
 
   IF p_insurance_company_id IS NULL THEN
     RAISE EXCEPTION 'An insurance company is required.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.insurance_companies
+    WHERE id = p_insurance_company_id AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Select an active insurance company.'
       USING ERRCODE = '22023';
   END IF;
 
