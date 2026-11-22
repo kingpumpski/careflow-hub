@@ -28,3 +28,13 @@ describe("monthly claim migration SQL delimiters", () => {
     expect(migration).toMatch(/FUNCTION security_internal\.submit_claim_rejection_atomic[\s\S]*?AS \$\$/);
   });
 });
+
+  
+describe("monthly claim migration financial aggregation", () => {
+  it("prevents negative WHT reversal totals from creating phantom outstanding balances", () => {
+    expect(migration).toMatch(
+      /greatest\s*\(\s*sum\s*\(\s*coalesce\s*\(\s*t\.tax_amount/i,
+    );
+    expect(migration).toMatch(/WITH \(security_invoker = true\)/i);
+  });
+});
