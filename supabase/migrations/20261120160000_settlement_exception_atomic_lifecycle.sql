@@ -58,6 +58,28 @@ BEGIN
           updated_at = now()
       WHERE id = v_exception.id
       RETURNING * INTO v_exception;
+
+      -- Preserve the previous detection snapshot in the immutable audit log.
+      -- This is written in the same transaction as the refreshed exception.
+      INSERT INTO public.settlement_exception_audit_events(
+        facility_id, exception_id, event_type, actor_id, occurred_at,
+        before_status, after_status, note, before_details, after_details
+      )
+      VALUES (
+        v_exception.facility_id, v_exception.id, 'detection_refreshed',
+        auth.uid(), now(), v_exception.status, v_exception.status,
+        'Automatically refreshed from confirmed settlement-period data.',
+        jsonb_build_object(
+          'severity', (SELECT severity FROM public.settlement_exceptions WHERE id = v_exception.id),
+          'title', (SELECT title FROM public.settlement_exceptions WHERE id = v_exception.id),
+          'description', (SELECT description FROM public.settlement_exceptions WHERE id = v_exception.id)
+        ),
+        jsonb_build_object(
+          'severity', p_severity,
+          'title', trim(p_title),
+          'description', trim(p_description)
+        )
+      );
       RETURN v_exception;
     END IF;
     -- Do not reopen an unchanged resolved/waived exception on every refresh.
