@@ -84,5 +84,21 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
+  IF position('greatest(sum(coalesce(t.tax_amount' in lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass))) = 0 THEN
+    RAISE EXCEPTION 'Period WHT aggregation must not allow negative reversal totals to create a phantom outstanding balance';
+  END IF;
+
+  IF NOT (
+    SELECT COALESCE(reloptions, ARRAY[]::text[]) @> ARRAY['security_invoker=true']::text[]
+    FROM pg_class
+    WHERE oid = 'public.claims_outstanding_periods'::regclass
+  ) THEN
+    RAISE EXCEPTION 'The outstanding-period view must retain SECURITY INVOKER semantics';
+  END IF;
+
+  IF GREATEST(5::numeric + (-5::numeric), 0::numeric) <> 0
+     OR GREATEST(5::numeric + (-1::numeric), 0::numeric) <> 4 THEN
+    RAISE EXCEPTION 'Net provisional WHT reversal arithmetic is incorrect';
+  END IF;
 END;
 $test$;
