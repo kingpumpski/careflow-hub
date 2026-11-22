@@ -30,3 +30,12 @@ describe("claim lifecycle", () => {
     );
   });
 });
+
+  
+describe("claim date input defaults", () => {
+  it("formats the local calendar date without converting through UTC", async () => {
+    const { getLocalDateInputValue } = await import("./dateInput");
+    const localDate = new Date(2026, 0, 2, 0, 15, 0);
+    expect(getLocalDateInputValue(localDate)).toBe("2026-01-02");
+  });
+});
