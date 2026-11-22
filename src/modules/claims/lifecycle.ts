@@ -17,6 +17,10 @@ export const CLAIM_STATUSES = [
 
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
+export function getAvailableClaimTransitions(from: ClaimStatus): readonly ClaimStatus[] {
+  return TRANSITIONS[from];
+}
+
 const TRANSITIONS: Record<ClaimStatus, readonly ClaimStatus[]> = {
   draft: ["verified"],
   verified: ["submitted", "draft"],
