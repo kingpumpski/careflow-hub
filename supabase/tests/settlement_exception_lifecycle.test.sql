@@ -4,9 +4,13 @@
 DO $test$
 DECLARE
   v_record_signature text :=
-    'public.record_settlement_exception(uuid,text,text,text,text,timestamp with time zone)';
+    'public.record_settlement_exception(uuid,text,text,text,text)';
   v_transition_signature text :=
     'public.transition_settlement_exception_atomic(uuid,text,text)';
+  v_record_helper text :=
+    'security_internal.record_settlement_exception(uuid,text,text,text,text)';
+  v_transition_helper text :=
+    'security_internal.transition_settlement_exception_atomic(uuid,text,text)';
 BEGIN
   IF to_regclass('public.settlement_exceptions') IS NULL
      OR to_regclass('public.settlement_exception_audit_events') IS NULL THEN
@@ -34,24 +38,51 @@ BEGIN
   END IF;
 
   IF has_function_privilege('anon', v_record_signature, 'EXECUTE')
-     OR has_function_privilege('anon', v_transition_signature, 'EXECUTE') THEN
-    RAISE EXCEPTION 'Anonymous execution of settlement exception RPCs must be revoked';
+     OR has_function_privilege('anon', v_transition_signature, 'EXECUTE')
+     OR has_function_privilege('anon', v_record_helper, 'EXECUTE')
+     OR has_function_privilege('anon', v_transition_helper, 'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous execution of settlement exception functions must be revoked';
   END IF;
   IF NOT has_function_privilege('authenticated', v_record_signature, 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', v_transition_signature, 'EXECUTE') THEN
-    RAISE EXCEPTION 'Authenticated execution of settlement exception RPCs must be granted';
+     OR NOT has_function_privilege('authenticated', v_transition_signature, 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', v_record_helper, 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', v_transition_helper, 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated execution of settlement exception functions must be granted';
+  END IF;
+  IF NOT has_schema_privilege('authenticated', 'security_internal', 'USAGE') THEN
+    RAISE EXCEPTION 'Authenticated callers require schema usage for private settlement helpers';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    WHERE p.oid IN (v_record_helper::regprocedure, v_transition_helper::regprocedure)
+      AND (
+        NOT p.prosecdef
+        OR NOT coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[]
+      )
+  ) THEN
+    RAISE EXCEPTION 'Private settlement helpers must be SECURITY DEFINER with an empty pinned search_path';
   END IF;
 
   IF EXISTS (
     SELECT 1
     FROM pg_proc p
     WHERE p.oid IN (v_record_signature::regprocedure, v_transition_signature::regprocedure)
-      AND (
-        NOT p.prosecdef
-        OR NOT coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[]
-      )
+      AND p.prosecdef
   ) THEN
-    RAISE EXCEPTION 'Settlement exception RPCs must be SECURITY DEFINER with an empty pinned search_path';
+    RAISE EXCEPTION 'Exposed settlement exception wrappers must remain SECURITY INVOKER';
+  END IF;
+
+  IF position('security_internal.current_user_has_permission' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
+     OR position('security_internal.user_has_facility_access' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
+     OR position('security_internal.current_user_has_permission' in pg_get_functiondef(v_transition_helper::regprocedure)) = 0
+     OR position('security_internal.user_has_facility_access' in pg_get_functiondef(v_transition_helper::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'Private settlement helpers must enforce payment permission and facility membership';
+  END IF;
+
+  IF position('p_detected_at' in pg_get_functiondef(v_record_helper::regprocedure)) > 0 THEN
+    RAISE EXCEPTION 'Detection timestamps must be server-generated, not client-supplied';
   END IF;
 
   IF NOT EXISTS (
