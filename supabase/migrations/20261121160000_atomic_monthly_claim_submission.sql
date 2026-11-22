@@ -1,8 +1,9 @@
--- Keep the monthly claim's claim, provisional WHT and ledger records in one
--- database transaction. The public RPC is SECURITY INVOKER so each INSERT
--- remains subject to the existing table grants and RLS policies.
+-- Keep the monthly claim, provisional WHT and ledger postings in one transaction.
+-- The exposed public wrappers remain SECURITY INVOKER. Private SECURITY DEFINER
+-- helpers perform fixed system-generated postings only after checking auth.uid(),
+-- claims.write and the dedicated claims.submit_monthly permission.
 --
--- The internal helper exposes only the configured WHT rate to an authenticated
+-- The internal WHT helper exposes only the configured rate to an authenticated
 -- caller. It does not expose the system_settings table or accept a client rate.
 
 CREATE OR REPLACE FUNCTION security_internal.configured_withholding_tax_rate()
@@ -91,6 +92,14 @@ BEGIN
 
   IF p_insurance_company_id IS NULL THEN
     RAISE EXCEPTION 'An insurance company is required.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.insurance_companies
+    WHERE id = p_insurance_company_id AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Select an active insurance company.'
       USING ERRCODE = '22023';
   END IF;
 
