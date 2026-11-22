@@ -31,3 +31,8 @@ Supabase migration versions are the migration ledger's identity. Two files with 
 The repository's deployment workflow must not be treated as proof that migrations are applied. The project reference in `supabase/config.toml` is `jajfdgknctzqypdtvmxo`; verify that this is the intended production project before enabling deployment. The deployment documentation also calls the project "claims tracker", so confirm project identity with the owner.
 
 Until backup, ledger comparison, clean replay and restored-backup testing are complete, keep production database deployment blocked. Do not run `supabase db push --linked` as a workaround for duplicate versions.
+
+
+## Latest read-only ledger inventory — 2026-11-22
+
+See [Production migration ledger snapshot](MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md) for all 74 live ledger rows and the 116-file repository inventory. A conservative normalized-name comparison found 56 direct matches, 60 repository files without a direct ledger-name match, and 18 ledger rows without a direct repository filename match. These are candidates for manual reconciliation, not definitive applied/unapplied classifications. No production migration or ledger repair was performed.
