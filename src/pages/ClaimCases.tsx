@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security";
 import { CLAIM_STATUSES, getAvailableClaimTransitions, type ClaimStatus } from "@/modules/claims/lifecycle";
+import { getLocalDateInputValue } from "@/modules/claims/dateInput";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,7 +53,6 @@ type RpcResult = { data: unknown; error: { message: string } | null };
 const callClaimRpc = (name: string, args: Record<string, unknown>): Promise<RpcResult> =>
   (supabase.rpc as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<RpcResult>)(name, args);
 
-const today = () => new Date().toISOString().slice(0, 10);
 const money = (amount: number | null | undefined, currency = "GHS") =>
   new Intl.NumberFormat(undefined, { style: "currency", currency: currency.trim() || "GHS", maximumFractionDigits: 2 }).format(Number(amount ?? 0));
 const titleCase = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -91,7 +91,7 @@ export default function ClaimCases() {
     preauth_id: "",
     patient_name: "",
     member_number: "",
-    date_of_service: today(),
+    date_of_service: getLocalDateInputValue(),
     procedure_name: "",
     diagnosis: "",
     submitted_amount: "",
@@ -142,7 +142,7 @@ export default function ClaimCases() {
       if (error) throw new Error(error.message);
       const row = Array.isArray(data) ? data[0] as { claim_number?: string } | undefined : data as { claim_number?: string } | null;
       toast({ title: "Individual claim case created", description: row?.claim_number ? `Reference: ${row.claim_number}` : "The new claim case is saved as a draft." });
-      setForm({ insurance_company_id: "", preauth_id: "", patient_name: "", member_number: "", date_of_service: today(), procedure_name: "", diagnosis: "", submitted_amount: "", clinical_notes: "" });
+      setForm({ insurance_company_id: "", preauth_id: "", patient_name: "", member_number: "", date_of_service: getLocalDateInputValue(), procedure_name: "", diagnosis: "", submitted_amount: "", clinical_notes: "" });
       setShowCreate(false);
       await refresh();
     } catch (cause) {
