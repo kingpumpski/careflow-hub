@@ -310,9 +310,21 @@ BEGIN
   v_approved := v_case.approved_amount;
   v_paid := v_case.paid_amount;
   IF p_target_status IN ('approved', 'partially_approved') THEN
+    IF p_approved_amount IS NOT NULL AND (
+      p_approved_amount::text IN ('NaN', 'Infinity', '-Infinity')
+      OR p_approved_amount <> round(p_approved_amount, 2)
+    ) THEN
+      RAISE EXCEPTION 'Approved amount must be finite and have no more than two decimal places';
+    END IF;
     v_approved := coalesce(p_approved_amount, v_case.approved_amount);
   END IF;
   IF p_target_status IN ('partially_paid', 'paid') THEN
+    IF p_paid_amount IS NOT NULL AND (
+      p_paid_amount::text IN ('NaN', 'Infinity', '-Infinity')
+      OR p_paid_amount <> round(p_paid_amount, 2)
+    ) THEN
+      RAISE EXCEPTION 'Paid amount must be finite and have no more than two decimal places';
+    END IF;
     v_paid := coalesce(p_paid_amount, v_case.paid_amount);
   END IF;
   v_denial_reason := coalesce(nullif(trim(coalesce(p_denial_reason, '')), ''), nullif(trim(coalesce(p_note, '')), ''));
