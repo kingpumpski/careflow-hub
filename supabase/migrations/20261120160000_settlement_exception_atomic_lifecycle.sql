@@ -15,6 +15,7 @@ AS $function$
 DECLARE
   v_facility_id uuid;
   v_exception public.settlement_exceptions%rowtype;
+  v_before_details jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
@@ -50,6 +51,11 @@ BEGIN
 
   IF FOUND THEN
     IF v_exception.status IN ('open','under_review') THEN
+      v_before_details := jsonb_build_object(
+        'severity', v_exception.severity,
+        'title', v_exception.title,
+        'description', v_exception.description
+      );
       UPDATE public.settlement_exceptions
       SET severity = p_severity,
           title = trim(p_title),
@@ -69,11 +75,7 @@ BEGIN
         v_exception.facility_id, v_exception.id, 'detection_refreshed',
         auth.uid(), now(), v_exception.status, v_exception.status,
         'Automatically refreshed from confirmed settlement-period data.',
-        jsonb_build_object(
-          'severity', (SELECT severity FROM public.settlement_exceptions WHERE id = v_exception.id),
-          'title', (SELECT title FROM public.settlement_exceptions WHERE id = v_exception.id),
-          'description', (SELECT description FROM public.settlement_exceptions WHERE id = v_exception.id)
-        ),
+        v_before_details,
         jsonb_build_object(
           'severity', p_severity,
           'title', trim(p_title),
