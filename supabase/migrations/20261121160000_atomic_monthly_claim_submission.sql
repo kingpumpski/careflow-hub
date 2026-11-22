@@ -398,7 +398,13 @@ WITH claim_periods AS (
     c.insurance_company_id,
     c.claim_year AS period_year,
     c.claim_month AS period_month,
-    sum(COALESCE(c.claim_amount, 0::numeric)) AS submitted_amount,
+    sum(
+      CASE
+        WHEN lower(COALESCE(c.status, ''::text)) <> 'rejected'::text
+          THEN COALESCE(c.claim_amount, 0::numeric)
+        ELSE 0::numeric
+      END
+    ) AS submitted_amount,
     sum(
       CASE
         WHEN lower(COALESCE(c.status, ''::text)) = 'rejected'::text
