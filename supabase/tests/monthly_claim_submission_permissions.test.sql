@@ -86,8 +86,14 @@ BEGIN
   END IF;
   v_view_definition := lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass));
 
-  IF position('sum(case when lower(coalesce(c.status' in v_view_definition) = 0 THEN
-    RAISE EXCEPTION 'Submitted claim totals must exclude separate rejected-claim adjustment rows';
+  IF position('sum(coalesce(c.claim_amount' in v_view_definition) = 0
+     OR position('coalesce(cp.submitted_amount' in v_view_definition) = 0
+     OR position('coalesce(cp.rejected_amount' in v_view_definition) = 0 THEN
+    RAISE EXCEPTION 'The view must preserve gross submitted totals and subtract rejected claims exactly once';
+  END IF;
+
+  IF GREATEST(100::numeric - 20::numeric, 0::numeric) <> 80 THEN
+    RAISE EXCEPTION 'Rejected claim amounts must be subtracted exactly once from gross submissions';
   END IF;
 
   IF position('greatest(sum(coalesce(t.tax_amount' in v_view_definition) = 0 THEN
