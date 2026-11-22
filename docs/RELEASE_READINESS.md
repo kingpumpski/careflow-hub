@@ -207,3 +207,17 @@ PR #52 depends on the facility model supplied by PR #53. Review and test the fac
 - [ ] Run current Pages deployment and interactive application acceptance tests after the latest merged commits, including large-table performance and offline/online transitions.
 
 No production schema, data, migration ledger, RLS policy, database grant, Auth setting, index, or Supabase deployment was changed by the repository merges recorded in this update. The no-paid-Supabase-branch restriction remains in force.
+
+
+### Fresh read-only production snapshot — 2026-11-22
+
+A new read-only inspection of Supabase project `jajfdgknctzqypdtvmxo` confirmed:
+
+- Project status: `ACTIVE_HEALTHY`; PostgreSQL 17.11; region `eu-west-1`.
+- Production migration ledger: 74 rows.
+- `public.facilities` and `public.facility_memberships` exist, but the facility count is 0 and active membership count is 0.
+- `public.claim_cases` is absent.
+- `public.settlement_exceptions` and `public.settlement_exception_audit_events` are absent.
+- The security advisor still reports one RLS-enabled table without a policy (`public.role_permissions`), five authenticated-callable SECURITY DEFINER functions, and leaked-password protection disabled.
+
+The observed table state confirms that the facility foundation is present but has not been bootstrapped with a facility or active member. It also confirms that individual claim cases and settlement exception tables are not deployed. These are observations only; no production data, schema, grants, policies or Auth settings were changed.
