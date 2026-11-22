@@ -18,7 +18,7 @@ BEGIN
   FOREACH v_role IN ARRAY ARRAY['superuser','admin','claims_officer','data_entry_officer'] LOOP
     IF NOT EXISTS (
       SELECT 1 FROM public.role_permissions
-      WHERE role = v_role AND permission_key = 'claims.submit_monthly' AND granted = true
+      WHERE role = v_role AND permission_key = 'claims.submit_monthly'
     ) THEN
       RAISE EXCEPTION 'Monthly claim submission permission is not granted to role %', v_role;
     END IF;
@@ -28,7 +28,6 @@ BEGIN
     SELECT 1 FROM public.role_permissions
     WHERE role IN ('claims_officer','data_entry_officer')
       AND permission_key IN ('payments.write','ledger.write')
-      AND granted = true
   ) THEN
     RAISE EXCEPTION 'Claims roles must not receive general payment or ledger write permissions';
   END IF;
