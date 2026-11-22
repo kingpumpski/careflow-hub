@@ -41,7 +41,28 @@ $$;
 REVOKE ALL ON FUNCTION security_internal.configured_withholding_tax_rate() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION security_internal.configured_withholding_tax_rate() TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.submit_monthly_claim_atomic(
+-- A monthly aggregate submission creates fixed, server-derived WHT and ledger
+-- side effects. Grant this narrowly scoped capability to claims roles without
+-- granting those users arbitrary payment or ledger write access.
+INSERT INTO public.app_permissions (key, label, category, description)
+VALUES (
+  'claims.submit_monthly',
+  'Submit monthly claims',
+  'Claims',
+  'Submit insurer-level monthly claim totals with their system-generated provisional WHT and ledger postings.'
+)
+ON CONFLICT (key) DO UPDATE
+SET label = EXCLUDED.label, category = EXCLUDED.category, description = EXCLUDED.description;
+
+INSERT INTO public.role_permissions (role, permission_key, granted)
+VALUES
+  ('superuser', 'claims.submit_monthly', true),
+  ('admin', 'claims.submit_monthly', true),
+  ('claims_officer', 'claims.submit_monthly', true),
+  ('data_entry_officer', 'claims.submit_monthly', true)
+ON CONFLICT (role, permission_key) DO UPDATE SET granted = EXCLUDED.granted;
+
+CREATE OR REPLACE FUNCTION security_internal.submit_monthly_claim_atomic(
   p_insurance_company_id uuid,
   p_claim_amount numeric,
   p_claim_month integer,
@@ -49,7 +70,7 @@ CREATE OR REPLACE FUNCTION public.submit_monthly_claim_atomic(
 )
 RETURNS jsonb
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
@@ -59,6 +80,12 @@ DECLARE
 BEGIN
   IF (SELECT auth.uid()) IS NULL THEN
     RAISE EXCEPTION 'Authentication is required to submit a monthly claim.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF NOT security_internal.current_user_has_permission('claims.write')
+     OR NOT security_internal.current_user_has_permission('claims.submit_monthly') THEN
+    RAISE EXCEPTION 'claims.write and claims.submit_monthly permissions are required.'
       USING ERRCODE = '42501';
   END IF;
 
@@ -163,12 +190,31 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION security_internal.submit_monthly_claim_atomic(uuid, numeric, integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.submit_monthly_claim_atomic(uuid, numeric, integer, integer) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.submit_monthly_claim_atomic(
+  p_insurance_company_id uuid,
+  p_claim_amount numeric,
+  p_claim_month integer,
+  p_claim_year integer
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT security_internal.submit_monthly_claim_atomic(
+    p_insurance_company_id, p_claim_amount, p_claim_month, p_claim_year
+  );
+$wrapper$;
+
 REVOKE ALL ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) TO authenticated;
 
 -- Rejections also update three financial records. Keep this path atomic and
 -- apply the same server-owned WHT rate and caller RLS checks as submissions.
-CREATE OR REPLACE FUNCTION public.submit_claim_rejection_atomic(
+CREATE OR REPLACE FUNCTION security_internal.submit_claim_rejection_atomic(
   p_insurance_company_id uuid,
   p_rejected_amount numeric,
   p_claim_month integer,
@@ -190,6 +236,12 @@ DECLARE
 BEGIN
   IF (SELECT auth.uid()) IS NULL THEN
     RAISE EXCEPTION 'Authentication is required to record a claim rejection.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF NOT security_internal.current_user_has_permission('claims.write')
+     OR NOT security_internal.current_user_has_permission('claims.submit_monthly') THEN
+    RAISE EXCEPTION 'claims.write and claims.submit_monthly permissions are required.'
       USING ERRCODE = '42501';
   END IF;
 
@@ -291,6 +343,30 @@ BEGIN
   );
 END;
 $$;
+
+REVOKE ALL ON FUNCTION security_internal.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.submit_claim_rejection_atomic(
+  p_insurance_company_id uuid,
+  p_rejected_amount numeric,
+  p_claim_month integer,
+  p_claim_year integer,
+  p_denial_category text DEFAULT NULL,
+  p_denial_reason text DEFAULT NULL,
+  p_root_cause text DEFAULT NULL,
+  p_denial_notes text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $wrapper$
+  SELECT security_internal.submit_claim_rejection_atomic(
+    p_insurance_company_id, p_rejected_amount, p_claim_month, p_claim_year,
+    p_denial_category, p_denial_reason, p_root_cause, p_denial_notes
+  );
+$wrapper$;
 
 REVOKE ALL ON FUNCTION public.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.submit_claim_rejection_atomic(uuid, numeric, integer, integer, text, text, text, text) TO authenticated;
