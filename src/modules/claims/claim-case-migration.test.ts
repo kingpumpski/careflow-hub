@@ -58,6 +58,13 @@ describe("individual claim case migration contract", () => {
     expect(migration).toContain("FOR UPDATE");
   });
 
+  it("keeps exposed claim-case RPCs invoker-only and mutation helpers private", () => {
+    expect(migration).toMatch(/FUNCTION security_internal\.create_individual_claim_case[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION security_internal\.transition_individual_claim_case[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION public\.create_individual_claim_case[\s\S]*?SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION public\.transition_individual_claim_case[\s\S]*?SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
+  });
+
   it("enforces claim-write permission and facility membership before mutations", () => {
     expect(migration).toContain("security_internal.current_user_has_permission('claims.write')");
     expect(migration).toContain("security_internal.user_has_facility_access(p_facility_id)");
