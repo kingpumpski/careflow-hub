@@ -221,3 +221,56 @@ A new read-only inspection of Supabase project `jajfdgknctzqypdtvmxo` confirmed:
 - The security advisor still reports one RLS-enabled table without a policy (`public.role_permissions`), five authenticated-callable SECURITY DEFINER functions, and leaked-password protection disabled.
 
 The observed table state confirms that the facility foundation is present but has not been bootstrapped with a facility or active member. It also confirms that individual claim cases and settlement exception tables are not deployed. These are observations only; no production data, schema, grants, policies or Auth settings were changed.
+
+
+## Implementation verification update — 2026-11-22 (follow-up)
+
+### Hybrid authentication startup hardening
+
+- [x] PR #67 merged: hybrid mode no longer treats unknown Supabase reachability during an online startup as permission to create a synthetic offline administrator session.
+- [x] The app now waits on the real Supabase session path while an online reachability probe is pending, enters offline mode after a confirmed failure, and probes again when the browser returns online.
+- [x] Unit tests cover explicit mode configuration, pending reachability, offline fallback and successful recovery.
+- [x] CI, CareFlow Quality Gate and Dependency Security Audit passed on PR head `99caa58cd11b3880b4c14d429cc3651d31c6b177` before merge.
+- [ ] Shared-workstation and intentionally configured offline-mode access still require a broader security review. This fix narrows transient startup exposure; it does not certify all local IndexedDB data access boundaries.
+
+### Monthly claim/rejection permission boundary
+
+PR #61 remains a draft and is not merged. Its implementation was revised after a read-only review of the live role-permission matrix showed that claims officers and data-entry officers have `claims.write`, but not general `payments.write` or `ledger.write` permissions. The earlier three-permission requirement would therefore have excluded those intended claims roles from monthly aggregate submission.
+
+The revised PR now:
+
+- Adds a dedicated `claims.submit_monthly` permission for superusers, administrators, claims officers and data-entry officers.
+- Keeps claims officers and data-entry officers without general payment or ledger write access.
+- Keeps the exposed public RPC wrappers `SECURITY INVOKER` and delegates only the fixed system-generated financial postings to private `security_internal` `SECURITY DEFINER` helpers.
+- Checks `auth.uid()`, `claims.write` and `claims.submit_monthly` inside those private helpers, and validates that the insurer is active.
+- Adds unit tests for the role permission boundary and a SQL contract test for helper security, wrapper grants and role assignments.
+
+The updated PR head `0e50bd6da2ee35a87d36a6396bef9a87eda6ccc0` passed CI, CareFlow Quality Gate and Dependency Security Audit. Its SQL contract test has not been executed against a disposable Supabase database, and the transactional commit/rollback behavior has not been integration-tested. Keep PR #61 in draft until those tests and migration-history gates are satisfied.
+
+### Claim-case migration follow-up ordering
+
+PR #57 is now explicitly stacked on PR #52 because both touch the same individual claim-case migration file `20261120170000_individual_claim_case_lifecycle.sql`. Its amount-transition correction must be incorporated into the PR #52 feature branch before that migration is applied anywhere. Do not merge or deploy PR #57 as an independent migration after PR #52's migration has been applied.
+
+### Current live database status
+
+The 2026-11-22 read-only inspection confirmed:
+
+- Supabase project `jajfdgknctzqypdtvmxo` is `ACTIVE_HEALTHY`, PostgreSQL 17.11 in `eu-west-1`.
+- The production migration ledger has 74 rows.
+- `public.facilities` and `public.facility_memberships` exist, but there are zero facilities and zero active memberships.
+- `public.claim_cases`, `public.settlement_exceptions` and `public.settlement_exception_audit_events` do not exist.
+- The security advisor still reports the RLS-enabled `public.role_permissions` table without a client policy, five authenticated-callable SECURITY DEFINER functions and disabled leaked-password protection.
+
+These are read-only observations. No production database migrations, RLS changes, grants, Auth settings or data changes were performed.
+
+
+### Latest main deployment verification — 2026-11-22
+
+After PR #67 merged, main commit `fa947c424a166fed461b0edc9d2d8359a3a2c7c7` completed all repository push checks successfully:
+
+- CI run 44987168218 — passed (migration filename integrity, TypeScript, lint, tests, backup/recovery tests, script syntax and production build).
+- CareFlow Quality Gate run 44987168216 — passed (TypeScript, lint, unit tests, backup tests, Edge Function typecheck and production build).
+- Dependency Security Audit run 44987168187 — passed.
+- GitHub Pages deployment run 44987168182 — build, SPA fallback, deploy and published-site/assets smoke test all passed.
+
+This confirms the repository and static-site release pipeline for that exact main commit. It does not prove interactive browser behavior on every route or certify the pending Supabase database workflows.
