@@ -27,10 +27,49 @@ export async function probeSupabaseReachability(timeoutMs = 5_000): Promise<bool
   })();
   return probeInFlight;
 }
-export function getCareFlowDataMode(): CareFlowDataMode { const configured = getConfiguredDataMode(); if (configured !== "hybrid") return configured; return typeof navigator !== "undefined" && navigator.onLine && isSupabaseConfigured() && supabaseReachable === true ? "supabase" : "offline"; }
+export function resolveCareFlowDataMode(
+  configured: CareFlowConfiguredMode,
+  browserOnline: boolean,
+  supabaseConfigured: boolean,
+  reachable: boolean | null,
+): CareFlowDataMode {
+  if (configured !== "hybrid") return configured;
+  if (!browserOnline || !supabaseConfigured || reachable === false) return "offline";
+  // Unknown reachability is a startup/checking state, not permission to create
+  // a synthetic offline administrator while a real Supabase session is pending.
+  return "supabase";
+}
+
+export function getCareFlowDataMode(): CareFlowDataMode {
+  const configured = getConfiguredDataMode();
+  const browserOnline = typeof navigator !== "undefined" && navigator.onLine;
+  return resolveCareFlowDataMode(configured, browserOnline, isSupabaseConfigured(), supabaseReachable);
+}
 export function isOfflineMode(): boolean { return getCareFlowDataMode() === "offline"; }
 export function useCareFlowDataMode(): CareFlowDataMode {
   const [mode, setMode] = useState<CareFlowDataMode>(getCareFlowDataMode());
-  useEffect(() => { const refresh = () => setMode(getCareFlowDataMode()); const handleReachability = () => refresh(); window.addEventListener("online", refresh); window.addEventListener("offline", refresh); window.addEventListener(CONNECTIVITY_EVENT, handleReachability); void probeSupabaseReachability(); return () => { window.removeEventListener("online", refresh); window.removeEventListener("offline", refresh); window.removeEventListener(CONNECTIVITY_EVENT, handleReachability); }; }, []);
+  useEffect(() => {
+    const refresh = () => setMode(getCareFlowDataMode());
+    const handleOnline = () => {
+      // A previous failed probe may have selected offline mode. Re-check when
+      // the browser comes back online so hybrid mode can recover automatically.
+      void probeSupabaseReachability();
+      refresh();
+    };
+    const handleOffline = () => {
+      notifyReachability(false);
+      refresh();
+    };
+    const handleReachability = () => refresh();
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener(CONNECTIVITY_EVENT, handleReachability);
+    void probeSupabaseReachability();
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener(CONNECTIVITY_EVENT, handleReachability);
+    };
+  }, []);
   return mode;
 }
