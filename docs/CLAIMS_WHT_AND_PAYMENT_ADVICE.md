@@ -138,3 +138,6 @@ The follow-on migration `20261123170000_add_claims_settlement_remittance_reversa
 Receipt-month reporting excludes reversed remittances while retaining both original and reversal entries in the audit history. A corrected payment is then entered as a new remittance with its own advice reference. Direct edits/deletes remain blocked.
 
 This is now wired into the Claims Settlement screen. Database execution and rollback behavior are still awaiting a clean replay; the old pre-authorization migration mismatch prevents the disposable database from reaching these new migrations.
+
+
+The aggregate monthly outstanding view now also uses the insurer-stated approved gross amount as the eligible amount once that value is known. It exposes approval variance and approved-unpaid balance separately. Where historical approved gross is unknown, the view does not invent it; the legacy submitted-minus-rejected basis remains the fallback until source evidence is captured.
