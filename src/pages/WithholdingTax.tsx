@@ -14,6 +14,18 @@ type TaxRecord = { id: string; insurance_company_id: string; month: number; year
 type Insurer = { id: string; company_name: string; color?: string; email?: string; phone?: string; address?: string; contact_person?: string };
 type TaxFilters = { company?: string; month?: string; year?: string };
 type Setting = { key: string; value?: string | null };
+type SettlementAdviceRow = {
+  id: string;
+  insurance_company_id: string;
+  period_start: string;
+  period_end: string;
+  total_claims_submitted: number | null;
+  rejection_amount: number | null;
+  payment_received: number | null;
+  actual_withholding_tax: number | null;
+  payment_advice_reference: string | null;
+  settlement_status: string;
+};
 
 export default function WithholdingTax() {
   const { can, loading: permissionsLoading } = usePermissions();
@@ -61,7 +73,7 @@ export default function WithholdingTax() {
   const { sorted, sort, handleSort } = useSort(displayData, "totalTax");
   const grandTotalTax = displayData.reduce((s, a) => s + a.totalTax, 0);
   const grandTotalClaims = displayData.reduce((s, a) => s + a.totalClaims, 0);
-  const confirmedAdviceRows = ((settlementPeriods || []) as any[]).filter((row) =>
+  const confirmedAdviceRows = ((settlementPeriods || []) as unknown as SettlementAdviceRow[]).filter((row) =>
     ["payment_advice_received", "reconciled"].includes(row.settlement_status)
       && row.actual_withholding_tax != null
   );
