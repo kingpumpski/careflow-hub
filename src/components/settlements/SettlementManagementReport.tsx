@@ -55,6 +55,7 @@ export default function SettlementManagementReport({ periods }: { periods: Row[]
   const totalApprovalVariance = knownApproved.reduce((total, result) => total + Math.abs(result.approvalVariance || 0), 0);
   const overdue = normalized.filter((period) => isSettlementOverdue(period));
   const variance = summary.totalWhtVariance;
+  const totalApprovedGross = normalized.reduce((total, period) => total + (period.approvedGrossAmount ?? 0), 0);
 
   return <section className="stat-card space-y-4">
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -65,12 +66,13 @@ export default function SettlementManagementReport({ periods }: { periods: Row[]
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><FileCheck2 className="h-4 w-4" />Periods</div><div className="mt-1 text-2xl font-semibold">{summary.periodCount}</div></div>
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4" />Reconciled</div><div className="mt-1 text-2xl font-semibold">{summary.reconciledCount}<span className="ml-1 text-sm font-normal text-muted-foreground">({reconciliationRate}%)</span></div></div>
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />Awaiting payment</div><div className="mt-1 text-2xl font-semibold">{summary.awaitingPaymentCount}</div></div>
-      <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="h-4 w-4" />Variance periods</div><div className="mt-1 text-2xl font-semibold">{underSettledCount + overSettledCount}</div></div>
+      <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="h-4 w-4" />Variance periods</div><div className="mt-1 text-2xl font-semibold">{underSettledCount + overSettledCount + approvalVarianceCount}</div></div>
       <div className="rounded-md border p-3"><div className="text-sm text-muted-foreground">Provisional WHT</div><div className="mt-1 text-2xl font-semibold">{money(summary.totalProvisionalWht)}</div></div>
       <div className="rounded-md border p-3"><div className="text-sm text-muted-foreground">WHT variance</div><div className="mt-1 text-2xl font-semibold">{money(variance)}</div></div>
     </div>
-    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5 text-sm">
+    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-6 text-sm">
       <div><span className="text-muted-foreground">Submitted</span><div className="font-medium">{money(summary.totalSubmitted)}</div></div>
+      <div><span className="text-muted-foreground">Approved gross*</span><div className="font-medium">{money(totalApprovedGross)}</div></div>
       <div><span className="text-muted-foreground">Payment received</span><div className="font-medium">{money(summary.totalPaymentReceived)}</div></div>
       <div><span className="text-muted-foreground">Rejections</span><div className="font-medium">{money(summary.totalRejectionAmount)}</div></div>
       <div><span className="text-muted-foreground">Actual WHT</span><div className="font-medium">{money(summary.totalActualWht)}</div></div>
