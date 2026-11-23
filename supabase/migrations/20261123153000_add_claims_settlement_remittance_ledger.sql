@@ -147,9 +147,6 @@ BEGIN
   IF p_net_cash_received > 0 AND p_receipt_date IS NULL THEN
     RAISE EXCEPTION 'Actual receipt date is required when net cash was received.';
   END IF;
-  IF p_receipt_date IS NOT NULL AND p_receipt_date < p_advice_date THEN
-    RAISE EXCEPTION 'Receipt date cannot be earlier than advice date.';
-  END IF;
 
   SELECT * INTO v_period
   FROM public.claims_settlement_periods
