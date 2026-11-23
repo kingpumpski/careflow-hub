@@ -6,7 +6,7 @@
 CREATE SEQUENCE IF NOT EXISTS public.preauth_request_number_seq START WITH 1 INCREMENT BY 1;
 
 ALTER TABLE public.pre_authorizations
-  ADD COLUMN IF NOT EXISTS request_number BIGINT,
+  ADD COLUMN IF NOT EXISTS request_number TEXT,
   ADD COLUMN IF NOT EXISTS dedup_fingerprint TEXT,
   ADD COLUMN IF NOT EXISTS duplicate_checked_at TIMESTAMPTZ;
 
