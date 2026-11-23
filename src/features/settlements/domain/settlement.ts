@@ -13,6 +13,8 @@ export interface ClaimsSettlementPeriod {
   periodEnd: string;
   periodType: 'month' | 'quarter' | 'custom';
   totalClaimsSubmitted: number;
+  approvedGrossAmount?: number | null;
+  actualReceiptDate?: string | null;
   withholdingTaxRate: number;
   provisionalWithholdingTax: number;
   paymentReceived: number | null;
@@ -190,6 +192,32 @@ export function calculateSettlementReconciliation(
     overSettled: Math.max(0, -residual),
     direction: balanced ? 'balanced' : residual > 0 ? 'under_settlement' : 'over_settlement',
     balanced,
+  };
+}
+
+export interface ExplicitAdviceReconciliationResult {
+  approvalVariance: number | null;
+  approvedUnpaidBalance: number | null;
+}
+
+/** Compare insurer-stated approved gross independently from submitted/rejected and cash/WHT. */
+export function calculateExplicitAdviceReconciliation(input: {
+  submittedAmount: number;
+  approvedGrossAmount: number | null;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+}): ExplicitAdviceReconciliationResult {
+  const { submittedAmount, approvedGrossAmount, rejectedAmount, actualWithholdingTax, netCashReceived } = input;
+  const amounts = [submittedAmount, rejectedAmount, actualWithholdingTax, netCashReceived];
+  if (amounts.some((value) => !Number.isFinite(value) || value < 0)
+    || (approvedGrossAmount !== null && (!Number.isFinite(approvedGrossAmount) || approvedGrossAmount < 0))) {
+    throw new Error('Advice reconciliation amounts must be non-negative finite values.');
+  }
+  if (approvedGrossAmount === null) return { approvalVariance: null, approvedUnpaidBalance: null };
+  return {
+    approvalVariance: roundCurrency(submittedAmount - approvedGrossAmount - rejectedAmount),
+    approvedUnpaidBalance: roundCurrency(approvedGrossAmount - actualWithholdingTax - netCashReceived),
   };
 }
 
