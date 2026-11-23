@@ -19,8 +19,8 @@ type SettlementRow = Record<string, any>;
 export default function ClaimsSettlement() {
   const { user } = useAuth();
   const { can, loading: permissionsLoading } = usePermissions();
-  const canReadSettlements = can("payments.read");
-  const canWriteSettlements = can("payments.write");
+  const canReadSettlements = can("payments.read") || can("claims.settlement.read");
+  const canWriteSettlements = can("payments.write") || can("claims.settlement.write");
   const settlementEnabled = !permissionsLoading && canReadSettlements;
   const facilityId = getStoredFacilityId();
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: settlementEnabled });
