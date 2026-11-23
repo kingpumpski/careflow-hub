@@ -58,7 +58,7 @@ settlement_cash_periods AS (
       WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')
         AND s.payment_received IS NOT NULL
         AND s.actual_withholding_tax IS NOT NULL
-    ) AS settlement_payment_entry_count,
+    ) AS settlement_payment_entry_count
   FROM public.claims_settlement_periods s
   WHERE s.period_type = 'month'
     AND s.period_start = date_trunc('month', s.period_start)::date
