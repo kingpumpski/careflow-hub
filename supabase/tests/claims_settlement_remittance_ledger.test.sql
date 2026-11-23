@@ -6,6 +6,7 @@ DECLARE
     'public.record_claims_settlement_remittance(uuid,text,date,date,numeric,numeric,numeric,numeric)'::regprocedure;
   v_rpc_definition text;
   v_reverse regprocedure := 'public.reverse_claims_settlement_remittance(uuid,text)'::regprocedure;
+  v_refresh regprocedure := 'public.refresh_claims_settlement_period_totals(uuid)'::regprocedure;
 BEGIN
   IF to_regclass('public.claims_settlement_remittances') IS NULL THEN
     RAISE EXCEPTION 'Claims settlement remittance ledger is missing';
@@ -59,7 +60,7 @@ BEGIN
      OR position('user_has_facility_access' in v_rpc_definition) = 0
      OR position('claims.settlement.write' in v_rpc_definition) = 0
      OR position('lower(v_reference)' in v_rpc_definition) = 0
-     OR position('approved_gross_amount = v_approved' in v_rpc_definition) = 0 THEN
+     OR position('refresh_claims_settlement_period_totals' in v_rpc_definition) = 0 THEN
     RAISE EXCEPTION 'Atomic remittance RPC is missing row locking, facility/permission scope, duplicate protection, or explicit approved amount aggregation';
   END IF;
   IF NOT EXISTS (
@@ -88,6 +89,11 @@ BEGIN
     RAISE EXCEPTION 'Reversed remittance events must be excluded from receipt-month totals';
   END IF;
 
+  IF has_function_privilege('authenticated', v_refresh, 'EXECUTE')
+     OR position('approved_gross_amount' in pg_get_functiondef(v_refresh)) = 0
+     OR position('entry_source = ''reversal''' in pg_get_functiondef(v_refresh)) = 0 THEN
+    RAISE EXCEPTION 'Private total-refresh helper must remain inaccessible to clients and aggregate compensating reversals';
+  END IF;
   IF NOT has_function_privilege('authenticated', v_reverse, 'EXECUTE')
      OR has_function_privilege('anon', v_reverse, 'EXECUTE') THEN
     RAISE EXCEPTION 'Compensating reversal RPC must be executable by authenticated users only';
