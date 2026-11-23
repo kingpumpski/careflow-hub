@@ -47,7 +47,7 @@ payment_periods AS (
     COALESCE(c.claim_year, p.claim_year),
     COALESCE(c.claim_month, p.claim_month)
 ),
-tax_periods AS (
+tax_table_periods AS (
   SELECT
     t.insurance_company_id,
     t.year AS period_year,
@@ -62,6 +62,54 @@ tax_periods AS (
   WHERE t.year IS NOT NULL
     AND t.month BETWEEN 1 AND 12
   GROUP BY t.insurance_company_id, t.year, t.month
+),
+settlement_tax_periods AS (
+  SELECT
+    s.insurance_company_id,
+    EXTRACT(YEAR FROM s.period_start)::integer AS period_year,
+    EXTRACT(MONTH FROM s.period_start)::integer AS period_month,
+    sum(COALESCE(s.provisional_withholding_tax, 0::numeric)) AS provisional_withholding_tax_amount,
+    sum(COALESCE(s.actual_withholding_tax, 0::numeric))
+      FILTER (WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')) AS actual_withholding_tax_amount,
+    count(*) FILTER (
+      WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')
+        AND s.actual_withholding_tax IS NOT NULL
+    ) AS actual_withholding_tax_entry_count,
+    count(*) AS settlement_period_count
+  FROM public.claims_settlement_periods s
+  WHERE s.period_type = 'month'
+    AND s.period_start = date_trunc('month', s.period_start)::date
+    AND s.period_end = (date_trunc('month', s.period_start) + interval '1 month - 1 day')::date
+  GROUP BY s.insurance_company_id, EXTRACT(YEAR FROM s.period_start), EXTRACT(MONTH FROM s.period_start)
+),
+tax_periods AS (
+  SELECT
+    COALESCE(st.insurance_company_id, tt.insurance_company_id) AS insurance_company_id,
+    COALESCE(st.period_year, tt.period_year) AS period_year,
+    COALESCE(st.period_month, tt.period_month) AS period_month,
+    CASE
+      WHEN COALESCE(st.settlement_period_count, 0) > 0
+        THEN COALESCE(st.provisional_withholding_tax_amount, 0::numeric)
+      ELSE COALESCE(tt.provisional_withholding_tax_amount, 0::numeric)
+    END AS provisional_withholding_tax_amount,
+    CASE
+      WHEN COALESCE(st.actual_withholding_tax_entry_count, 0) > 0
+        THEN COALESCE(st.actual_withholding_tax_amount, 0::numeric)
+      ELSE COALESCE(tt.actual_withholding_tax_amount, 0::numeric)
+    END AS actual_withholding_tax_amount,
+    CASE
+      WHEN COALESCE(st.actual_withholding_tax_entry_count, 0) > 0
+        THEN st.actual_withholding_tax_entry_count
+      ELSE COALESCE(tt.actual_withholding_tax_entry_count, 0)
+    END AS actual_withholding_tax_entry_count,
+    CASE
+      WHEN COALESCE(st.settlement_period_count, 0) > 0
+        THEN st.settlement_period_count
+      ELSE COALESCE(tt.withholding_tax_entry_count, 0)
+    END AS withholding_tax_entry_count
+  FROM settlement_tax_periods st
+  FULL OUTER JOIN tax_table_periods tt
+    USING (insurance_company_id, period_year, period_month)
 ),
 periods AS (
   SELECT insurance_company_id, period_year, period_month FROM claim_periods
@@ -120,6 +168,6 @@ SELECT
 FROM period_values;
 
 COMMENT ON VIEW public.claims_outstanding_periods IS
-  'Insurer-period outstanding balances. Provisional WHT is shown separately and used only while actual payment-advice WHT is absent. Once actual WHT exists, only actual WHT is used in the confirmed outstanding calculation; provisional estimates are never added to actual tax.';
+  'Insurer-period outstanding balances. Provisional WHT is shown separately and used only while actual payment-advice WHT is absent. Once actual WHT exists, only actual WHT is used in the confirmed outstanding calculation; provisional estimates are never added to actual tax. Monthly settlement-period advice is the preferred actual-WHT source for the monthly claims view.';
 
 GRANT SELECT ON public.claims_outstanding_periods TO authenticated;
