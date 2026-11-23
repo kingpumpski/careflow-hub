@@ -109,3 +109,18 @@ The source chronology has now been independently checked against GitHub's file h
 - Later source migrations introduce a separate text-first RPC and eventually harden the legacy lookup to return `TEXT` (including `20260908200000_harden_preauth_security_definers.sql`). This is consistent with the live production catalog, but it does not make the earlier source sequence replayable from an empty database.
 
 This confirms an intrinsic inconsistency in the checked-in historical migration sequence; it does **not** prove which SQL variant was applied to production. The production ledger contains migration version names, not SQL bodies. The repository history establishes when the current source versions were committed, not that these exact bytes were applied to the production project. Therefore no historical migration was edited and no migration-ledger repair was attempted. The next safe recovery step is to compare a verified production backup or deployment artifact with the live catalog and recover the SQL variant that was actually applied. Until that evidence exists, the disposable replay gate must remain failing and release merges remain blocked.
+
+## Claims reconciliation source-of-truth review — 2026-11-23
+
+The clarified operational requirement is that staff enter one aggregate submitted-claims amount per insurer and claims month/year from the approved claims system, then transcribe the insurer's approved amount, rejected amount, actual WHT and net cash from the later payment advice. CareFlow is the reconciliation register, not a replacement for the approved claims system.
+
+A source review of PR #79 identified a material gap against that requirement:
+
+- `claims_settlement_periods` is explicitly documented as the period-level external-source register, and it stores `total_claims_submitted`, but the current `claims_outstanding_periods` view builds `submitted_amount` and `rejected_amount` only from individual rows in `public.claims`.
+- The view's settlement-period CTEs currently contribute settlement cash and WHT, but do not contribute `total_claims_submitted` or `rejection_amount` to the reported period totals.
+- Consequently, an insurer/month entered only in the period-level register can appear with payment/WHT data while its submitted amount and rejection amount remain zero in this view. This does not meet the clarified primary workflow.
+- The settlement table also does not currently store the approved gross amount as a separately transcribed insurer-advice value. The UI derives it as submitted less rejection. The desired workflow should capture the approved amount stated on the advice and compare it with submitted less rejected, flagging a mismatch rather than silently assuming equality.
+
+Required follow-up before release: make the insurer-period register the authoritative source for aggregate submission and advice values in the monthly reconciliation report; add an explicit approved-amount field with database constraints/validation; preserve multiple receipt/advice events or a controlled amendment/audit history where insurers remit in parts; and add SQL integration tests proving that a period entered without any individual CareFlow claim rows still reconciles correctly. Do not merge this PR until those changes and the disposable migration replay blocker are resolved.
+
+No production changes were made during this review.
