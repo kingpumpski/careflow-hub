@@ -110,7 +110,7 @@ export default function ClaimsSettlement() {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ["claims_settlement_periods"] }), queryClient.invalidateQueries({ queryKey: ["claims_settlement_remittances"] })]);
       setReversalId(""); setReversalReason("");
       toast({ title: "Remittance reversed", description: "A compensating audit entry was appended. The original advice record was not changed." });
-    } catch (error: any) { toast({ title: "Unable to reverse remittance", description: error.message || "Please try again.", variant: "destructive" }); }
+    } catch (error: unknown) { toast({ title: "Unable to reverse remittance", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }); }
     finally { setBusy(false); }
   };
   const reconcilePeriod = async (row: SettlementRow) => {
