@@ -58,7 +58,6 @@ settlement_cash_periods AS (
       WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')
         AND s.payment_received IS NOT NULL
     ) AS settlement_payment_entry_count,
-    count(*) AS settlement_period_count
   FROM public.claims_settlement_periods s
   WHERE s.period_type = 'month'
     AND s.period_start = date_trunc('month', s.period_start)::date
@@ -71,12 +70,12 @@ payment_periods AS (
     COALESCE(sc.period_year, pt.period_year) AS period_year,
     COALESCE(sc.period_month, pt.period_month) AS period_month,
     CASE
-      WHEN COALESCE(sc.settlement_period_count, 0) > 0
+      WHEN COALESCE(sc.settlement_payment_entry_count, 0) > 0
         THEN COALESCE(sc.paid_amount, 0::numeric)
       ELSE COALESCE(pt.paid_amount, 0::numeric)
     END AS paid_amount,
     CASE
-      WHEN COALESCE(sc.settlement_period_count, 0) > 0
+      WHEN COALESCE(sc.settlement_payment_entry_count, 0) > 0
         THEN COALESCE(sc.settlement_payment_entry_count, 0)
       ELSE COALESCE(pt.payment_entry_count, 0)
     END AS payment_entry_count
