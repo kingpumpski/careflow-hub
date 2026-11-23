@@ -66,5 +66,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Facility-scoped remittance read policy is missing';
   END IF;
+
+  IF to_regclass('public.claims_settlement_receipt_months') IS NULL THEN
+    RAISE EXCEPTION 'Receipt-month reporting view is missing';
+  END IF;
+  IF position('settlement_submission_periods' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0 THEN
+    RAISE EXCEPTION 'Aggregate claims-settlement periods must be the canonical monthly submission source';
+  END IF;
+  IF position('receipt_date' in pg_get_viewdef('public.claims_settlement_receipt_months'::regclass)) = 0 THEN
+    RAISE EXCEPTION 'Cash/WHT receipt-month view must group by actual receipt date';
+  END IF;
 END;
 $test$;
