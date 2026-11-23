@@ -169,3 +169,10 @@ PR #79 now contains two additional forward migrations on the feature branch:
 The Claims Settlement UI now records the insurer-stated approved gross amount, advice date and actual receipt date separately, calls the atomic RPC, supports additional advice entries against the same period, and displays event history. The Outstanding Claims page now includes receipt-month totals. These changes are branch-only and have not been applied to production.
 
 The legacy snapshot intentionally leaves approved gross unknown where the prior table never captured it. A new explicit event does not retroactively prove the approved gross for a historical remittance. The event ledger currently has no compensating-reversal RPC; correcting an erroneous event safely is still an implementation requirement. Contract tests were added, but runtime SQL behavior is not certified until the disposable replay and database tests pass. The historical pre-authorization replay conflict remains a release blocker.
+
+
+## Remittance reversal and receipt report correction — 2026-11-23
+
+The branch now also includes `20261123170000_add_claims_settlement_remittance_reversals.sql` and `20261123173000_exclude_reversed_remittances_from_receipt_reporting.sql`. A permission-scoped compensating-reversal RPC requires a reason, references the original immutable remittance, permits only one reversal per event, refreshes parent totals atomically, and reopens a reconciled period for review. The UI exposes this correction action. Receipt-month cash/WHT excludes reversed events while preserving the audit trail.
+
+These forward migrations remain branch-only. Their SQL contract tests have been extended, but they have not executed because the disposable Supabase startup/replay halts at the historical 20260907111500 pre-authorization function return-type mismatch.
