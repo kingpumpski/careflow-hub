@@ -139,3 +139,21 @@ This confirms the live production catalog is internally consistent at the curren
 **Next safe recovery action:** obtain the verified production backup or deployment artifact and compare its schema/function dump with this live catalog and the Git history. If the exact original body is unavailable, document the gap and design a forward-only baseline/reconciliation path against a restored copy; do not use the current catalog as a reason to patch the old migration or skip it in the replay workflow.
 
 No production data or schema was changed by this inspection.
+
+
+### Latest replay run and domain-validation update — 2026-11-23 14:53 UTC
+
+The disposable PostgreSQL workflow on PR #79 commit `e1c73243f6bc70f8d4ef5e8fddd995533d1effbb` (run `45198825376`, job `137776453521`) successfully pulled the required Supabase images and started the local database. Migration replay then failed at `20260907111500_preauth_deduplication_and_request_identity.sql` with SQLSTATE `42P13`: `public.find_duplicate_preauthorization` declares its second output column as `BIGINT`, while the final SELECT returns `pa.request_number` as `TEXT`. The complete migration replay step and SQL behavioral tests were skipped after this failure. This confirms the blocker is the migration's return-type mismatch, not a container pull failure.
+
+The same PR head's other checks completed successfully:
+- CI run `45198825520`: success.
+- CareFlow Quality Gate run `45198825518`: success.
+- Dependency Security Audit run `45198825192`: success.
+- Disposable PostgreSQL Migration Tests run `45198825376`: failure before settlement SQL tests.
+
+Settlement-domain hardening added after the prior replay run:
+- Advice-reference duplicate detection now trims whitespace and normalizes letter case before comparison, so references such as `ADV-1` and ` adv-1 ` cannot be counted twice by the pure reconciliation function.
+- Advice and receipt date validation now verifies actual calendar dates (including month/day validity), rather than accepting any string with a `YYYY-MM-DD` shape.
+- Unit tests cover case/whitespace duplicate references and impossible dates.
+
+These changes do not alter the database schema or make the remittance workflow persistent. Explicit approved gross capture, separate actual receipt-date capture, immutable multi-remittance storage/RPC, and aggregate claims-month versus receipt-month reporting remain unimplemented. The PR remains draft and unmerged. No production DDL, data writes, migration-ledger repair, or Auth changes were performed.
