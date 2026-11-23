@@ -36,9 +36,24 @@ export default function WithholdingTax() {
     let records = taxRows.filter((t) => t.insurance_company_id === ins.id);
     if (filters.month) records = records.filter((t) => t.month === parseInt(filters.month, 10));
     if (filters.year) records = records.filter((t) => t.year === parseInt(filters.year, 10));
-    const totalTax = records.reduce((s, t) => s + Number(t.tax_amount || 0), 0);
-    const totalClaims = records.reduce((s, t) => s + Number(t.claim_total || 0), 0);
-    const actualCount = records.filter((t) => t.is_actual === true).length;
+    const byPeriod = new Map<string, { provisional: number; actual: number; hasActual: boolean; claimBase: number; hasProvisional: boolean }>();
+    records.forEach((record) => {
+      const key = `${record.year}|${record.month}`;
+      const current = byPeriod.get(key) || { provisional: 0, actual: 0, hasActual: false, claimBase: 0, hasProvisional: false };
+      if (record.is_actual) {
+        current.actual += Number(record.tax_amount || 0);
+        current.hasActual = true;
+        if (!current.hasProvisional) current.claimBase = Math.max(current.claimBase, Number(record.claim_total || 0));
+      } else {
+        current.provisional += Number(record.tax_amount || 0);
+        current.claimBase += Number(record.claim_total || 0);
+        current.hasProvisional = true;
+      }
+      byPeriod.set(key, current);
+    });
+    const totalTax = [...byPeriod.values()].reduce((sum, period) => sum + (period.hasActual ? period.actual : period.provisional), 0);
+    const totalClaims = [...byPeriod.values()].reduce((sum, period) => sum + period.claimBase, 0);
+    const actualCount = [...byPeriod.values()].filter((period) => period.hasActual).length;
     return { ...ins, records, totalTax, totalClaims, actualCount };
   }).filter((a) => a.records.length > 0);
 
