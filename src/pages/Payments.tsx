@@ -16,6 +16,15 @@ import { usePermissions } from "@/modules/security/usePermissions";
 import { isFullCalendarMonth } from "@/features/settlements/domain/settlement";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+type PaymentSettlementPeriod = {
+  insurance_company_id: string;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  settlement_status: string;
+  provisional_withholding_tax: number | null;
+  actual_withholding_tax: number | null;
+};
 
 export default function Payments() {
   const { can } = usePermissions();
@@ -52,7 +61,7 @@ export default function Payments() {
       }
       taxByPeriod.set(key, current);
     });
-    (settlementPeriods || []).filter((period: any) =>
+    ((settlementPeriods || []) as unknown as PaymentSettlementPeriod[]).filter((period) =>
       period.insurance_company_id === ins.id
       && period.period_type === "month"
       && isFullCalendarMonth(String(period.period_start || ""), String(period.period_end || ""))
@@ -115,7 +124,7 @@ export default function Payments() {
       toast({ title: "Payment recorded", description: "Payment and its matching ledger entry were saved together." });
       setAddDialogOpen(false);
       setForm({ insurance_company_id: "", amount_paid: "", payment_method: "Bank Transfer", reference_number: "", payment_date: new Date().toISOString().split("T")[0], claim_month: "", claim_year: String(new Date().getFullYear()) });
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    } catch (err: unknown) { toast({ title: "Error", description: err instanceof Error ? err.message : "Unable to record payment.", variant: "destructive" }); }
     finally { setSavingPayment(false); }
   };
 
