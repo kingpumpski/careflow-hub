@@ -113,8 +113,8 @@ export default function Payments() {
     const refMap: Record<string, number> = {};
     insPayments.forEach((p: any) => { if (p.reference_number) refMap[p.reference_number] = (refMap[p.reference_number] || 0) + 1; });
     const duplicateRefs = Object.entries(refMap).filter(([, n]) => n > 1).map(([r]) => r);
-    return { ...ins, totalPaid, totalSubmitted, totalTax, netClaim, outstanding: netClaim - totalPaid - totalTax, paymentCount: insPayments.length, payments: insPayments, variance, duplicateRefs };
-  }).filter((a: any) => a.paymentCount > 0 || search === "");
+    return { ...ins, totalPaid, totalSubmitted, totalTax, netClaim, outstanding: netClaim - totalPaid - totalTax, paymentCount: insPayments.length, hasSettlementCash: cashByPeriod.size > 0, payments: insPayments, variance, duplicateRefs };
+  }).filter((a: any) => a.paymentCount > 0 || a.hasSettlementCash || search === "");
 
   let filtered = aggregated.filter((a: any) => a.company_name?.toLowerCase().includes(search.toLowerCase()));
   if (filters.company) filtered = filtered.filter((a: any) => a.id === filters.company);
