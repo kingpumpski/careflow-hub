@@ -267,7 +267,7 @@ export function reconcileClaimsCycle(input: {
 }): ClaimsCycleReconciliation {
   const { claimsPeriod, submittedAmount, provisionalWithholdingTax, remittances } = input;
   const nonNegative = [submittedAmount, provisionalWithholdingTax];
-  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(claimsPeriod)) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(claimsPeriod)) {
     throw new Error('Claims period must use YYYY-MM format.');
   }
   if (nonNegative.some((value) => !Number.isFinite(value) || value < 0)) {
@@ -280,8 +280,8 @@ export function reconcileClaimsCycle(input: {
       throw new Error('Each remittance must have a unique, non-empty advice reference.');
     }
     references.add(item.adviceReference.trim());
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(item.adviceDate)
-      || (item.receiptDate !== null && !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.receiptDate))) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(item.adviceDate)
+      || (item.receiptDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(item.receiptDate))) {
       throw new Error('Advice and receipt dates must use YYYY-MM-DD format.');
     }
     if ([item.approvedAmount, item.rejectedAmount, item.actualWithholdingTax, item.netCashReceived]
