@@ -137,8 +137,6 @@ export default function InsuranceBulkImport() {
   };
 
   const runImport = async () => {
-    setError("Historical insurer/claims imports are temporarily paused while an atomic financial import workflow is implemented. No rows were written.");
-    return;
     // Verify each missing name has a decision
     for (const n of missing) {
       const d = missingMap[n];
@@ -392,7 +390,7 @@ export default function InsuranceBulkImport() {
             </div>
 
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Safe upsert: identical (insurer, month, year, status, amount) rows are rejected as duplicates and logged; changed amounts update the existing record with old/new values in the audit trail.</p>
+              <p className="text-xs text-muted-foreground">Historical import is temporarily paused. Its current write path is not atomic across claims, payments and audit records; imports will return after the financial batch workflow is implemented and tested.</p>
               <Button onClick={runImport} disabled className="gap-2" title="Historical import is paused until atomic financial import is available.">
                 Historical Import Paused
               </Button>
