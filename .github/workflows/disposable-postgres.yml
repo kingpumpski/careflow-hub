@@ -1,0 +1,43 @@
+name: Disposable PostgreSQL Migration Tests
+
+on:
+  push:
+    branches:
+      - fix/atomic-monthly-claim-submission
+      - feat/individual-claim-cases-rebased
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: disposable-db-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Disposable local stack only; no project link or production credentials.
+      - name: Start disposable local Supabase
+        run: supabase start -x studio,inbucket,storage-api,edge-runtime,logflare,vector,imgproxy
+
+      - name: Replay the complete migration chain on disposable PostgreSQL
+        run: supabase db reset --local --no-seed
+
+      - name: Run database SQL tests
+        run: supabase test db
+
+      - name: Stop disposable local Supabase
+        if: always()
+        run: supabase stop --no-backup
