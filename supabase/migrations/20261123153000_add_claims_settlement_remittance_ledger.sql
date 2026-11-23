@@ -118,7 +118,7 @@ CREATE OR REPLACE FUNCTION public.record_claims_settlement_remittance(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 AS $$
 DECLARE
   v_period public.claims_settlement_periods%ROWTYPE;
