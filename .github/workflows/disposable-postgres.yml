@@ -30,7 +30,7 @@ jobs:
 
       # Disposable local stack only; no project link or production credentials.
       - name: Start disposable local Supabase
-        run: supabase start -x studio,inbucket,storage-api,edge-runtime,logflare,vector,imgproxy
+        run: supabase start -x studio,mailpit,storage-api,edge-runtime,logflare,vector,imgproxy
 
       - name: Replay the complete migration chain on disposable PostgreSQL
         run: supabase db reset --local --no-seed
