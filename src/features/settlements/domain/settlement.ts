@@ -53,6 +53,23 @@ export function parseApprovedWithholdingTaxRate(input: string): number {
 const roundCurrency = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
+/** Monthly settlement periods must align to a complete calendar month. */
+export function isFullCalendarMonth(periodStart: string, periodEnd: string): boolean {
+  const startMatch = /^(\\d{4})-(\\d{2})-01$/.exec(periodStart);
+  const endMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(periodEnd);
+  if (!startMatch || !endMatch) return false;
+
+  const [, startYear, startMonth] = startMatch;
+  const [, endYear, endMonth, endDay] = endMatch;
+  if (startYear !== endYear || startMonth !== endMonth) return false;
+
+  const year = Number(startYear);
+  const month = Number(startMonth);
+  if (month < 1 || month > 12) return false;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Number(endDay) === lastDay;
+}
+
 /**
  * Returns the gross amount approved by the insurer after confirmed rejections.
  * Rejections are kept separate from the original submitted amount and never
