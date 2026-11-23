@@ -49,11 +49,12 @@ export default function SettlementManagementReport({ periods }: { periods: Row[]
       <div><h2 className="font-semibold">Management reconciliation report</h2><p className="text-sm text-muted-foreground">Operational summary of settlement completeness. Confirmed reconciliation uses submitted claims less rejections, payment received and actual WHT.</p></div>
       <Badge variant="secondary">CONFIRMED ADVICE DATA</Badge>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><FileCheck2 className="h-4 w-4" />Periods</div><div className="mt-1 text-2xl font-semibold">{summary.periodCount}</div></div>
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4" />Reconciled</div><div className="mt-1 text-2xl font-semibold">{summary.reconciledCount}<span className="ml-1 text-sm font-normal text-muted-foreground">({reconciliationRate}%)</span></div></div>
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />Awaiting payment</div><div className="mt-1 text-2xl font-semibold">{summary.awaitingPaymentCount}</div></div>
       <div className="rounded-md border p-3"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="h-4 w-4" />Variance periods</div><div className="mt-1 text-2xl font-semibold">{underSettledCount + overSettledCount}</div></div>
+      <div className="rounded-md border p-3"><div className="text-sm text-muted-foreground">Provisional WHT</div><div className="mt-1 text-2xl font-semibold">{money(summary.totalProvisionalWht)}</div></div>
       <div className="rounded-md border p-3"><div className="text-sm text-muted-foreground">WHT variance</div><div className="mt-1 text-2xl font-semibold">{money(variance)}</div></div>
     </div>
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5 text-sm">
