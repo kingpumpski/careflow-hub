@@ -248,3 +248,20 @@ The disposable workflow was retried after a separate Supabase CLI release API ra
 ### Disposable test runner reliability — 2026-11-23
 
 The retried disposable workflow also hit GitHub's unauthenticated release API rate limit because `supabase/setup-cli@v1` was configured with `version: latest`; the CLI was not installed and the migration replay was skipped. The workflow now pins the CLI to `3.0.0`, the stable version already used successfully by the earlier run that reached PostgreSQL migration replay. This removes the moving `latest` lookup from the CI setup step; it does not alter production configuration or migrations.
+
+
+## Read-only production catalog cross-check — 2026-11-23
+
+A further read-only catalog inspection was performed against production project `jajfdgknctzqypdtvmxo` after the disposable replay confirmed the duplicate `20260907140000` version. The project remains `ACTIVE_HEALTHY` on PostgreSQL 17.11. No production objects or data were changed.
+
+Observed production objects:
+
+- `public.preauthorization_versions` exists; `public.pre_authorization_versions` does not.
+- `public.preauth_submissions` exists.
+- `public.preauth_documents` and `public.preauth_audit_events` do not exist.
+- The public `register_preauth_document(uuid, integer, jsonb, text, uuid)` wrapper returns `preauth_document_registry` and delegates to `security_internal.register_preauth_document`. This is materially different from either duplicate `20260907144000` source definition, both of which return `public.preauth_documents`.
+- The public `preauth_snapshot(uuid)` wrapper delegates to `security_internal.preauth_snapshot`.
+- No public `record_preauth_audit_event` or `transition_preauthorization_status` function was present in the inspected catalog.
+- The live 74-row migration ledger records `20260907140000_preauth_versions_workflow_hardening` under version `20260908182040`. It contains no separate entries named for `preauth_atomic_hardening`, either duplicate `20260907144000` document migration, or either duplicate `20260907145000` audit/transition migration.
+
+This is additional evidence that the duplicate source files are not represented as distinct applied migrations in the current production ledger, and that the current production document implementation is a separate registry-based design. It is **not** proof that the repository files are the original SQL deployed to production, nor does absence of an object prove that no equivalent behavior exists inside another schema or wrapper. Do not simply rename, delete, or replay these historical files based on this observation. Recover the verified backup/deployed source bundle, map the live wrappers and `security_internal` implementations, and design a reviewed forward-only migration sequence before removing the duplicate-version replay blocker.
