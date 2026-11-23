@@ -89,20 +89,29 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
-  v_view_definition := lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass));
-
-  IF position('sum(coalesce(c.claim_amount' in v_view_definition) = 0
-     OR position('coalesce(cp.submitted_amount' in v_view_definition) = 0
-     OR position('coalesce(cp.rejected_amount' in v_view_definition) = 0 THEN
-    RAISE EXCEPTION 'The view must preserve gross submitted totals and subtract rejected claims exactly once';
+  IF position('status' in v_view_definition) = 0
+     OR position('rejected' in v_view_definition) = 0
+     OR position('is_actual = false' in v_view_definition) = 0
+     OR position('is_actual = true' in v_view_definition) = 0 THEN
+    RAISE EXCEPTION 'The outstanding-period view must distinguish rejected claim events and provisional versus actual WHT';
   END IF;
 
-  IF GREATEST(100::numeric - 20::numeric, 0::numeric) <> 80 THEN
-    RAISE EXCEPTION 'Rejected claim amounts must be subtracted exactly once from gross submissions';
+  IF position('greatest' in v_view_definition) = 0
+     OR position('actual_withholding_tax_entry_count' in v_view_definition) = 0 THEN
+    RAISE EXCEPTION 'The outstanding-period view must use only actual WHT once payment advice is recorded';
   END IF;
 
-  IF position('greatest(sum(coalesce(t.tax_amount' in v_view_definition) = 0 THEN
-    RAISE EXCEPTION 'Period WHT aggregation must not allow negative reversal totals to create a phantom outstanding balance';
+  IF position('INSERT INTO public.withholding_tax' in pg_get_functiondef(v_internal_rejection::regprocedure)) > 0
+     OR position('configured_withholding_tax_rate' in pg_get_functiondef(v_internal_rejection::regprocedure)) > 0 THEN
+    RAISE EXCEPTION 'Recording a rejection must not create or reverse provisional WHT; actual WHT is captured from payment advice';
+  END IF;
+
+  IF GREATEST(1000::numeric - 100::numeric, 0::numeric) <> 900 THEN
+    RAISE EXCEPTION 'A GHC 100 rejection against GHC 1000 submitted must leave GHC 900 approved';
+  END IF;
+
+  IF GREATEST(1000::numeric - 100::numeric - 67.5::numeric, 0::numeric) <> 832.5 THEN
+    RAISE EXCEPTION 'Approved gross amount less actual WHT must reconcile using actual tax only';
   END IF;
 
   IF NOT (
@@ -111,11 +120,6 @@ BEGIN
     WHERE oid = 'public.claims_outstanding_periods'::regclass
   ) THEN
     RAISE EXCEPTION 'The outstanding-period view must retain SECURITY INVOKER semantics';
-  END IF;
-
-  IF GREATEST(5::numeric + (-5::numeric), 0::numeric) <> 0
-     OR GREATEST(5::numeric + (-1::numeric), 0::numeric) <> 4 THEN
-    RAISE EXCEPTION 'Net provisional WHT reversal arithmetic is incorrect';
   END IF;
 END;
 $test$;
