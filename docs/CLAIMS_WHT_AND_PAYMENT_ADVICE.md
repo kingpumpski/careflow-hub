@@ -116,3 +116,16 @@ The existing frontend presentation is to remain unchanged during this algorithm 
 The approved gross amount stated by the insurer is a required, independent advice field. Do not calculate it as submitted minus rejected and present that result as the insurer's approved amount. Preserve submitted, approved, rejected, actual WHT and net cash as separate source figures. Calculate and display the approval variance and approved-but-unpaid balance without forcing either to zero.
 
 Advice date and actual cash receipt date are distinct. A payment advice may be issued before the cash arrives, and a claims cycle may receive multiple partial remittances over multiple later months. Each incremental remittance must retain its own advice reference, advice date and receipt date. Receipt-month reporting must use the actual receipt date; claims-month reporting must continue to use the originating claims period.
+
+
+## Remittance ledger implementation — 2026-11-23
+
+The forward migration `20261123153000_add_claims_settlement_remittance_ledger.sql` adds an append-only advice/remittance child ledger linked to the original settlement period. It snapshots existing single-advice records for continuity, but deliberately leaves their approved-gross value NULL because the old schema never captured that independent insurer-stated figure. A historical value is not fabricated from submitted less rejected or from cash plus WHT.
+
+New advice entries use the authenticated `record_claims_settlement_remittance` RPC. It locks the parent claims period, validates facility scope and settlement-write permission, rejects a duplicate normalized advice reference, appends one event, and refreshes the period's cumulative advice figures in the same transaction. Appending to a previously reconciled period moves it back to advice-received so the new remittance must be reviewed again. Direct authenticated table writes are revoked, and update/delete of remittance events are blocked.
+
+The Claims Settlement screen now captures approved gross explicitly and records advice date separately from actual cash receipt date. It permits further advice against the same claims period and displays the remittance event history. The Outstanding Claims screen also has a separate receipt-month summary for net cash and actual WHT.
+
+The forward reporting migration `20261123160000_match_aggregate_claims_periods_and_receipt_months.sql` makes the aggregate settlement register authoritative for submitted/rejected totals when a monthly period exists, retaining individual claim rows as fallback. It adds `claims_settlement_receipt_months` for actual cash/WHT grouped by receipt date. Claims ownership remains with the originating claims month.
+
+**Limitations still requiring verification:** the append-only event table currently prevents destructive edits, but a controlled compensating-reversal/correction RPC is still required for erroneous entries. SQL contract tests have been added, but clean migration replay, transaction rollback, multi-role RLS tests and end-to-end cross-month behavior remain unverified until the disposable PostgreSQL environment starts and the historical pre-authorization migration chain is reconciled. No production migration or write has been performed.
