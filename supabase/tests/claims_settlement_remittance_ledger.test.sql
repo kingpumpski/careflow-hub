@@ -80,10 +80,16 @@ BEGIN
   IF position('receipt_date' in pg_get_viewdef('public.claims_settlement_receipt_months'::regclass)) = 0 THEN
     RAISE EXCEPTION 'Cash/WHT receipt-month view must group by actual receipt date';
   END IF;
+  IF position('reversal_of_id' in pg_get_viewdef('public.claims_settlement_receipt_months'::regclass)) = 0 THEN
+    RAISE EXCEPTION 'Reversed remittance events must be excluded from receipt-month totals';
+  END IF;
 
   IF NOT has_function_privilege('authenticated', v_reverse, 'EXECUTE')
      OR has_function_privilege('anon', v_reverse, 'EXECUTE') THEN
     RAISE EXCEPTION 'Compensating reversal RPC must be executable by authenticated users only';
+  END IF;
+  IF NOT (SELECT coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[] FROM pg_proc p WHERE p.oid = v_reverse) THEN
+    RAISE EXCEPTION 'Security-definer reversal RPC must pin an empty search_path';
   END IF;
   IF position('correction_reason' in pg_get_functiondef(v_reverse)) = 0
      OR position('reversal_of_id' in pg_get_functiondef(v_reverse)) = 0
