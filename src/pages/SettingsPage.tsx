@@ -505,7 +505,7 @@ export default function SettingsPage() {
             <div className="max-w-xs space-y-3">
               <div>
                 <Label>Tax Rate (%)</Label>
-                <Input type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} className="mt-1" />
+                <Input type="number" min="0" max="100" step="0.01" placeholder="Enter approved rate" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} className="mt-1" />
               </div>
               <Button size="sm" onClick={handleSaveTax}>Save Rate</Button>
             </div>
