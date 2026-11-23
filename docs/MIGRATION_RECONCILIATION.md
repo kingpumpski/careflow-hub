@@ -157,3 +157,15 @@ Settlement-domain hardening added after the prior replay run:
 - Unit tests cover case/whitespace duplicate references and impossible dates.
 
 These changes do not alter the database schema or make the remittance workflow persistent. Explicit approved gross capture, separate actual receipt-date capture, immutable multi-remittance storage/RPC, and aggregate claims-month versus receipt-month reporting remain unimplemented. The PR remains draft and unmerged. No production DDL, data writes, migration-ledger repair, or Auth changes were performed.
+
+
+## Remittance ledger and aggregate reporting changes — 2026-11-23
+
+PR #79 now contains two additional forward migrations on the feature branch:
+
+- `20261123153000_add_claims_settlement_remittance_ledger.sql`: creates the append-only advice/remittance child ledger, snapshots existing legacy advice without inventing approved gross, and exposes a facility/permission-scoped atomic RPC. Authenticated direct writes are revoked. New remittance entries are immutable.
+- `20261123160000_match_aggregate_claims_periods_and_receipt_months.sql`: updates `claims_outstanding_periods` so a monthly aggregate settlement-period record is the authoritative submitted/rejected source when present, and adds a receipt-month view for net cash and actual WHT.
+
+The Claims Settlement UI now records the insurer-stated approved gross amount, advice date and actual receipt date separately, calls the atomic RPC, supports additional advice entries against the same period, and displays event history. The Outstanding Claims page now includes receipt-month totals. These changes are branch-only and have not been applied to production.
+
+The legacy snapshot intentionally leaves approved gross unknown where the prior table never captured it. A new explicit event does not retroactively prove the approved gross for a historical remittance. The event ledger currently has no compensating-reversal RPC; correcting an erroneous event safely is still an implementation requirement. Contract tests were added, but runtime SQL behavior is not certified until the disposable replay and database tests pass. The historical pre-authorization replay conflict remains a release blocker.
