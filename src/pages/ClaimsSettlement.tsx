@@ -80,7 +80,7 @@ export default function ClaimsSettlement() {
     setBusy(true);
     try {
       const variance = calculateWithholdingTaxVariance(Number(row.provisional_withholding_tax || 0), actual);
-      const { error } = await (supabase as any).rpc("record_claims_settlement_remittance", {
+      const { error } = await (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: Error | null }> }).rpc("record_claims_settlement_remittance", {
         p_settlement_period_id: row.id,
         p_advice_reference: form.paymentAdviceReference.trim(),
         p_advice_date: form.paymentAdviceDate,
