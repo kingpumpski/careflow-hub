@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateActualWithholdingTax,
+  calculateApprovedClaimAmount,
   calculateProvisionalWithholdingTax,
   calculateSettlementReconciliation,
   calculateWithholdingTaxVariance,
@@ -15,6 +17,28 @@ describe('claims settlement domain', () => {
     expect(parseApprovedWithholdingTaxRate('5')).toBe(5);
     expect(() => parseApprovedWithholdingTaxRate('101')).toThrow('between 0 and 100');
     expect(() => parseApprovedWithholdingTaxRate('not-a-rate')).toThrow('between 0 and 100');
+  });
+
+  it('keeps provisional WHT on the full submitted amount after rejection', () => {
+    const submitted = 1_000;
+    const explicitFacilityRate = 7.5;
+    const provisional = calculateProvisionalWithholdingTax(submitted, explicitFacilityRate);
+    const approved = calculateApprovedClaimAmount(submitted, 100);
+
+    expect(provisional).toBe(75);
+    expect(approved).toBe(900);
+    // Rejection is a separate settlement component; the estimate stays at GHC 75.
+    expect(calculateProvisionalWithholdingTax(submitted, explicitFacilityRate)).toBe(75);
+  });
+
+  it('calculates actual WHT on the approved gross amount after payment advice', () => {
+    expect(calculateActualWithholdingTax(1_000, 100, 7.5)).toBe(67.5);
+    expect(calculateActualWithholdingTax(1_000, 0, 7.5)).toBe(75);
+  });
+
+  it('rejects a rejection amount greater than the submitted claim', () => {
+    expect(() => calculateApprovedClaimAmount(1_000, 1_001)).toThrow('cannot exceed');
+    expect(() => calculateActualWithholdingTax(1_000, -1, 7.5)).toThrow();
   });
 
   it('calculates provisional WHT without treating it as actual', () => {
