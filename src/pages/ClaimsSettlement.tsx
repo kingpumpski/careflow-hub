@@ -45,7 +45,7 @@ export default function ClaimsSettlement() {
     if (!form.insurerId || !form.periodStart || !form.periodEnd || !form.totalClaimsSubmitted) { toast({ title: "Complete the period details", description: "Insurer, period dates and total claims submitted are required.", variant: "destructive" }); return; }
     let approvedRate: number;
     try { approvedRate = parseApprovedWithholdingTaxRate(form.withholdingTaxRate); }
-    catch (error: any) { toast({ title: "Invalid approved WHT rate", description: error.message, variant: "destructive" }); return; }
+    catch (error: unknown) { toast({ title: "Invalid approved WHT rate", description: error instanceof Error ? error.message : "Enter a valid approved rate.", variant: "destructive" }); return; }
     if (new Date(form.periodEnd) < new Date(form.periodStart)) { toast({ title: "Invalid period", description: "The period end date cannot be before the start date.", variant: "destructive" }); return; }
     if (!Number.isFinite(submitted) || submitted < 0 || !Number.isFinite(approvedRate) || approvedRate < 0 || approvedRate > 100) { toast({ title: "Invalid settlement values", description: "Claims submitted must be non-negative and WHT rate must be between 0 and 100%.", variant: "destructive" }); return; }
     setBusy(true);
