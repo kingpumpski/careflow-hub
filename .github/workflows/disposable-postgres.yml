@@ -30,7 +30,7 @@ jobs:
       # This starts an isolated local Supabase stack in the GitHub-hosted runner.
       # It does not link to or contact the production project.
       - name: Start disposable local Supabase
-        run: supabase start -x studio,inbucket,storage-api,edge-runtime,logflare,vector,imgproxy
+        run: supabase start -x studio,mailpit,storage-api,edge-runtime,logflare,vector,imgproxy
 
       - name: Replay the complete migration chain on disposable PostgreSQL
         run: supabase db reset --local --no-seed
