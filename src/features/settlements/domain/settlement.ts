@@ -40,6 +40,16 @@ export interface SettlementReconciliationResult {
 
 const EPSILON = 0.005;
 
+/** Parse a staff-entered, approved WHT rate. Missing values must never become an assumed rate. */
+export function parseApprovedWithholdingTaxRate(input: string): number {
+  if (!input.trim()) throw new Error('An approved withholding tax rate is required.');
+  const rate = Number(input);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+    throw new Error('Withholding tax rate must be between 0 and 100.');
+  }
+  return rate;
+}
+
 const roundCurrency = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
