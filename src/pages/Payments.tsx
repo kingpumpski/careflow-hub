@@ -19,7 +19,7 @@ const monthNames = ["", "January", "February", "March", "April", "May", "June", 
 
 export default function Payments() {
   const { can } = usePermissions();
-  const canWritePayments = can("payments.write");
+  const canWritePayments = can("payments.write") && can("ledger.write");
   const { data: payments, isLoading } = useSupabaseQuery("payments");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
