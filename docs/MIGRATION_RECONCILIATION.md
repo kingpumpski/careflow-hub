@@ -204,3 +204,17 @@ A further read-only review compared the repository migration chain with the live
 The final production catalog and later migration definitions agree on TEXT, but the checked-in historical chain contains earlier BIGINT declarations and additional BIGINT local variables. The production migration ledger stores version/name records, not the original SQL body or its checksum. The 18 unmatched ledger entries in the snapshot also show that the current repository inventory is not a complete, direct representation of every deployed migration artifact.
 
 Therefore, the evidence proves the repository's current fresh-replay chain is internally inconsistent; it does not prove which exact historical SQL body was applied in production. Do not patch only the first failure, alter the production catalog, mark migrations applied, or rewrite historical files on this evidence alone. Recover the deployed SQL bundle/source commit or a verified database backup first. Then reconstruct a complete ordered replay chain, reconcile all BIGINT/TEXT transitions (including the later declarations above), and run the entire disposable replay and SQL behavioral suite before release.
+
+
+## Pre-authorization request-number type repair — 2026-11-23
+
+At the user's explicit direction, PR #79 now aligns the known inconsistent historical source declarations with the established TEXT schema:
+
+- `20260907111500_preauth_deduplication_and_request_identity.sql`: its fallback `ADD COLUMN IF NOT EXISTS request_number` declaration and duplicate-lookup return column now both use TEXT.
+- `20260907123000_preauth_text_first_identity.sql`: duplicate-lookup return column now uses TEXT.
+- `20260907124500_preauth_text_first_duplicate_guard.sql`: `existing_request` local variable now uses TEXT.
+- `20260907132500_preauth_atomic_dedup_boundary.sql`: `v_existing` local variable now uses TEXT.
+
+This aligns all four identified source mismatches with the earlier `20260907095500` TEXT column, the later text-first/security-hardening migrations, and the read-only production catalog. It avoids casting human-readable request identifiers (for example, `PA-YYYY-XXXXXXXX`) to numbers.
+
+The change is source-branch-only. No production SQL, data, migration ledger, or Auth configuration was changed. Because the production ledger records migration names but not the exact SQL bodies/checksums, this repair still requires full clean replay and restored-backup validation; it must not be treated as proof that the checked-in historical SQL is byte-identical to the SQL originally applied in production. The disposable PostgreSQL workflow and settlement SQL behavioral suite must pass on the updated PR head before merge/deployment. If replay exposes further independent historical inconsistencies, stop and reconcile them rather than bypassing or skipping migrations.
