@@ -18,7 +18,6 @@ type Setting = { key: string; value?: string | null };
 export default function WithholdingTax() {
   const { can, loading: permissionsLoading } = usePermissions();
   const canReadWHT = can("payments.read") || can("ledger.read") || can("reports.read");
-  const canWriteWHT = can("payments.write");
   const { data: taxRecords, isLoading } = useSupabaseQuery("withholding_tax", { enabled: canReadWHT && !permissionsLoading });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadWHT && !permissionsLoading });
   const { data: settings } = useSupabaseQuery("system_settings", { enabled: can("settings.manage") && !permissionsLoading });
