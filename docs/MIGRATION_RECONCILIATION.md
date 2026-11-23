@@ -234,3 +234,12 @@ The disposable workflow was re-triggered by these source commits. It must comple
 
 
 The document lifecycle migration's added check constraints are guarded by catalog existence checks, so replay remains safe if the lifecycle-shaped table already exists instead of the integrity-shaped table. The source-only migration fixes now cover the observed table-name mismatch and the incompatible duplicate document-table shapes; the next disposable run is the required proof, not an assumption of success.
+
+
+### Duplicate migration-version gate confirmed — 2026-11-23 17:00 UTC
+
+The next disposable run on commit `c1bbafd357c94672dfba879adf77aecb0f16dd2c` started PostgreSQL and applied migrations through `20260907140000_preauth_atomic_hardening.sql`. It then attempted `20260907140000_preauth_versions_workflow_hardening.sql` and failed with SQLSTATE `23505`, duplicate key on `schema_migrations_pkey`. The two files share the same 14-digit migration version, so the CLI cannot record both as separate migrations. The failure occurs at migration-ledger insertion; it is not evidence that the table-name correction failed, and the replay did not reach the later document migrations or SQL tests.
+
+The production ledger provides a crucial mapping: `20260907140000_preauth_versions_workflow_hardening` is recorded under production version `20260908182040`. The other `20260907140000` file is not separately present in the 74-row production ledger. This means a blind timestamp rename or arbitrary re-versioning could make the local chain diverge further from production. The remaining duplicate groups (`20260907144000` and `20260907145000`) also require a source-to-ledger mapping before they can safely be re-versioned.
+
+The disposable workflow was retried after a separate Supabase CLI release API rate-limit failure. A full replay is still required; no migration was skipped and no production migration ledger or schema was modified. Do not merge/deploy while duplicate migration versions prevent a clean replay. Recover the authoritative migration bundle or verified backup and reconstruct the complete version mapping before resolving the duplicate version groups.
