@@ -5,6 +5,7 @@ DECLARE
   v_rpc regprocedure :=
     'public.record_claims_settlement_remittance(uuid,text,date,date,numeric,numeric,numeric,numeric)'::regprocedure;
   v_rpc_definition text;
+  v_reverse regprocedure := 'public.reverse_claims_settlement_remittance(uuid,text)'::regprocedure;
 BEGIN
   IF to_regclass('public.claims_settlement_remittances') IS NULL THEN
     RAISE EXCEPTION 'Claims settlement remittance ledger is missing';
@@ -78,6 +79,23 @@ BEGIN
   END IF;
   IF position('receipt_date' in pg_get_viewdef('public.claims_settlement_receipt_months'::regclass)) = 0 THEN
     RAISE EXCEPTION 'Cash/WHT receipt-month view must group by actual receipt date';
+  END IF;
+
+  IF NOT has_function_privilege('authenticated', v_reverse, 'EXECUTE')
+     OR has_function_privilege('anon', v_reverse, 'EXECUTE') THEN
+    RAISE EXCEPTION 'Compensating reversal RPC must be executable by authenticated users only';
+  END IF;
+  IF position('correction_reason' in pg_get_functiondef(v_reverse)) = 0
+     OR position('reversal_of_id' in pg_get_functiondef(v_reverse)) = 0
+     OR position('refresh_claims_settlement_period_totals' in pg_get_functiondef(v_reverse)) = 0 THEN
+    RAISE EXCEPTION 'Reversal RPC must require an audit reason, reference the original event and refresh parent totals';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'claims_settlement_remittance_reversal_once_idx'
+  ) THEN
+    RAISE EXCEPTION 'A remittance must not be reversed more than once';
   END IF;
 END;
 $test$;
