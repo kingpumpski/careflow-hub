@@ -22,7 +22,7 @@ describe('provisional and actual WHT reporting migration contract', () => {
 
   it('uses confirmed net cash from payment advice instead of double-counting payment rows', () => {
     expect(migration).toMatch(/sum\(COALESCE\(s\.payment_received, 0::numeric\)\)[\s\S]*?payment_advice_received/i);
-    expect(migration).toMatch(/WHEN COALESCE\(sc\.settlement_period_count, 0\) > 0[\s\S]*?THEN COALESCE\(sc\.paid_amount, 0::numeric\)/i);
+    expect(migration).toMatch(/WHEN COALESCE\(sc\.settlement_payment_entry_count, 0\) > 0[\s\S]*?THEN COALESCE\(sc\.paid_amount, 0::numeric\)/i);
     expect(migration).toMatch(/FULL OUTER JOIN payment_table_periods/i);
   });
 
