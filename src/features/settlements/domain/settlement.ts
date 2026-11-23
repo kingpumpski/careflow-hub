@@ -229,8 +229,10 @@ export function isSettlementConfirmed(status: SettlementStatus): boolean {
  * Reconciliation is an explicit operational confirmation after payment advice
  * has been entered. It cannot be performed while the period is still awaiting payment.
  */
-export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'paymentAdviceReference' | 'paymentAdviceDate'>): boolean {
+export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'paymentAdviceReference' | 'paymentAdviceDate' | 'approvedGrossAmount'>): boolean {
   return period.settlementStatus === 'payment_advice_received'
+    && period.approvedGrossAmount !== null
+    && period.approvedGrossAmount !== undefined
     && period.paymentReceived !== null
     && period.rejectionAmount !== null
     && period.actualWithholdingTax !== null
