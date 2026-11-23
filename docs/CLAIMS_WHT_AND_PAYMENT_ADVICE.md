@@ -11,11 +11,13 @@ No default statutory rate is assumed. A facility-approved rate must be explicitl
 
 ## Reconciliation basis
 
-The payment-advice field is **net cash received after WHT**, not the approved gross amount.
+The insurer advice must be captured as separate values: **approved gross amount**, rejected amount, actual WHT, net cash received, advice reference/date, and actual receipt date. The approved gross amount is not interchangeable with net cash.
 
-`approved gross = submitted gross - rejected amount`
+`submitted gross = approved gross + rejected amount + approval variance`
 
-`approved gross = net cash received + actual WHT`
+`approved gross = net cash received + actual WHT + approved-but-unpaid balance`
+
+The approved gross amount is transcribed explicitly from the insurer's advice. It is not silently calculated as submitted less rejected, nor inferred from cash plus WHT. Both equations are reconciliation checks: any non-zero approval variance or approved-but-unpaid balance remains visible for investigation.
 
 For example, with a test-only rate R:
 
@@ -61,17 +63,13 @@ When the insurer sends payment advice or a remittance receipt, staff update that
 
 The record must preserve the original submitted amount. It must not overwrite the submission total with the approved amount or net cash. These are separate stages and separate measures.
 
-The reconciliation identity is:
+The reconciliation checks are:
 
-`submitted claims = approved claims + rejected claims`
+`approval variance = submitted claims - approved claims - rejected claims`
 
-`approved claims = actual WHT + net cash received`
+`approved-but-unpaid balance = approved claims - actual WHT - net cash received`
 
-Therefore:
-
-`submitted claims = rejected claims + actual WHT + net cash received`
-
-The project should calculate the reconciliation difference and show under/over-settlement or an unresolved variance. It should not silently force the figures to balance. The approved amount shown on the insurer advice should be captured as an explicit reported value; the system may compare it with submitted less rejected and flag any difference rather than assuming the two are always identical.
+The project should calculate both differences and show under/over-settlement or an unresolved variance. It should not silently force the figures to balance. The approved amount shown on the insurer advice must be captured as an explicit reported value; submitted less rejected is a comparison only, not a substitute for the approved figure. Actual WHT and net cash are also recorded independently from the advice.
 
 Before advice arrives, provisional WHT is an estimate against the full submitted amount using the facility-approved rate. After advice arrives, actual WHT is the value transcribed from the insurer's advice and relates to the approved amount. Provisional WHT remains available as an estimate for comparison; it is never added to actual WHT.
 
@@ -111,3 +109,10 @@ The claims month is the ownership period for the submission. Advice and cash rec
 The existing frontend presentation is to remain unchanged during this algorithm improvement. The current screen fields and summary labels should continue to render as before; the reporting/query layer should supply corrected period aggregates and matching status. Any new event-level data capture must reuse the existing interaction where practical, and must not introduce a replacement claims-entry workflow.
 
 **Release dependency:** the current period table has only one advice reference/date and one set of payment figures. A child remittance ledger and atomic database write path are required before this algorithm can be certified end-to-end. The pure domain calculation and tests are preparatory and do not by themselves enable multi-remittance persistence.
+
+
+## Explicit approved amount and actual receipt date clarification
+
+The approved gross amount stated by the insurer is a required, independent advice field. Do not calculate it as submitted minus rejected and present that result as the insurer's approved amount. Preserve submitted, approved, rejected, actual WHT and net cash as separate source figures. Calculate and display the approval variance and approved-but-unpaid balance without forcing either to zero.
+
+Advice date and actual cash receipt date are distinct. A payment advice may be issued before the cash arrives, and a claims cycle may receive multiple partial remittances over multiple later months. Each incremental remittance must retain its own advice reference, advice date and receipt date. Receipt-month reporting must use the actual receipt date; claims-month reporting must continue to use the originating claims period.
