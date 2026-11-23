@@ -33,9 +33,28 @@ ALTER TABLE public.preauth_documents
 ALTER TABLE public.preauth_documents
   DROP CONSTRAINT IF EXISTS preauth_documents_preauth_id_version_number_document_type_key;
 
-ALTER TABLE public.preauth_documents
-  ADD CONSTRAINT preauth_documents_version_positive CHECK (version_number > 0),
-  ADD CONSTRAINT preauth_documents_status_valid CHECK (status IN ('pending','generated','failed','superseded'));
+DO $preauth_document_constraints$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.preauth_documents'::regclass
+      AND conname = 'preauth_documents_version_positive'
+  ) THEN
+    ALTER TABLE public.preauth_documents
+      ADD CONSTRAINT preauth_documents_version_positive CHECK (version_number > 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.preauth_documents'::regclass
+      AND conname = 'preauth_documents_status_valid'
+  ) THEN
+    ALTER TABLE public.preauth_documents
+      ADD CONSTRAINT preauth_documents_status_valid
+      CHECK (status IN ('pending','generated','failed','superseded'));
+  END IF;
+END;
+$preauth_document_constraints$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS preauth_documents_version_type_idx
   ON public.preauth_documents(preauth_id, version_number, document_type, format);
