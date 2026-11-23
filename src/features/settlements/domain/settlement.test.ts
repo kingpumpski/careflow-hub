@@ -83,6 +83,7 @@ describe('claims settlement domain', () => {
     const period = {
       settlementStatus: 'payment_advice_received' as const,
       paymentReceived: 82_000,
+      approvedGrossAmount: 88_000,
       rejectionAmount: 12_000,
       actualWithholdingTax: 6_000,
       paymentAdviceReference: 'PA-2026-001',
@@ -91,6 +92,7 @@ describe('claims settlement domain', () => {
 
     expect(canReconcileSettlement(period)).toBe(true);
     expect(canReconcileSettlement({ ...period, actualWithholdingTax: null })).toBe(false);
+    expect(canReconcileSettlement({ ...period, approvedGrossAmount: null })).toBe(false);
     expect(canReconcileSettlement({ ...period, settlementStatus: 'awaiting_payment' })).toBe(false);
     expect(canReconcileSettlement({ ...period, paymentAdviceReference: ' ' })).toBe(false);
   });
