@@ -93,3 +93,21 @@ For each insurer and claims month/year, management should be able to see:
 - days outstanding and payment delay.
 
 The monthly and insurer-level summaries must be driven by this period-level register. Individual claim rows in CareFlow, if present for other workflows, must not be required to reconstruct the aggregate figures sourced from the approved claims system.
+
+
+## Cross-month claims-cycle matching (required algorithm)
+
+The claims month is the ownership period for the submission. Advice and cash receipt dates are separate event dates and must never move or overwrite the original claims period.
+
+- A September submission remains a September claims cycle even if advice is issued in October and cash is received in October or November.
+- Each advice/remittance event is linked to its originating facility + insurer + claims period. Advice date and actual cash receipt date are recorded separately.
+- Amounts on each remittance event are incremental, not cumulative. Multiple partial remittances are summed against the same claims cycle and retain their own references and dates.
+- The calculation engine compares cumulative advice-approved gross with submitted less cumulative rejected amount. It separately compares approved gross with cumulative actual WHT plus net cash received.
+- The engine reports approval variance and approved-but-unpaid balance independently. It must not force either value to zero.
+- Receipt-month totals are also calculated from actual receipt dates so cash and WHT can be analysed in the month they were received/withheld, while the originating claims cycle remains intact.
+- Duplicate advice references within a facility/insurer scope must be rejected or idempotently recognized; a retry must never count the same remittance twice.
+- Provisional WHT remains calculated from the original full submitted amount and approved facility rate for the claims period. It remains visible for analysis after actual advice arrives. Actual WHT is accumulated only from advice/remittance records and is not replaced by the provisional estimate.
+
+The existing frontend presentation is to remain unchanged during this algorithm improvement. The current screen fields and summary labels should continue to render as before; the reporting/query layer should supply corrected period aggregates and matching status. Any new event-level data capture must reuse the existing interaction where practical, and must not introduce a replacement claims-entry workflow.
+
+**Release dependency:** the current period table has only one advice reference/date and one set of payment figures. A child remittance ledger and atomic database write path are required before this algorithm can be certified end-to-end. The pure domain calculation and tests are preparatory and do not by themselves enable multi-remittance persistence.
