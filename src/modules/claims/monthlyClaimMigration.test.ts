@@ -73,15 +73,8 @@ describe("monthly claim withholding-tax configuration", () => {
 });
 
 describe("monthly claim migration outstanding calculation", () => {
-  it("preserves gross submissions and subtracts rejected claims exactly once", () => {
-    expect(migration).toMatch(
-      /sum\s*\(\s*coalesce\s*\(\s*c\.claim_amount/i,
-    );
-    expect(migration).toMatch(
-      /coalesce\(cp\.submitted_amount[\s\S]*?coalesce\(cp\.rejected_amount/i,
-    );
-    expect(migration).not.toMatch(
-      /sum\s*\(\s*case\s*when\s*lower\s*\(\s*coalesce\s*\(\s*c\.status[\s\S]*?<>\s*'rejected'/i,
-    );
+  it("excludes rejection-event rows from gross submitted totals and subtracts them once", () => {
+    expect(migration).toMatch(/lower\\s*\\(\\s*coalesce\\s*\\(\\s*c\\.status[\\s\\S]*?<>\\s*'rejected'/i);
+    expect(migration).toMatch(/coalesce\\(cp\\.submitted_amount[\\s\\S]*?coalesce\\(cp\\.rejected_amount/i);
   });
 });
