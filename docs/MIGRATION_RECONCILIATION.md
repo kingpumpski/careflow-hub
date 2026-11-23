@@ -176,3 +176,31 @@ The legacy snapshot intentionally leaves approved gross unknown where the prior 
 The branch now also includes `20261123170000_add_claims_settlement_remittance_reversals.sql` and `20261123173000_exclude_reversed_remittances_from_receipt_reporting.sql`. A permission-scoped compensating-reversal RPC requires a reason, references the original immutable remittance, permits only one reversal per event, refreshes parent totals atomically, and reopens a reconciled period for review. The UI exposes this correction action. Receipt-month cash/WHT excludes reversed events while preserving the audit trail.
 
 These forward migrations remain branch-only. Their SQL contract tests have been extended, but they have not executed because the disposable Supabase startup/replay halts at the historical 20260907111500 pre-authorization function return-type mismatch.
+
+
+## Expanded pre-authorization replay evidence — 2026-11-23 16:38 UTC
+
+A further read-only review compared the repository migration chain with the live production catalog and migration ledger. This narrows the replay failure and identifies additional type-inconsistent statements; it does **not** authorize a historical migration rewrite or ledger repair.
+
+### Repository chain findings
+
+- `20260907095500_preauthorization_studio.sql` adds `public.pre_authorizations.request_number` as `TEXT`.
+- `20260907111500_preauth_deduplication_and_request_identity.sql` declares `public.find_duplicate_preauthorization(...)` to return `request_number BIGINT`, while selecting `pa.request_number` from that TEXT column. This is the exact disposable replay failure (SQLSTATE `42P13`).
+- `20260907123000_preauth_text_first_identity.sql` repeats the same BIGINT return declaration for the same TEXT column, so correcting only the first failing declaration would not establish a clean replay.
+- `20260907124500_preauth_text_first_duplicate_guard.sql` declares `existing_request BIGINT` and selects the TEXT request number into it.
+- `20260907132500_preauth_atomic_dedup_boundary.sql` declares `v_existing BIGINT` and selects the TEXT request number into it.
+- Later repository migrations move the model back to TEXT: `20260907140000_preauth_atomic_hardening.sql` declares a text-first lookup result, and `20260908200000_harden_preauth_security_definers.sql` defines both the internal lookup and public wrapper with `request_number TEXT`.
+
+### Live production evidence (read-only)
+
+- `public.pre_authorizations.request_number` is TEXT.
+- `public.find_duplicate_preauthorization(...)` returns `request_number TEXT` and is a SECURITY INVOKER wrapper.
+- `security_internal.find_duplicate_preauthorization(...)` returns `request_number TEXT` and is SECURITY DEFINER.
+- The live function definitions are consistent with the TEXT column.
+- The live migration ledger contains 74 rows and records the relevant pre-authorization migrations, including `20260907111500_preauth_deduplication_and_request_identity`, `20260907124500_preauth_text_first_duplicate_guard`, `20260907132500_preauth_atomic_dedup_boundary`, `20260907133000_preauth_atomic_and_client_suggestions`, `20260907140000_preauth_versions_workflow_hardening`, and `harden_preauth_security_definers`.
+
+### Interpretation and next safe step
+
+The final production catalog and later migration definitions agree on TEXT, but the checked-in historical chain contains earlier BIGINT declarations and additional BIGINT local variables. The production migration ledger stores version/name records, not the original SQL body or its checksum. The 18 unmatched ledger entries in the snapshot also show that the current repository inventory is not a complete, direct representation of every deployed migration artifact.
+
+Therefore, the evidence proves the repository's current fresh-replay chain is internally inconsistent; it does not prove which exact historical SQL body was applied in production. Do not patch only the first failure, alter the production catalog, mark migrations applied, or rewrite historical files on this evidence alone. Recover the deployed SQL bundle/source commit or a verified database backup first. Then reconstruct a complete ordered replay chain, reconcile all BIGINT/TEXT transitions (including the later declarations above), and run the entire disposable replay and SQL behavioral suite before release.
