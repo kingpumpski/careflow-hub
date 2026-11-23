@@ -31,11 +31,26 @@ describe("monthly claim migration SQL delimiters", () => {
 
   
 describe("monthly claim migration financial aggregation", () => {
-  it("prevents negative WHT reversal totals from creating phantom outstanding balances", () => {
-    expect(migration).toMatch(
-      /greatest\s*\(\s*sum\s*\(\s*coalesce\s*\(\s*t\.tax_amount/i,
-    );
-    expect(migration).toMatch(/WITH \(security_invoker = true\)/i);
+  it("keeps rejection events separate from the original submitted amount", () => {
+    expect(migration).toMatch(/lower\\s*\\(\\s*coalesce\\s*\\(\\s*c\\.status[\\s\\S]*?<>\\s*'rejected'/i);
+    expect(migration).toMatch(/coalesce\\(cp\\.submitted_amount[\\s\\S]*?coalesce\\(cp\\.rejected_amount/i);
+  });
+
+  it("keeps provisional and actual WHT separate and selects actual after advice", () => {
+    expect(migration).toMatch(/filter\\s*\\(\\s*where\\s+t\\.is_actual\\s*=\\s*false/i);
+    expect(migration).toMatch(/filter\\s*\\(\\s*where\\s+t\\.is_actual\\s*=\\s*true/i);
+    expect(migration).toMatch(/actual_withholding_tax_entry_count/i);
+    expect(migration).not.toMatch(/-p_rejected_amount/);
+  });
+
+  it("does not post negative provisional WHT when a rejection is recorded", () => {
+    const rejection = migration.split("FUNCTION security_internal.submit_claim_rejection_atomic")[1]?.split("REVOKE ALL ON FUNCTION security_internal.submit_claim_rejection_atomic")[0] ?? "";
+    expect(rejection).not.toMatch(/INSERT INTO public\\.withholding_tax/i);
+    expect(rejection).not.toMatch(/configured_withholding_tax_rate/i);
+  });
+
+  it("retains invoker security for the reporting view", () => {
+    expect(migration).toMatch(/WITH \\(security_invoker = true\\)/i);
   });
 });
 
