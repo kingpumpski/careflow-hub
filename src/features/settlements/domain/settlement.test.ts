@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateActualWithholdingTax,
+  isFullCalendarMonth,
   calculateApprovedClaimAmount,
   calculateProvisionalWithholdingTax,
   calculateSettlementReconciliation,
@@ -11,6 +12,14 @@ import {
 } from './settlement';
 
 describe('claims settlement domain', () => {
+  it('accepts only complete calendar-month ranges for monthly reporting', () => {
+    expect(isFullCalendarMonth('2026-02-01', '2026-02-28')).toBe(true);
+    expect(isFullCalendarMonth('2024-02-01', '2024-02-29')).toBe(true);
+    expect(isFullCalendarMonth('2026-02-02', '2026-02-28')).toBe(false);
+    expect(isFullCalendarMonth('2026-02-01', '2026-02-27')).toBe(false);
+    expect(isFullCalendarMonth('2026-02-01', '2026-03-01')).toBe(false);
+  });
+
   it('requires an explicitly entered approved WHT rate and accepts explicit zero', () => {
     expect(() => parseApprovedWithholdingTaxRate('')).toThrow('required');
     expect(parseApprovedWithholdingTaxRate('0')).toBe(0);
