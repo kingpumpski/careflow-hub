@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateActualWithholdingTax,
+  calculateExplicitAdviceReconciliation,
   isFullCalendarMonth,
   calculateApprovedClaimAmount,
   calculateProvisionalWithholdingTax,
@@ -131,6 +132,14 @@ describe('claims settlement domain', () => {
     expect(result.balanced).toBe(false);
   });
 
+  it('reconciles insurer-stated approved gross independently and preserves unknown legacy approval', () => {
+    expect(calculateExplicitAdviceReconciliation({ submittedAmount: 1000, approvedGrossAmount: 900, rejectedAmount: 100, actualWithholdingTax: 45, netCashReceived: 855 }))
+      .toEqual({ approvalVariance: 0, approvedUnpaidBalance: 0 });
+    expect(calculateExplicitAdviceReconciliation({ submittedAmount: 1000, approvedGrossAmount: 880, rejectedAmount: 100, actualWithholdingTax: 44, netCashReceived: 836 }))
+      .toEqual({ approvalVariance: 20, approvedUnpaidBalance: 0 });
+    expect(calculateExplicitAdviceReconciliation({ submittedAmount: 1000, approvedGrossAmount: null, rejectedAmount: 100, actualWithholdingTax: 45, netCashReceived: 855 }))
+      .toEqual({ approvalVariance: null, approvedUnpaidBalance: null });
+  });
   it('matches a later-month remittance to its originating claims cycle', async () => {
     const { reconcileClaimsCycle } = await import('./settlement');
     const result = reconcileClaimsCycle({
