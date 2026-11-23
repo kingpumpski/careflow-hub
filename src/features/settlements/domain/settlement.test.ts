@@ -5,9 +5,18 @@ import {
   calculateWithholdingTaxVariance,
   canReconcileSettlement,
   isSettlementConfirmed,
+  parseApprovedWithholdingTaxRate,
 } from './settlement';
 
 describe('claims settlement domain', () => {
+  it('requires an explicitly entered approved WHT rate and accepts explicit zero', () => {
+    expect(() => parseApprovedWithholdingTaxRate('')).toThrow('required');
+    expect(parseApprovedWithholdingTaxRate('0')).toBe(0);
+    expect(parseApprovedWithholdingTaxRate('5')).toBe(5);
+    expect(() => parseApprovedWithholdingTaxRate('101')).toThrow('between 0 and 100');
+    expect(() => parseApprovedWithholdingTaxRate('not-a-rate')).toThrow('between 0 and 100');
+  });
+
   it('calculates provisional WHT without treating it as actual', () => {
     expect(calculateProvisionalWithholdingTax(100_000, 5)).toBe(5_000);
   });
