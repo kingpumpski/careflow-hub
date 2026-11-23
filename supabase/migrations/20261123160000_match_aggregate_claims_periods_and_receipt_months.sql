@@ -40,6 +40,7 @@ settlement_submission_periods AS (
     EXTRACT(MONTH FROM s.period_start)::integer AS period_month,
     sum(s.total_claims_submitted) AS submitted_amount,
     sum(COALESCE(s.rejection_amount, 0::numeric)) AS rejected_amount,
+    CASE WHEN bool_or(s.approved_gross_amount IS NULL) THEN NULL ELSE sum(s.approved_gross_amount) END AS approved_gross_amount,
     count(*) AS settlement_period_count
   FROM public.claims_settlement_periods s
   WHERE s.period_type = 'month'
@@ -59,7 +60,11 @@ claim_periods AS (
     CASE WHEN COALESCE(sp.settlement_period_count, 0) > 0
       THEN COALESCE(sp.rejected_amount, 0::numeric)
       ELSE COALESCE(cp.rejected_amount, 0::numeric)
-    END AS rejected_amount
+    END AS rejected_amount,
+    CASE WHEN COALESCE(sp.settlement_period_count, 0) > 0
+      THEN sp.approved_gross_amount
+      ELSE NULL::numeric
+    END AS approved_gross_amount
   FROM settlement_submission_periods sp
   FULL OUTER JOIN claim_transaction_periods cp
     USING (insurance_company_id, period_year, period_month)
@@ -195,6 +200,7 @@ period_values AS (
     p.period_month,
     COALESCE(cp.submitted_amount, 0::numeric) AS submitted_amount,
     COALESCE(cp.rejected_amount, 0::numeric) AS rejected_amount,
+    cp.approved_gross_amount AS approved_gross_amount,
     COALESCE(pp.paid_amount, 0::numeric) AS paid_amount,
     COALESCE(tp.provisional_withholding_tax_amount, 0::numeric) AS provisional_withholding_tax_amount,
     COALESCE(tp.actual_withholding_tax_amount, 0::numeric) AS actual_withholding_tax_amount,
@@ -212,14 +218,14 @@ SELECT
   period_month,
   submitted_amount::numeric AS submitted_amount,
   rejected_amount::numeric AS rejected_amount,
-  GREATEST(submitted_amount - rejected_amount, 0::numeric)::numeric AS net_claim_amount,
+  COALESCE(approved_gross_amount, GREATEST(submitted_amount - rejected_amount, 0::numeric))::numeric AS net_claim_amount,
   paid_amount::numeric AS paid_amount,
   CASE
     WHEN actual_withholding_tax_entry_count > 0 THEN actual_withholding_tax_amount
     ELSE provisional_withholding_tax_amount
   END::numeric AS withholding_tax_amount,
   GREATEST(
-    submitted_amount - rejected_amount - paid_amount
+    COALESCE(approved_gross_amount, submitted_amount - rejected_amount) - paid_amount
       - CASE
           WHEN actual_withholding_tax_entry_count > 0 THEN actual_withholding_tax_amount
           ELSE provisional_withholding_tax_amount
@@ -234,7 +240,14 @@ SELECT
   payment_entry_count,
   withholding_tax_entry_count,
   provisional_withholding_tax_amount::numeric AS provisional_withholding_tax_amount,
-  actual_withholding_tax_amount::numeric AS actual_withholding_tax_amount
+  actual_withholding_tax_amount::numeric AS actual_withholding_tax_amount,
+  approved_gross_amount::numeric AS approved_gross_amount,
+  CASE WHEN approved_gross_amount IS NULL THEN NULL::numeric
+    ELSE round(submitted_amount - approved_gross_amount - rejected_amount, 2)
+  END::numeric AS approval_variance,
+  CASE WHEN approved_gross_amount IS NULL THEN NULL::numeric
+    ELSE round(approved_gross_amount - paid_amount - actual_withholding_tax_amount, 2)
+  END::numeric AS approved_unpaid_balance
 FROM period_values;
 
 COMMENT ON VIEW public.claims_outstanding_periods IS
