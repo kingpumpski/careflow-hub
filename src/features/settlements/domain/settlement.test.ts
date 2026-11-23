@@ -95,6 +95,15 @@ describe('claims settlement domain', () => {
     expect(result.balanced).toBe(true);
   });
 
+  it('reconciles the GHC 1,000 / GHC 100 rejection example using net cash and actual WHT', () => {
+    // Test-only rate: 7.5%. Approved gross = 900; actual WHT = 67.50;
+    // the corresponding net cash received is 832.50.
+    const result = calculateSettlementReconciliation(1_000, 100, 832.5, 67.5);
+    expect(result.residual).toBe(0);
+    expect(result.direction).toBe('balanced');
+    expect(result.balanced).toBe(true);
+  });
+
   it('preserves positive residual as an under-settlement', () => {
     const result = calculateSettlementReconciliation(100_000, 10_000, 80_000, 5_000);
     expect(result.residual).toBe(5_000);
