@@ -77,6 +77,10 @@ BEGIN
   IF position('settlement_submission_periods' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0 THEN
     RAISE EXCEPTION 'Aggregate claims-settlement periods must be the canonical monthly submission source';
   END IF;
+  IF position('approved_gross_amount' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0
+     OR position('approval_variance' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0 THEN
+    RAISE EXCEPTION 'Monthly outstanding reporting must use explicit insurer-approved gross and expose approval variance';
+  END IF;
   IF position('receipt_date' in pg_get_viewdef('public.claims_settlement_receipt_months'::regclass)) = 0 THEN
     RAISE EXCEPTION 'Cash/WHT receipt-month view must group by actual receipt date';
   END IF;
