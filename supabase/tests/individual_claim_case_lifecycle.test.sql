@@ -91,6 +91,20 @@ BEGIN
     RAISE EXCEPTION 'Immutable claim-case event trigger is missing';
   END IF;
 
+  IF position('v_currency !~ ''^[A-Z]{3}
+     OR NOT security_internal.claim_case_transition_allowed('paid', 'closed')
+     OR security_internal.claim_case_transition_allowed('draft', 'paid')
+     OR security_internal.claim_case_transition_allowed('closed', 'draft') THEN
+    RAISE EXCEPTION 'Claim lifecycle transition matrix failed its contract checks';
+  END IF;
+END;
+$test$;
+'' IN pg_get_functiondef(
+    'security_internal.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)'::regprocedure
+  )) = 0 THEN
+    RAISE EXCEPTION 'Claim-case RPC must validate currency as three uppercase ISO letters';
+  END IF;
+
   IF NOT security_internal.claim_case_transition_allowed('draft', 'verified')
      OR NOT security_internal.claim_case_transition_allowed('paid', 'closed')
      OR security_internal.claim_case_transition_allowed('draft', 'paid')
