@@ -124,3 +124,18 @@ A source review of PR #79 identified a material gap against that requirement:
 Required follow-up before release: make the insurer-period register the authoritative source for aggregate submission and advice values in the monthly reconciliation report; add an explicit approved-amount field with database constraints/validation; preserve multiple receipt/advice events or a controlled amendment/audit history where insurers remit in parts; and add SQL integration tests proving that a period entered without any individual CareFlow claim rows still reconciles correctly. Do not merge this PR until those changes and the disposable migration replay blocker are resolved.
 
 No production changes were made during this review.
+
+
+### Exact production function-chain inspection — 2026-11-23 (read-only)
+
+A further catalog inspection retrieved both production function definitions, not only the public signature:
+
+- `public.find_duplicate_preauthorization(...)` is a SQL wrapper returning `request_number TEXT`; it delegates to `security_internal.find_duplicate_preauthorization(...)`.
+- `security_internal.find_duplicate_preauthorization(...)` is a SECURITY DEFINER SQL function, also returning `request_number TEXT`. Its current body selects `pa.request_number` from `public.pre_authorizations` and retains the 30-day/non-rejected duplicate rule.
+- The underlying `public.pre_authorizations.request_number` column is `TEXT`.
+
+This confirms the live production catalog is internally consistent at the current endpoint: table column, internal implementation return type, and public wrapper return type are all TEXT. It does not recover the SQL body that was originally executed for the historical ledger entry `20260908181603 / 20260907111500_preauth_deduplication_and_request_identity`. The ledger records the migration name only, and the current catalog reflects all later migrations/changes. It is therefore not valid to infer that the checked-in BIGINT migration was the applied production body.
+
+**Next safe recovery action:** obtain the verified production backup or deployment artifact and compare its schema/function dump with this live catalog and the Git history. If the exact original body is unavailable, document the gap and design a forward-only baseline/reconciliation path against a restored copy; do not use the current catalog as a reason to patch the old migration or skip it in the replay workflow.
+
+No production data or schema was changed by this inspection.
