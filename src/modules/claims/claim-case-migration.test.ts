@@ -48,6 +48,52 @@ describe("individual claim case migration contract", () => {
     expect(migration).toContain("Submitted amount must be finite, positive and have no more than two decimal places");
   });
 
+  it("validates caller-supplied currency as a three-letter ISO 4217 code", () => {
+    expect(migration).toContain("IF v_currency !~ '^[A-Z]{3}
+    expect(migration).toContain("v_approved := v_case.approved_amount;");
+    expect(migration).toContain("v_paid := v_case.paid_amount;");
+    expect(migration).toMatch(/IF p_target_status IN \('approved', 'partially_approved'\) THEN[\s\S]*?v_approved := coalesce\(p_approved_amount, v_case\.approved_amount\);/);
+    expect(migration).toMatch(/IF p_target_status IN \('partially_paid', 'paid'\) THEN[\s\S]*?v_paid := coalesce\(p_paid_amount, v_case\.paid_amount\);/);
+    expect(migration).toContain("IF v_paid < v_case.paid_amount THEN");
+    expect(migration).toContain("Cumulative paid amount cannot decrease");
+  });
+
+  it("rejects non-finite and over-precision adjudication and payment amounts", () => {
+    expect(migration).toContain("p_approved_amount::text IN ('NaN', 'Infinity', '-Infinity')");
+    expect(migration).toContain("p_approved_amount <> round(p_approved_amount, 2)");
+    expect(migration).toContain("p_paid_amount::text IN ('NaN', 'Infinity', '-Infinity')");
+    expect(migration).toContain("p_paid_amount <> round(p_paid_amount, 2)");
+    expect(migration).toContain("Approved amount must be finite and have no more than two decimal places");
+    expect(migration).toContain("Paid amount must be finite and have no more than two decimal places");
+  });
+
+  it("records creation and each status transition in the event table", () => {
+    expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?Individual claim case created/i);
+    expect(migration).toMatch(/INSERT INTO public\.claim_case_events[\s\S]*?v_case\.status, p_target_status/i);
+    expect(migration).toContain("A note is required for every lifecycle transition");
+    expect(migration).toContain("FOR UPDATE");
+  });
+
+  it("keeps exposed claim-case RPCs invoker-only and mutation helpers private", () => {
+    expect(migration).toMatch(/FUNCTION security_internal\.create_individual_claim_case[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION security_internal\.transition_individual_claim_case[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION public\.create_individual_claim_case[\s\S]*?SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
+    expect(migration).toMatch(/FUNCTION public\.transition_individual_claim_case[\s\S]*?SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
+  });
+
+  it("enforces claim-write permission and facility membership before mutations", () => {
+    expect(migration).toContain("security_internal.current_user_has_permission('claims.write')");
+    expect(migration).toContain("security_internal.user_has_facility_access(p_facility_id)");
+    expect(migration).toContain("security_internal.user_has_facility_access(v_case.facility_id)");
+    expect(migration).toContain("FOR UPDATE");
+    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.create_individual_claim_case[\s\S]*?FROM PUBLIC, anon, authenticated/i);
+    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.transition_individual_claim_case[\s\S]*?FROM PUBLIC, anon, authenticated/i);
+  });
+});
+ THEN");
+    expect(migration).toContain("Currency must be a three-letter ISO 4217 currency code");
+  });
+
   it("only changes approved and paid amounts at their matching lifecycle stages", () => {
     expect(migration).toContain("v_approved := v_case.approved_amount;");
     expect(migration).toContain("v_paid := v_case.paid_amount;");
