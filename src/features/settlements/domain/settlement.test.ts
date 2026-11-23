@@ -130,4 +130,100 @@ describe('claims settlement domain', () => {
     expect(result.direction).toBe('over_settlement');
     expect(result.balanced).toBe(false);
   });
+
+  it('matches a later-month remittance to its originating claims cycle', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const result = reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [{
+        adviceReference: 'ADV-SEP-01',
+        adviceDate: '2026-10-02',
+        receiptDate: '2026-10-05',
+        approvedAmount: 900,
+        rejectedAmount: 100,
+        actualWithholdingTax: 45,
+        netCashReceived: 855,
+      }],
+    });
+
+    expect(result.submittedAmount).toBe(1_000);
+    expect(result.provisionalWithholdingTax).toBe(50);
+    expect(result.approvedAmount).toBe(900);
+    expect(result.rejectedAmount).toBe(100);
+    expect(result.actualWithholdingTax).toBe(45);
+    expect(result.netCashReceived).toBe(855);
+    expect(result.overallVariance).toBe(0);
+    expect(result.receiptMonthTotals).toEqual([{
+      receiptMonth: '2026-10',
+      netCashReceived: 855,
+      actualWithholdingTax: 45,
+      remittanceCount: 1,
+    }]);
+    expect(result.balanced).toBe(true);
+  });
+
+  it('supports partial remittances across receipt months without losing the claims month', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const result = reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [
+        { adviceReference: 'ADV-1', adviceDate: '2026-10-02', receiptDate: '2026-10-05', approvedAmount: 500, rejectedAmount: 100, actualWithholdingTax: 25, netCashReceived: 475 },
+        { adviceReference: 'ADV-2', adviceDate: '2026-11-03', receiptDate: '2026-11-06', approvedAmount: 400, rejectedAmount: 0, actualWithholdingTax: 20, netCashReceived: 380 },
+      ],
+    });
+
+    expect(result.claimsPeriod).toBe('2026-09');
+    expect(result.approvedAmount).toBe(900);
+    expect(result.rejectedAmount).toBe(100);
+    expect(result.approvedUnpaidBalance).toBe(0);
+    expect(result.receiptMonthTotals.map((item) => item.receiptMonth)).toEqual(['2026-10', '2026-11']);
+    expect(result.receiptMonthTotals.map((item) => item.netCashReceived)).toEqual([475, 380]);
+    expect(result.balanced).toBe(true);
+  });
+
+  it('flags an insurer advice mismatch instead of forcing the figures to balance', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const result = reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [{
+        adviceReference: 'ADV-DIFF',
+        adviceDate: '2026-10-02',
+        receiptDate: '2026-10-05',
+        approvedAmount: 880,
+        rejectedAmount: 100,
+        actualWithholdingTax: 44,
+        netCashReceived: 836,
+      }],
+    });
+
+    expect(result.approvalVariance).toBe(20);
+    expect(result.overallVariance).toBe(20);
+    expect(result.balanced).toBe(false);
+  });
+
+  it('rejects duplicate advice references to prevent double counting', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const remittance = {
+      adviceReference: 'DUP-1',
+      adviceDate: '2026-10-02',
+      receiptDate: '2026-10-05',
+      approvedAmount: 500,
+      rejectedAmount: 0,
+      actualWithholdingTax: 25,
+      netCashReceived: 475,
+    };
+    expect(() => reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [remittance, remittance],
+    })).toThrow('unique');
+  });
+
 });
