@@ -114,3 +114,10 @@ A workflow failure, missing secret, API error, incomplete Storage listing, uploa
 - [PostgreSQL pg_dump documentation](https://www.postgresql.org/docs/current/app-pgdump.html)
 - [PostgreSQL pg_restore documentation](https://www.postgresql.org/docs/current/app-pgrestore.html)
 - [Supabase database backups and Storage limitations](https://supabase.com/docs/guides/platform/backups)
+
+
+## Latest observed workflow result — 2026-11-23 review
+
+The most recent inspected scheduled run, GitHub Actions run `45006967540` (2026-11-22, source commit `2bdb29bed9317275375a3a4c7b330fd051178b11`), failed at **Verify approved project and required configuration** before installing `age`, creating a database dump, exporting Storage, or uploading an archive. The runner reported the following required environment variables as empty: `SUPABASE_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `BACKUP_AGE_RECIPIENT`, `BACKUP_R2_ACCOUNT_ID`, `BACKUP_R2_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
+
+The workflow maps the final two environment variables from the GitHub Environment secrets `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`, respectively. Configure the exact secret names in the `production-backup` environment as listed above; do not create secrets named `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` unless the workflow is deliberately changed. The failure log printed secret names/empty environment indicators only; it did not expose credential values. Because validation stopped before backup generation, this run produced no database dump, Storage export, encrypted archive, or verified manifest. Re-run the workflow manually only after the environment secrets are configured and the public age recipient has been validated. A successful job must still be followed by a restore rehearsal.

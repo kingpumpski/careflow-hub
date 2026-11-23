@@ -2,7 +2,7 @@
 
 ## Current verified source-tree finding
 
-The main branch at audit commit `7f77b4a78c35115a018127ed69696047feb3dde2` contains 116 SQL migration files and three duplicate 14-digit version prefixes:
+The main branch at audit commit `f79f807382f1af8a65007983f89a9f82942214f5` contains 117 SQL migration files and three duplicate 14-digit version prefixes:
 
 | Version | Files |
 |---|---|
@@ -19,7 +19,7 @@ Supabase migration versions are the migration ledger's identity. Two files with 
 ## Required reconciliation before production deployment
 
 1. Obtain a verified, restorable backup of the target Supabase project (database schema and data, Storage objects, Auth/user configuration and relevant project configuration). Record the backup time and target project ref.
-2. Read the production `supabase_migrations.schema_migrations` ledger and compare it with all 116 repository filenames. Do not infer deployment state from Git alone.
+2. Read the production `supabase_migrations.schema_migrations` ledger and compare it with all 117 repository filenames. Do not infer deployment state from Git alone.
 3. For each duplicate version, determine whether neither, one, or both SQL files were applied, and inspect the actual resulting schema/functions. Specifically reconcile `preauthorization_versions` versus `pre_authorization_versions`, and the two `preauth_documents` definitions and `register_preauth_document` signatures.
 4. Have a database reviewer produce an explicit mapping from each historical migration file to the production ledger state. Preserve already-applied migration identities; do not rename or edit a migration that production has recorded as applied.
 5. If a duplicate migration has not been applied anywhere, select a unique version only after its dependency order is established. If one or both versions have been applied, use a forward-only corrective migration (or a controlled Supabase migration repair procedure backed by the ledger and backup) rather than rewriting history.
@@ -33,9 +33,9 @@ The repository's deployment workflow must not be treated as proof that migration
 Until backup, ledger comparison, clean replay and restored-backup testing are complete, keep production database deployment blocked. Do not run `supabase db push --linked` as a workaround for duplicate versions.
 
 
-## Latest read-only ledger inventory — 2026-11-22
+## Latest read-only ledger inventory — 2026-11-23
 
-See [Production migration ledger snapshot](MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md) for all 74 live ledger rows and the 116-file repository inventory. A conservative normalized-name comparison found 56 direct matches, 60 repository files without a direct ledger-name match, and 18 ledger rows without a direct repository filename match. These are candidates for manual reconciliation, not definitive applied/unapplied classifications. No production migration or ledger repair was performed.
+The [2026-11-22 production migration ledger snapshot](MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md) retains the complete 74-row ledger capture from the prior audit. A fresh read-only inventory on 2026-11-23 verified that the main branch at `f79f807382f1af8a65007983f89a9f82942214f5` contains 117 SQL migration files, while the live production ledger still contains 74 rows. The same conservative normalized-name comparison found 56 direct matches, 61 repository files without a direct ledger-name match, and 18 ledger rows without a direct repository filename match. The three duplicate timestamp-prefix groups listed above remain present. These are filename-level reconciliation candidates, not definitive applied/unapplied classifications. No production migration, schema, data, or ledger repair was performed.
 
 
 ## Candidate source crosswalk — 2026-11-22
@@ -69,3 +69,15 @@ The remaining unmatched ledger entries still have no sufficiently verified one-t
 Do not mark any candidate as recovered, applied, or equivalent until the original SQL is recovered from a backup, deployment artifact, old repository clone, or other authoritative source and compared with the live catalog. The migration ledger records names, not SQL bodies. Where the original SQL cannot be recovered, use the live catalog to design a reviewed forward-only reconciliation migration after backup and restored-copy testing. Never replay a candidate merely to make the ledger names line up.
 
 This crosswalk does not authorize migration repair, `supabase db push`, production DDL, or ledger edits.
+
+
+## Read-only refresh — 2026-11-23
+
+- Production project `jajfdgknctzqypdtvmxo` remains `ACTIVE_HEALTHY` on PostgreSQL 17.11 in `eu-west-1`.
+- The live migration ledger still contains 74 rows; the repository main branch contains 117 timestamped SQL migration files.
+- Normalized filename comparison: 56 direct matches, 61 unmatched local filenames, 18 unmatched remote ledger names.
+- The nine candidate crosswalks above remain unverified recovery leads. The migration ledger stores names, not SQL bodies; no candidate was marked applied, unapplied, recovered, or semantically equivalent.
+- Three duplicate source timestamp groups remain: `20260907140000`, `20260907144000`, and `20260907145000`.
+- Supabase reports no database branches. No production DDL, migration replay/repair, ledger edits, data changes, or Auth configuration changes were performed.
+
+This refresh does not authorize `supabase db push`, migration repair, or any production database mutation. The verified encrypted backup and restored-copy test remain prerequisites.
