@@ -377,7 +377,13 @@ WITH claim_periods AS (
     c.insurance_company_id,
     c.claim_year AS period_year,
     c.claim_month AS period_month,
-    sum(COALESCE(c.claim_amount, 0::numeric)) AS submitted_amount,
+    sum(
+      CASE
+        WHEN lower(COALESCE(c.status, ''::text)) <> 'rejected'::text
+          THEN COALESCE(c.claim_amount, 0::numeric)
+        ELSE 0::numeric
+      END
+    ) AS submitted_amount,
     sum(
       CASE
         WHEN lower(COALESCE(c.status, ''::text)) = 'rejected'::text
@@ -387,8 +393,7 @@ WITH claim_periods AS (
     ) AS rejected_amount
   FROM public.claims c
   WHERE c.claim_year IS NOT NULL
-    AND c.claim_month >= 1
-    AND c.claim_month <= 12
+    AND c.claim_month BETWEEN 1 AND 12
   GROUP BY c.insurance_company_id, c.claim_year, c.claim_month
 ),
 payment_periods AS (
@@ -401,8 +406,7 @@ payment_periods AS (
   FROM public.payments p
   LEFT JOIN public.claims c ON c.id = p.claim_id
   WHERE COALESCE(c.claim_year, p.claim_year) IS NOT NULL
-    AND COALESCE(c.claim_month, p.claim_month) >= 1
-    AND COALESCE(c.claim_month, p.claim_month) <= 12
+    AND COALESCE(c.claim_month, p.claim_month) BETWEEN 1 AND 12
   GROUP BY
     COALESCE(c.insurance_company_id, p.insurance_company_id),
     COALESCE(c.claim_year, p.claim_year),
@@ -413,12 +417,14 @@ tax_periods AS (
     t.insurance_company_id,
     t.year AS period_year,
     t.month AS period_month,
-    GREATEST(sum(COALESCE(t.tax_amount, 0::numeric)), 0::numeric) AS withholding_tax_amount,
-    count(*) FILTER (WHERE t.is_actual = true) AS withholding_tax_entry_count
+    sum(COALESCE(t.tax_amount, 0::numeric))
+      FILTER (WHERE t.is_actual = false) AS provisional_withholding_tax_amount,
+    sum(COALESCE(t.tax_amount, 0::numeric))
+      FILTER (WHERE t.is_actual = true) AS actual_withholding_tax_amount,
+    count(*) FILTER (WHERE t.is_actual = true) AS actual_withholding_tax_entry_count
   FROM public.withholding_tax t
   WHERE t.year IS NOT NULL
-    AND t.month >= 1
-    AND t.month <= 12
+    AND t.month BETWEEN 1 AND 12
   GROUP BY t.insurance_company_id, t.year, t.month
 ),
 periods AS (
@@ -436,21 +442,30 @@ SELECT
   COALESCE(cp.rejected_amount, 0::numeric) AS rejected_amount,
   GREATEST(COALESCE(cp.submitted_amount, 0::numeric) - COALESCE(cp.rejected_amount, 0::numeric), 0::numeric) AS net_claim_amount,
   COALESCE(pp.paid_amount, 0::numeric) AS paid_amount,
-  COALESCE(tp.withholding_tax_amount, 0::numeric) AS withholding_tax_amount,
+  CASE
+    WHEN COALESCE(tp.actual_withholding_tax_entry_count, 0) > 0
+      THEN COALESCE(tp.actual_withholding_tax_amount, 0::numeric)
+    ELSE COALESCE(tp.provisional_withholding_tax_amount, 0::numeric)
+  END AS withholding_tax_amount,
   GREATEST(
-    (COALESCE(cp.submitted_amount, 0::numeric) - COALESCE(cp.rejected_amount, 0::numeric))
+    COALESCE(cp.submitted_amount, 0::numeric)
+      - COALESCE(cp.rejected_amount, 0::numeric)
       - COALESCE(pp.paid_amount, 0::numeric)
-      - COALESCE(tp.withholding_tax_amount, 0::numeric),
+      - CASE
+          WHEN COALESCE(tp.actual_withholding_tax_entry_count, 0) > 0
+            THEN COALESCE(tp.actual_withholding_tax_amount, 0::numeric)
+          ELSE COALESCE(tp.provisional_withholding_tax_amount, 0::numeric)
+        END,
     0::numeric
   ) AS outstanding_amount,
   CASE
-    WHEN COALESCE(pp.payment_entry_count, 0::bigint) > 0
-      AND COALESCE(tp.withholding_tax_entry_count, 0::bigint) > 0
+    WHEN COALESCE(pp.payment_entry_count, 0) > 0
+      AND COALESCE(tp.actual_withholding_tax_entry_count, 0) > 0
       THEN 'actual'::text
     ELSE 'provisional'::text
   END AS outstanding_status,
-  COALESCE(pp.payment_entry_count, 0::bigint)::integer AS payment_entry_count,
-  COALESCE(tp.withholding_tax_entry_count, 0::bigint)::integer AS withholding_tax_entry_count
+  COALESCE(pp.payment_entry_count, 0)::integer AS payment_entry_count,
+  COALESCE(tp.actual_withholding_tax_entry_count, 0)::integer AS withholding_tax_entry_count
 FROM periods p
 LEFT JOIN claim_periods cp USING (insurance_company_id, period_year, period_month)
 LEFT JOIN payment_periods pp USING (insurance_company_id, period_year, period_month)
