@@ -23,6 +23,7 @@ export default function Payments() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
+  const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<any>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -38,8 +39,37 @@ export default function Payments() {
     const totalSubmitted = insClaims.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
     const totalRejected = (claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected").reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
     const netClaim = totalSubmitted - totalRejected;
-    const insTax = (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id);
-    const totalTax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
+    const taxByPeriod = new Map<string, { provisional: number; actual: number; hasActual: boolean }>();
+    (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id).forEach((t: any) => {
+      const key = `${t.month}|${t.year}`;
+      const current = taxByPeriod.get(key) || { provisional: 0, actual: 0, hasActual: false };
+      if (t.is_actual) {
+        current.actual += Number(t.tax_amount || 0);
+        current.hasActual = true;
+      } else {
+        current.provisional += Number(t.tax_amount || 0);
+      }
+      taxByPeriod.set(key, current);
+    });
+    (settlementPeriods || []).filter((period: any) =>
+      period.insurance_company_id === ins.id
+      && period.period_type === "month"
+      && String(period.period_start || "").slice(0, 7) === String(period.period_end || "").slice(0, 7)
+    ).forEach((period: any) => {
+      const [yearText, monthText] = String(period.period_start).slice(0, 7).split("-");
+      const key = `${Number(monthText)}|${Number(yearText)}`;
+      const confirmed = ["payment_advice_received", "reconciled"].includes(period.settlement_status)
+        && period.actual_withholding_tax != null;
+      taxByPeriod.set(key, {
+        provisional: Number(period.provisional_withholding_tax || 0),
+        actual: confirmed ? Number(period.actual_withholding_tax || 0) : 0,
+        hasActual: confirmed,
+      });
+    });
+    const totalTax = [...taxByPeriod.values()].reduce(
+      (sum, tax) => sum + (tax.hasActual ? tax.actual : tax.provisional),
+      0,
+    );
     const variance = netClaim - totalPaid - totalTax;
     const refMap: Record<string, number> = {};
     insPayments.forEach((p: any) => { if (p.reference_number) refMap[p.reference_number] = (refMap[p.reference_number] || 0) + 1; });
