@@ -13,6 +13,7 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { isFullCalendarMonth } from "@/features/settlements/domain/settlement";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -54,7 +55,7 @@ export default function Payments() {
     (settlementPeriods || []).filter((period: any) =>
       period.insurance_company_id === ins.id
       && period.period_type === "month"
-      && String(period.period_start || "").slice(0, 7) === String(period.period_end || "").slice(0, 7)
+      && isFullCalendarMonth(String(period.period_start || ""), String(period.period_end || ""))
     ).forEach((period: any) => {
       const [yearText, monthText] = String(period.period_start).slice(0, 7).split("-");
       const key = `${Number(monthText)}|${Number(yearText)}`;
