@@ -69,7 +69,7 @@ GRANT SELECT ON public.claims_settlement_remittances TO authenticated;
 CREATE OR REPLACE FUNCTION public.prevent_claims_settlement_remittance_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = ''
 AS $$
 BEGIN
   RAISE EXCEPTION 'Settlement remittance entries are append-only; record a controlled correction instead.';
