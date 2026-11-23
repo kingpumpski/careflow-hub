@@ -8,9 +8,7 @@ ALTER TABLE public.claims_settlement_periods
 
 ALTER TABLE public.claims_settlement_periods
   ADD CONSTRAINT claims_settlement_approved_gross_ck
-    CHECK (approved_gross_amount IS NULL OR approved_gross_amount >= 0),
-  ADD CONSTRAINT claims_settlement_receipt_date_ck
-    CHECK (actual_receipt_date IS NULL OR actual_receipt_date >= period_start - 3650);
+    CHECK (approved_gross_amount IS NULL OR approved_gross_amount >= 0);
 
 CREATE TABLE public.claims_settlement_remittances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -187,7 +185,7 @@ BEGIN
   RETURNING id INTO v_entry_id;
 
   SELECT
-    sum(approved_gross_amount),
+    CASE WHEN bool_or(approved_gross_amount IS NULL) THEN NULL ELSE sum(approved_gross_amount) END,
     COALESCE(sum(rejected_amount), 0),
     COALESCE(sum(actual_withholding_tax), 0),
     COALESCE(sum(net_cash_received), 0),
