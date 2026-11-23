@@ -53,10 +53,11 @@ settlement_cash_periods AS (
     EXTRACT(YEAR FROM s.period_start)::integer AS period_year,
     EXTRACT(MONTH FROM s.period_start)::integer AS period_month,
     sum(COALESCE(s.payment_received, 0::numeric))
-      FILTER (WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')) AS paid_amount,
+      FILTER (WHERE s.settlement_status IN ('payment_advice_received', 'reconciled') AND s.payment_received IS NOT NULL AND s.actual_withholding_tax IS NOT NULL) AS paid_amount,
     count(*) FILTER (
       WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')
         AND s.payment_received IS NOT NULL
+        AND s.actual_withholding_tax IS NOT NULL
     ) AS settlement_payment_entry_count,
   FROM public.claims_settlement_periods s
   WHERE s.period_type = 'month'
