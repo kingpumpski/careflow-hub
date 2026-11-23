@@ -53,6 +53,46 @@ export function parseApprovedWithholdingTaxRate(input: string): number {
 const roundCurrency = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
+/**
+ * Returns the gross amount approved by the insurer after confirmed rejections.
+ * Rejections are kept separate from the original submitted amount and never
+ * mutate the provisional WHT estimate.
+ */
+export function calculateApprovedClaimAmount(
+  totalClaimsSubmitted: number,
+  rejectionAmount: number,
+): number {
+  if (!Number.isFinite(totalClaimsSubmitted) || totalClaimsSubmitted < 0) {
+    throw new Error('Total claims submitted must be a non-negative number.');
+  }
+  if (!Number.isFinite(rejectionAmount) || rejectionAmount < 0) {
+    throw new Error('Rejection amount must be a non-negative number.');
+  }
+  if (rejectionAmount > totalClaimsSubmitted) {
+    throw new Error('Rejection amount cannot exceed the total claims submitted.');
+  }
+
+  return roundCurrency(totalClaimsSubmitted - rejectionAmount);
+}
+
+/**
+ * Calculates expected actual WHT from the insurer-approved gross amount.
+ * Call only when payment advice has been received; this is not the provisional
+ * estimate calculated at claim submission.
+ */
+export function calculateActualWithholdingTax(
+  totalClaimsSubmitted: number,
+  rejectionAmount: number,
+  withholdingTaxRate: number,
+): number {
+  if (!Number.isFinite(withholdingTaxRate) || withholdingTaxRate < 0 || withholdingTaxRate > 100) {
+    throw new Error('Withholding tax rate must be between 0 and 100.');
+  }
+
+  const approvedAmount = calculateApprovedClaimAmount(totalClaimsSubmitted, rejectionAmount);
+  return roundCurrency((approvedAmount * withholdingTaxRate) / 100);
+}
+
 const finiteAmount = (value: number | null): number =>
   value === null ? 0 : Number(value);
 
