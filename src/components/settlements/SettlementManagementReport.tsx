@@ -36,7 +36,7 @@ export default function SettlementManagementReport({ periods }: { periods: Row[]
   const insurers = useMemo(() => summarizeSettlementsByInsurer(normalized), [normalized]);
   const insurerNames = useMemo(() => new Map(periods.map((row) => [row.insurance_company_id, row.insurance_company_name || row.insurance_company_id])), [periods]);
   const reconciliationRate = summary.periodCount ? Math.round((summary.reconciledCount / summary.periodCount) * 100) : 0;
-  const confirmed = useMemo(() => normalized.filter((period) => period.paymentReceived !== null && period.rejectionAmount !== null && period.actualWithholdingTax !== null), [normalized]);
+  const confirmed = useMemo(() => normalized.filter((period) => period.settlementStatus !== 'awaiting_payment' && period.paymentReceived !== null && period.rejectionAmount !== null && period.actualWithholdingTax !== null), [normalized]);
   const reconciliationResults = useMemo(() => confirmed.map((period) => calculateExplicitAdviceReconciliation({
     submittedAmount: period.totalClaimsSubmitted,
     approvedGrossAmount: period.approvedGrossAmount ?? null,
