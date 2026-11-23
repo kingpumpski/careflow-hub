@@ -207,6 +207,52 @@ describe('claims settlement domain', () => {
     expect(result.balanced).toBe(false);
   });
 
+  it('rejects duplicate advice references even when letter casing differs', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const base = {
+      adviceDate: '2026-10-02',
+      receiptDate: '2026-10-05',
+      approvedAmount: 500,
+      rejectedAmount: 0,
+      actualWithholdingTax: 25,
+      netCashReceived: 475,
+    };
+    expect(() => reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [
+        { ...base, adviceReference: 'ADV-1' },
+        { ...base, adviceReference: ' adv-1 ' },
+      ],
+    })).toThrow('unique');
+  });
+
+  it('rejects impossible calendar dates in advice and receipt data', async () => {
+    const { reconcileClaimsCycle } = await import('./settlement');
+    const base = {
+      adviceReference: 'ADV-DATE',
+      adviceDate: '2026-10-02',
+      receiptDate: '2026-10-05',
+      approvedAmount: 500,
+      rejectedAmount: 0,
+      actualWithholdingTax: 25,
+      netCashReceived: 475,
+    };
+    expect(() => reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [{ ...base, adviceDate: '2026-02-30' }],
+    })).toThrow('valid calendar dates');
+    expect(() => reconcileClaimsCycle({
+      claimsPeriod: '2026-09',
+      submittedAmount: 1_000,
+      provisionalWithholdingTax: 50,
+      remittances: [{ ...base, receiptDate: '2026-13-01' }],
+    })).toThrow('valid calendar dates');
+  });
+
   it('rejects duplicate advice references to prevent double counting', async () => {
     const { reconcileClaimsCycle } = await import('./settlement');
     const remittance = {
