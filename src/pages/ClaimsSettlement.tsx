@@ -93,7 +93,10 @@ export default function ClaimsSettlement() {
         p_net_cash_received: payment,
       });
       if (error) throw error;
-      await queryClient.invalidateQueries({ queryKey: ["claims_settlement_periods"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["claims_settlement_periods"] }),
+        queryClient.invalidateQueries({ queryKey: ["claims_settlement_remittances"] }),
+      ]);
       setAdviceId(""); setForm(emptyForm);
       toast({ title: "Payment advice recorded", description: `Remittance appended to the original claims period. WHT variance against the provisional estimate: ${Number(variance || 0).toFixed(2)}.` });
     } catch (error: any) { toast({ title: "Unable to record advice", description: error.message || "Please try again.", variant: "destructive" }); }
