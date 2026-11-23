@@ -31,7 +31,7 @@ WITH claim_periods AS (
     AND c.claim_month BETWEEN 1 AND 12
   GROUP BY c.insurance_company_id, c.claim_year, c.claim_month
 ),
-payment_periods AS (
+payment_table_periods AS (
   SELECT
     COALESCE(c.insurance_company_id, p.insurance_company_id) AS insurance_company_id,
     COALESCE(c.claim_year, p.claim_year) AS period_year,
@@ -46,6 +46,43 @@ payment_periods AS (
     COALESCE(c.insurance_company_id, p.insurance_company_id),
     COALESCE(c.claim_year, p.claim_year),
     COALESCE(c.claim_month, p.claim_month)
+),
+settlement_cash_periods AS (
+  SELECT
+    s.insurance_company_id,
+    EXTRACT(YEAR FROM s.period_start)::integer AS period_year,
+    EXTRACT(MONTH FROM s.period_start)::integer AS period_month,
+    sum(COALESCE(s.payment_received, 0::numeric))
+      FILTER (WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')) AS paid_amount,
+    count(*) FILTER (
+      WHERE s.settlement_status IN ('payment_advice_received', 'reconciled')
+        AND s.payment_received IS NOT NULL
+    ) AS settlement_payment_entry_count,
+    count(*) AS settlement_period_count
+  FROM public.claims_settlement_periods s
+  WHERE s.period_type = 'month'
+    AND s.period_start = date_trunc('month', s.period_start)::date
+    AND s.period_end = (date_trunc('month', s.period_start) + interval '1 month - 1 day')::date
+  GROUP BY s.insurance_company_id, EXTRACT(YEAR FROM s.period_start), EXTRACT(MONTH FROM s.period_start)
+),
+payment_periods AS (
+  SELECT
+    COALESCE(sc.insurance_company_id, pt.insurance_company_id) AS insurance_company_id,
+    COALESCE(sc.period_year, pt.period_year) AS period_year,
+    COALESCE(sc.period_month, pt.period_month) AS period_month,
+    CASE
+      WHEN COALESCE(sc.settlement_period_count, 0) > 0
+        THEN COALESCE(sc.paid_amount, 0::numeric)
+      ELSE COALESCE(pt.paid_amount, 0::numeric)
+    END AS paid_amount,
+    CASE
+      WHEN COALESCE(sc.settlement_period_count, 0) > 0
+        THEN COALESCE(sc.settlement_payment_entry_count, 0)
+      ELSE COALESCE(pt.payment_entry_count, 0)
+    END AS payment_entry_count
+  FROM settlement_cash_periods sc
+  FULL OUTER JOIN payment_table_periods pt
+    USING (insurance_company_id, period_year, period_month)
 ),
 tax_table_periods AS (
   SELECT
