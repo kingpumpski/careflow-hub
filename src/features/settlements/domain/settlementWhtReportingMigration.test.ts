@@ -20,6 +20,12 @@ describe('provisional and actual WHT reporting migration contract', () => {
     expect(migration).toMatch(/WHEN COALESCE\(st\.settlement_period_count, 0\) > 0[\s\S]*?THEN COALESCE\(st\.provisional_withholding_tax_amount, 0::numeric\)/i);
   });
 
+  it('uses confirmed net cash from payment advice instead of double-counting payment rows', () => {
+    expect(migration).toMatch(/sum\\(COALESCE\\(s\\.payment_received, 0::numeric\\)\\)[\\s\\S]*?payment_advice_received/i);
+    expect(migration).toMatch(/WHEN COALESCE\\(sc\\.settlement_period_count, 0\\) > 0[\\s\\S]*?THEN COALESCE\\(sc\\.paid_amount, 0::numeric\\)/i);
+    expect(migration).toMatch(/FULL OUTER JOIN payment_table_periods/i);
+  });
+
   it('uses monthly settlement advice as the preferred source for monthly claims reporting', () => {
     expect(migration).toMatch(/FROM public\.claims_settlement_periods s/i);
     expect(migration).toMatch(/s\.period_type = 'month'/i);
