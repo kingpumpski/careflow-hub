@@ -141,3 +141,6 @@ This is now wired into the Claims Settlement screen. Database execution and roll
 
 
 The aggregate monthly outstanding view now also uses the insurer-stated approved gross amount as the eligible amount once that value is known. It exposes approval variance and approved-unpaid balance separately. Where historical approved gross is unknown, the view does not invent it; the legacy submitted-minus-rejected basis remains the fallback until source evidence is captured.
+
+
+Reconciliation confirmation is now blocked unless the period has an explicitly captured insurer-approved gross amount. This prevents a historical one-advice record with unknown approved gross from being marked reconciled using an inferred submitted-minus-rejected value. Such legacy periods remain flagged as unknown until their source advice can be verified; the new workflow does not fabricate a backfill.
