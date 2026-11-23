@@ -55,8 +55,8 @@ const roundCurrency = (value: number): number =>
 
 /** Monthly settlement periods must align to a complete calendar month. */
 export function isFullCalendarMonth(periodStart: string, periodEnd: string): boolean {
-  const startMatch = /^(\\d{4})-(\\d{2})-01$/.exec(periodStart);
-  const endMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(periodEnd);
+  const startMatch = /^(\d{4})-(\d{2})-01$/.exec(periodStart);
+  const endMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(periodEnd);
   if (!startMatch || !endMatch) return false;
 
   const [, startYear, startMonth] = startMatch;
