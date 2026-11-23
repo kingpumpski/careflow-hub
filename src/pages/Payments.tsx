@@ -63,7 +63,7 @@ export default function Payments() {
     const month = Number(form.claim_month);
     const year = Number(form.claim_year);
     if (!form.insurance_company_id) { toast({ title: "Insurer required", description: "Select the insurance company for this payment.", variant: "destructive" }); return; }
-    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0) { toast({ title: "Invalid payment amount", description: "Enter an amount greater than zero with no more than two decimal places.", variant: "destructive" }); return; }
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0) { toast({ title: "Invalid payment amount", description: "Enter an amount greater than zero with no more than two decimal places.", variant: "destructive" }); return; }
     if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || year < 1 || year > 9999) { toast({ title: "Invalid claim period", description: "Select a valid claim month and year.", variant: "destructive" }); return; }
     if (!form.payment_date) { toast({ title: "Payment date required", description: "Enter the date the payment was received.", variant: "destructive" }); return; }
 
