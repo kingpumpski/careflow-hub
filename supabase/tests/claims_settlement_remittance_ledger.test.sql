@@ -50,6 +50,9 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Explicit approved gross and actual receipt date fields are missing';
   END IF;
+  IF NOT (SELECT coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[] FROM pg_proc p WHERE p.oid = v_rpc) THEN
+    RAISE EXCEPTION 'Security-definer remittance RPC must pin an empty search_path';
+  END IF;
   v_rpc_definition := pg_get_functiondef(v_rpc);
   IF position('FOR UPDATE' in v_rpc_definition) = 0
      OR position('user_has_facility_access' in v_rpc_definition) = 0
