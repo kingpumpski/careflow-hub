@@ -98,3 +98,14 @@ This is concrete evidence that the current repository migration source does not 
 The local test workflow itself initially used the obsolete Supabase container exclusion name `inbucket`; this was corrected to `mailpit` in the PR branch. The SQL replay failure above remains unresolved and is not hidden or skipped.
 
 No production DDL, data writes, migration repair, or ledger edits were performed.
+
+### Repository history evidence — 2026-11-23
+
+The source chronology has now been independently checked against GitHub's file history and the exact migration contents:
+
+- Commit `347f46a20f92a68ab15fd7040540c967a03ed52f` (2026-09-07 09:58 UTC) introduced `20260907095500_preauthorization_studio.sql`. That migration adds `pre_authorizations.request_number` as `TEXT` and populates it with human-readable identifiers such as `PA-YYYY-XXXXXXXX`.
+- Commit `05d4f7771cf1eddc9fbf94c9b869fe448d357003` (2026-09-07 11:17 UTC) introduced `20260907111500_preauth_deduplication_and_request_identity.sql`. It uses `ADD COLUMN IF NOT EXISTS request_number BIGINT` and declares the duplicate-lookup function's returned `request_number` as `BIGINT`. Because the earlier migration already created the column as `TEXT`, the later `ADD COLUMN IF NOT EXISTS` does not change its type; the function's declared return type therefore conflicts with the selected column on a clean replay.
+- `20260907123000_preauth_text_first_identity.sql` repeats the `BIGINT` return declaration, so it does not resolve the clean-replay conflict.
+- Later source migrations introduce a separate text-first RPC and eventually harden the legacy lookup to return `TEXT` (including `20260908200000_harden_preauth_security_definers.sql`). This is consistent with the live production catalog, but it does not make the earlier source sequence replayable from an empty database.
+
+This confirms an intrinsic inconsistency in the checked-in historical migration sequence; it does **not** prove which SQL variant was applied to production. The production ledger contains migration version names, not SQL bodies. The repository history establishes when the current source versions were committed, not that these exact bytes were applied to the production project. Therefore no historical migration was edited and no migration-ledger repair was attempted. The next safe recovery step is to compare a verified production backup or deployment artifact with the live catalog and recover the SQL variant that was actually applied. Until that evidence exists, the disposable replay gate must remain failing and release merges remain blocked.
