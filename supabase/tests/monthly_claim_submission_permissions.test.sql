@@ -89,6 +89,8 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
+  v_view_definition := lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass));
+
   IF position('status' in v_view_definition) = 0
      OR position('rejected' in v_view_definition) = 0
      OR position('is_actual = false' in v_view_definition) = 0
