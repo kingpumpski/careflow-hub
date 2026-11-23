@@ -220,8 +220,10 @@ $wrapper$;
 REVOKE ALL ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.submit_monthly_claim_atomic(uuid, numeric, integer, integer) TO authenticated;
 
--- Rejections also update three financial records. Keep this path atomic and
--- apply the same server-owned WHT rate and caller RLS checks as submissions.
+-- Rejections are recorded separately from submitted claims. They must not
+-- create a negative provisional WHT row: the original provisional estimate stays
+-- based on the full submitted amount, while actual WHT is recorded from payment
+-- advice on the insurer-approved gross amount.
 CREATE OR REPLACE FUNCTION security_internal.submit_claim_rejection_atomic(
   p_insurance_company_id uuid,
   p_rejected_amount numeric,
@@ -239,8 +241,6 @@ SET search_path = ''
 AS $$
 DECLARE
   v_claim_id uuid;
-  v_tax_rate numeric;
-  v_tax_amount numeric;
 BEGIN
   IF (SELECT auth.uid()) IS NULL THEN
     RAISE EXCEPTION 'Authentication is required to record a claim rejection.'
@@ -284,9 +284,6 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_tax_rate := security_internal.configured_withholding_tax_rate();
-  v_tax_amount := ROUND((p_rejected_amount * v_tax_rate) / 100, 2);
-
   INSERT INTO public.claims (
     insurance_company_id,
     claim_amount,
@@ -312,24 +309,6 @@ BEGIN
   )
   RETURNING id INTO v_claim_id;
 
-  INSERT INTO public.withholding_tax (
-    insurance_company_id,
-    month,
-    year,
-    claim_total,
-    tax_rate,
-    tax_amount,
-    is_actual
-  ) VALUES (
-    p_insurance_company_id,
-    p_claim_month,
-    p_claim_year,
-    -p_rejected_amount,
-    v_tax_rate,
-    -v_tax_amount,
-    false
-  );
-
   INSERT INTO public.ledger_entries (
     account_debit,
     account_credit,
@@ -354,8 +333,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'claim_id', v_claim_id,
-    'tax_rate', v_tax_rate,
-    'tax_amount', v_tax_amount
+    'rejected_amount', p_rejected_amount
   );
 END;
 $$;
