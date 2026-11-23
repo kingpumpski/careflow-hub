@@ -81,3 +81,20 @@ This crosswalk does not authorize migration repair, `supabase db push`, producti
 - Supabase reports no database branches. No production DDL, migration replay/repair, ledger edits, data changes, or Auth configuration changes were performed.
 
 This refresh does not authorize `supabase db push`, migration repair, or any production database mutation. The verified encrypted backup and restored-copy test remain prerequisites.
+
+
+## Clean-replay finding — 2026-11-23
+
+A disposable Supabase stack was started from the PR #79 source tree. Startup replay stopped at `20260907111500_preauth_deduplication_and_request_identity.sql` before reaching any PR #79 migration. The function `public.find_duplicate_preauthorization` declares its second returned column as `BIGINT`, but the preceding `20260907095500_preauthorization_studio.sql` adds `pre_authorizations.request_number` as `TEXT`. PostgreSQL rejected the function definition with SQLSTATE `42P13` (final statement returns text instead of bigint at column 2).
+
+A separate read-only check of production on 2026-11-23 confirmed:
+
+- `public.pre_authorizations.request_number` is `TEXT`.
+- `public.find_duplicate_preauthorization(uuid,uuid,uuid,uuid,date,text,jsonb,uuid)` currently returns a table whose `request_number` field is `TEXT`.
+- The production migration ledger contains the 20260907 pre-authorization migration entries, including `20260907111500_preauth_deduplication_and_request_identity` and later text-first/security-hardening migrations.
+
+This is concrete evidence that the current repository migration source does not replay to the same intermediate state as production. It may reflect historical source drift or an earlier applied SQL variant. The migration ledger stores names rather than SQL bodies, so the original applied SQL has not yet been recovered. Do not edit the already-recorded migration, mark it unapplied, or alter production to make local replay pass. Recover the authoritative migration artifact or inspect a verified backup/deployment source, then reconcile the entire pre-authorization migration sequence and its duplicate timestamp groups. The disposable replay gate remains a release blocker until the canonical source sequence can be replayed without compatibility shims.
+
+The local test workflow itself initially used the obsolete Supabase container exclusion name `inbucket`; this was corrected to `mailpit` in the PR branch. The SQL replay failure above remains unresolved and is not hidden or skipped.
+
+No production DDL, data writes, migration repair, or ledger edits were performed.
