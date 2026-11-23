@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { CheckCircle2, Clock3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
-import { toast } from "@/hooks/use-toast";
 import { usePermissions } from "@/modules/security/usePermissions";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
