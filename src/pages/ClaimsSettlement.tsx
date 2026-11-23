@@ -51,7 +51,7 @@ export default function ClaimsSettlement() {
     if (!Number.isFinite(submitted) || submitted < 0 || !Number.isFinite(approvedRate) || approvedRate < 0 || approvedRate > 100) { toast({ title: "Invalid settlement values", description: "Claims submitted must be non-negative and WHT rate must be between 0 and 100%.", variant: "destructive" }); return; }
     setBusy(true);
     try {
-      await insertPeriod.mutateAsync({ facility_id: facilityId, insurance_company_id: form.insurerId, period_start: form.periodStart, period_end: form.periodEnd, period_type: form.periodType, total_claims_submitted: submitted, withholding_tax_rate: approvedRate, provisional_withholding_tax: calculateProvisionalWithholdingTax(submitted, approvedRate), settlement_status: "awaiting_payment" });
+      await insertPeriod.mutateAsync({ facility_id: facilityId, insurance_company_id: form.insurerId, period_start: form.periodStart, period_end: form.periodEnd, period_type: form.periodType, total_claims_submitted: submitted, withholding_tax_rate: approvedRate, settlement_status: "awaiting_payment" });
       setForm(emptyForm);
       toast({ title: "Settlement period recorded", description: `Provisional WHT: ${provisional.toFixed(2)}. This is an estimate only.` });
     } catch (error: any) { toast({ title: "Unable to save period", description: error.message || "Please try again.", variant: "destructive" }); }
@@ -66,7 +66,7 @@ export default function ClaimsSettlement() {
     setBusy(true);
     try {
       const variance = calculateWithholdingTaxVariance(Number(row.provisional_withholding_tax || 0), actual);
-      await updatePeriod.mutateAsync({ id: row.id, payment_received: payment, rejection_amount: rejection, actual_withholding_tax: actual, withholding_tax_variance: variance, payment_advice_reference: form.paymentAdviceReference.trim(), payment_advice_date: form.paymentAdviceDate, settlement_status: "payment_advice_received" });
+      await updatePeriod.mutateAsync({ id: row.id, payment_received: payment, rejection_amount: rejection, actual_withholding_tax: actual, payment_advice_reference: form.paymentAdviceReference.trim(), payment_advice_date: form.paymentAdviceDate, settlement_status: "payment_advice_received" });
       setAdviceId(""); setForm(emptyForm);
       toast({ title: "Payment advice recorded", description: `WHT variance: ${Number(variance || 0).toFixed(2)}. Actual WHT was taken from the advice.` });
     } catch (error: any) { toast({ title: "Unable to record advice", description: error.message || "Please try again.", variant: "destructive" }); }
