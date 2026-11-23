@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const [providerAddress, setProviderAddress] = useState("");
   const [providerPhone, setProviderPhone] = useState("");
   const [providerEmail, setProviderEmail] = useState("");
-  const [taxRate, setTaxRate] = useState("5");
+  const [taxRate, setTaxRate] = useState("");
   const [currency, setCurrency] = useState("GH¢ (Ghana Cedi)");
   const [logoUrl, setLogoUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -85,7 +85,7 @@ export default function SettingsPage() {
       setProviderAddress(getSetting("provider_address"));
       setProviderPhone(getSetting("provider_phone"));
       setProviderEmail(getSetting("provider_email"));
-      setTaxRate(getSetting("withholding_tax_rate") || "5");
+      setTaxRate(getSetting("withholding_tax_rate"));
       setCurrency(getSetting("currency") || "GH¢ (Ghana Cedi)");
       setLogoUrl(getSetting("logo_url"));
       setSmtpHost(getSetting("smtp_host"));
@@ -169,8 +169,13 @@ export default function SettingsPage() {
   };
 
   const handleSaveTax = async () => {
-    if (await saveSetting("withholding_tax_rate", taxRate)) {
-      toast({ title: "Tax rate updated", description: `New rate: ${taxRate}%` });
+    const approvedRate = Number(taxRate);
+    if (!taxRate.trim() || !Number.isFinite(approvedRate) || approvedRate < 0 || approvedRate > 100) {
+      toast({ title: "Invalid approved tax rate", description: "Enter an approved withholding tax rate between 0 and 100. Leave the field empty until the rate has been confirmed.", variant: "destructive" });
+      return;
+    }
+    if (await saveSetting("withholding_tax_rate", String(approvedRate))) {
+      toast({ title: "Tax rate updated", description: `Approved rate saved: ${approvedRate}%` });
     }
   };
 
@@ -500,12 +505,12 @@ export default function SettingsPage() {
             <div className="max-w-xs space-y-3">
               <div>
                 <Label>Tax Rate (%)</Label>
-                <Input type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} className="mt-1" />
+                <Input type="number" min="0" max="100" step="0.01" placeholder="Enter approved rate" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} className="mt-1" />
               </div>
               <Button size="sm" onClick={handleSaveTax}>Save Rate</Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              This rate is auto-applied when submitting monthly claims. WHT is automatically calculated as: WHT = Tax Rate × Net Claim Amount.
+              Only enter a rate approved for this facility and insurer policy. CareFlow does not assume a statutory rate. The rate is applied to new claim calculations as a provisional estimate; actual WHT must be confirmed from payment advice.
             </p>
           </div>
         </TabsContent>
