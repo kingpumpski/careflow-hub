@@ -33,7 +33,7 @@ CREATE TABLE public.claims_settlement_remittances (
       AND (net_cash_received IS NULL OR net_cash_received >= 0)
     ),
   CONSTRAINT claims_settlement_remittance_receipt_ck
-    CHECK (net_cash_received = 0 OR receipt_date IS NOT NULL),
+    CHECK ((net_cash_received = 0 AND actual_withholding_tax = 0) OR receipt_date IS NOT NULL),
   CONSTRAINT claims_settlement_remittance_source_ck
     CHECK (entry_source IN ('legacy_snapshot', 'remittance'))
 );
@@ -144,7 +144,7 @@ BEGIN
     OR p_actual_withholding_tax < 0 OR p_net_cash_received < 0 THEN
     RAISE EXCEPTION 'Remittance amounts must be non-negative.';
   END IF;
-  IF p_net_cash_received > 0 AND p_receipt_date IS NULL THEN
+  IF (p_net_cash_received > 0 OR p_actual_withholding_tax > 0) AND p_receipt_date IS NULL THEN
     RAISE EXCEPTION 'Actual receipt date is required when net cash was received.';
   END IF;
 
