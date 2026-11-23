@@ -275,14 +275,24 @@ export function reconcileClaimsCycle(input: {
   }
 
   const references = new Set<string>();
+  const isValidCalendarDate = (value: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day;
+  };
+
   for (const item of remittances) {
-    if (!item.adviceReference.trim() || references.has(item.adviceReference.trim())) {
+    const normalizedReference = item.adviceReference.trim().toLocaleLowerCase('en');
+    if (!normalizedReference || references.has(normalizedReference)) {
       throw new Error('Each remittance must have a unique, non-empty advice reference.');
     }
-    references.add(item.adviceReference.trim());
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(item.adviceDate)
-      || (item.receiptDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(item.receiptDate))) {
-      throw new Error('Advice and receipt dates must use YYYY-MM-DD format.');
+    references.add(normalizedReference);
+    if (!isValidCalendarDate(item.adviceDate)
+      || (item.receiptDate !== null && !isValidCalendarDate(item.receiptDate))) {
+      throw new Error('Advice and receipt dates must be valid calendar dates in YYYY-MM-DD format.');
     }
     if ([item.approvedAmount, item.rejectedAmount, item.actualWithholdingTax, item.netCashReceived]
       .some((value) => !Number.isFinite(value) || value < 0)) {
