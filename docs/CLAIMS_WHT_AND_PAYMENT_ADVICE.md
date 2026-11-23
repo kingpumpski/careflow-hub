@@ -129,3 +129,12 @@ The Claims Settlement screen now captures approved gross explicitly and records 
 The forward reporting migration `20261123160000_match_aggregate_claims_periods_and_receipt_months.sql` makes the aggregate settlement register authoritative for submitted/rejected totals when a monthly period exists, retaining individual claim rows as fallback. It adds `claims_settlement_receipt_months` for actual cash/WHT grouped by receipt date. Claims ownership remains with the originating claims month.
 
 **Limitations still requiring verification:** the append-only event table currently prevents destructive edits, but a controlled compensating-reversal/correction RPC is still required for erroneous entries. SQL contract tests have been added, but clean migration replay, transaction rollback, multi-role RLS tests and end-to-end cross-month behavior remain unverified until the disposable PostgreSQL environment starts and the historical pre-authorization migration chain is reconciled. No production migration or write has been performed.
+
+
+## Controlled remittance corrections — 2026-11-23
+
+The follow-on migration `20261123170000_add_claims_settlement_remittance_reversals.sql` adds a compensating reversal RPC. An authorized settlement writer selects the original remittance and supplies a correction reason. The RPC appends a reversal event referencing the original, recalculates the parent claims-period totals, and resets a previously reconciled period for review. The original event remains immutable. A remittance can be reversed only once.
+
+Receipt-month reporting excludes reversed remittances while retaining both original and reversal entries in the audit history. A corrected payment is then entered as a new remittance with its own advice reference. Direct edits/deletes remain blocked.
+
+This is now wired into the Claims Settlement screen. Database execution and rollback behavior are still awaiting a clean replay; the old pre-authorization migration mismatch prevents the disposable database from reaching these new migrations.
