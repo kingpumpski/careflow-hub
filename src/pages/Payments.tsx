@@ -16,6 +16,19 @@ import { usePermissions } from "@/modules/security/usePermissions";
 import { isFullCalendarMonth } from "@/features/settlements/domain/settlement";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+type PaymentImportRow = {
+  insurance_company_id: string;
+  amount_paid: string;
+  payment_method: string;
+  reference_number: string | null;
+  payment_date: string;
+  claim_month: number;
+  claim_year: number;
+};
+type ImportPaymentsWithLedger = (
+  functionName: "import_payments_with_ledger",
+  args: { p_rows: PaymentImportRow[] },
+) => Promise<{ error: { message: string } | null }>;
 type PaymentSettlementPeriod = {
   insurance_company_id: string;
   period_type: string;
@@ -109,7 +122,8 @@ export default function Payments() {
 
     setSavingPayment(true);
     try {
-      const { error } = await (supabase.rpc as any)("import_payments_with_ledger", {
+      const importPaymentsWithLedger = supabase.rpc as unknown as ImportPaymentsWithLedger;
+      const { error } = await importPaymentsWithLedger("import_payments_with_ledger", {
         p_rows: [{
           insurance_company_id: form.insurance_company_id,
           amount_paid: amountText,
