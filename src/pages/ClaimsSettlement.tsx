@@ -8,7 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { useSupabaseInsert, useSupabaseQuery, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
-import { calculateActualWithholdingTax, calculateApprovedClaimAmount, calculateProvisionalWithholdingTax, calculateWithholdingTaxVariance, canReconcileSettlement, parseApprovedWithholdingTaxRate } from "@/features/settlements/domain/settlement";
+import { calculateActualWithholdingTax, calculateApprovedClaimAmount, calculateProvisionalWithholdingTax, isFullCalendarMonth, calculateWithholdingTaxVariance, canReconcileSettlement, parseApprovedWithholdingTaxRate } from "@/features/settlements/domain/settlement";
 import SettlementExceptionRegister from "@/components/settlements/SettlementExceptionRegister";
 import SettlementManagementReport from "@/components/settlements/SettlementManagementReport";
 import { usePermissions } from "@/modules/security/usePermissions";
@@ -47,6 +47,7 @@ export default function ClaimsSettlement() {
     try { approvedRate = parseApprovedWithholdingTaxRate(form.withholdingTaxRate); }
     catch (error: unknown) { toast({ title: "Invalid approved WHT rate", description: error instanceof Error ? error.message : "Enter a valid approved rate.", variant: "destructive" }); return; }
     if (new Date(form.periodEnd) < new Date(form.periodStart)) { toast({ title: "Invalid period", description: "The period end date cannot be before the start date.", variant: "destructive" }); return; }
+    if (form.periodType === "month" && !isFullCalendarMonth(form.periodStart, form.periodEnd)) { toast({ title: "Invalid monthly period", description: "A monthly settlement must start on the first day and end on the last day of the same calendar month so it can appear correctly in monthly claims reporting.", variant: "destructive" }); return; }
     if (!Number.isFinite(submitted) || submitted < 0 || !Number.isFinite(approvedRate) || approvedRate < 0 || approvedRate > 100) { toast({ title: "Invalid settlement values", description: "Claims submitted must be non-negative and WHT rate must be between 0 and 100%.", variant: "destructive" }); return; }
     setBusy(true);
     try {
@@ -121,7 +122,7 @@ export default function ClaimsSettlement() {
   }
 
   return <div className="space-y-6">
-    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><h1 className="page-title">Claims Settlement Tracking</h1><p className="page-description">Record period-level totals from the external claims platform and reconcile confirmed payment advice. Detailed claims and advice documents remain outside CareFlow.</p></div><Badge variant="secondary">EXTERNAL SOURCE OF TRUTH</Badge></div>
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><h1 className="page-title">Claims Settlement Tracking</h1><p className="page-description">Record period-level totals from the external claims platform and reconcile confirmed payment advice. Monthly periods must cover a complete calendar month to feed the monthly claims summary; quarterly/custom periods remain in the settlement report. Detailed claims and advice documents remain outside CareFlow.</p></div><Badge variant="secondary">EXTERNAL SOURCE OF TRUTH</Badge></div>
     <SettlementManagementReport periods={periods || []} />
     {canWriteSettlements ? <section className="stat-card space-y-4"><div className="flex items-center gap-2"><PlusCircle className="h-5 w-5" /><h2 className="font-semibold">New settlement period</h2></div><div className="grid gap-4 md:grid-cols-3">
       <div><Label>Insurance company</Label><select className="mt-1 h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm" value={form.insurerId} onChange={(e) => update("insurerId", e.target.value)}><option value="">Select insurer…</option>{(insurers || []).map((row: any) => <option key={row.id} value={row.id}>{row.company_name}</option>)}</select></div>
