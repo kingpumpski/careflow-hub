@@ -17,7 +17,7 @@ describe('provisional and actual WHT reporting migration contract', () => {
   it('uses only confirmed actual WHT after insurer payment advice', () => {
     expect(migration).toMatch(/settlement_status IN \('payment_advice_received', 'reconciled'\)/i);
     expect(migration).toMatch(/WHEN COALESCE\(st\.actual_withholding_tax_entry_count, 0\) > 0/i);
-    expect(migration).toMatch(/ELSE COALESCE\(st\.provisional_withholding_tax_amount, 0::numeric\)/i);
+    expect(migration).toMatch(/WHEN COALESCE\(st\.settlement_period_count, 0\) > 0[\s\S]*?THEN COALESCE\(st\.provisional_withholding_tax_amount, 0::numeric\)/i);
   });
 
   it('uses monthly settlement advice as the preferred source for monthly claims reporting', () => {
