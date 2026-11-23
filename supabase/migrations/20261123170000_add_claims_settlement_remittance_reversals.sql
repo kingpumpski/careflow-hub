@@ -131,7 +131,7 @@ BEGIN
     OR p_actual_withholding_tax < 0 OR p_net_cash_received < 0 THEN
     RAISE EXCEPTION 'Remittance amounts must be non-negative.';
   END IF;
-  IF p_net_cash_received > 0 AND p_receipt_date IS NULL THEN
+  IF (p_net_cash_received > 0 OR p_actual_withholding_tax > 0) AND p_receipt_date IS NULL THEN
     RAISE EXCEPTION 'Actual receipt date is required when net cash was received.';
   END IF;
 
