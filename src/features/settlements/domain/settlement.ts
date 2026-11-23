@@ -209,3 +209,122 @@ export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'set
     && Boolean(period.paymentAdviceReference?.trim())
     && Boolean(period.paymentAdviceDate);
 }
+
+
+/**
+ * One insurer advice/remittance event linked to the claims cycle it settles.
+ * adviceDate and receiptDate are deliberately separate: advice may be issued
+ * in one month and cash may arrive in another. Amounts are incremental for
+ * this event (not cumulative statement balances).
+ */
+export interface ClaimsCycleRemittance {
+  adviceReference: string;
+  adviceDate: string;
+  receiptDate: string | null;
+  approvedAmount: number;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+}
+
+export interface ClaimsCycleReconciliation {
+  claimsPeriod: string;
+  submittedAmount: number;
+  provisionalWithholdingTax: number;
+  approvedAmount: number;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+  approvalVariance: number;
+  approvedUnpaidBalance: number;
+  overallVariance: number;
+  receiptMonthTotals: Array<{
+    receiptMonth: string;
+    netCashReceived: number;
+    actualWithholdingTax: number;
+    remittanceCount: number;
+  }>;
+  balanced: boolean;
+}
+
+/**
+ * Matches remittances to their originating claims cycle, regardless of the
+ * later advice/receipt month. The caller must scope cycles by facility and
+ * insurer before calling this function. Duplicate advice references are
+ * rejected to prevent accidental double counting.
+ *
+ * submitted = approved + rejected + approval variance
+ * approved = actual WHT + net cash + approved unpaid balance
+ *
+ * Provisional WHT remains a separate estimate on the original submitted
+ * amount and is never substituted for or added to actual WHT.
+ */
+export function reconcileClaimsCycle(input: {
+  claimsPeriod: string;
+  submittedAmount: number;
+  provisionalWithholdingTax: number;
+  remittances: ClaimsCycleRemittance[];
+}): ClaimsCycleReconciliation {
+  const { claimsPeriod, submittedAmount, provisionalWithholdingTax, remittances } = input;
+  const nonNegative = [submittedAmount, provisionalWithholdingTax];
+  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(claimsPeriod)) {
+    throw new Error('Claims period must use YYYY-MM format.');
+  }
+  if (nonNegative.some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new Error('Submitted amount and provisional WHT must be non-negative.');
+  }
+
+  const references = new Set<string>();
+  for (const item of remittances) {
+    if (!item.adviceReference.trim() || references.has(item.adviceReference.trim())) {
+      throw new Error('Each remittance must have a unique, non-empty advice reference.');
+    }
+    references.add(item.adviceReference.trim());
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(item.adviceDate)
+      || (item.receiptDate !== null && !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.receiptDate))) {
+      throw new Error('Advice and receipt dates must use YYYY-MM-DD format.');
+    }
+    if ([item.approvedAmount, item.rejectedAmount, item.actualWithholdingTax, item.netCashReceived]
+      .some((value) => !Number.isFinite(value) || value < 0)) {
+      throw new Error('Remittance amounts must be non-negative.');
+    }
+  }
+
+  const sum = (key: 'approvedAmount' | 'rejectedAmount' | 'actualWithholdingTax' | 'netCashReceived') =>
+    roundCurrency(remittances.reduce((total, item) => total + item[key], 0));
+  const approvedAmount = sum('approvedAmount');
+  const rejectedAmount = sum('rejectedAmount');
+  const actualWithholdingTax = sum('actualWithholdingTax');
+  const netCashReceived = sum('netCashReceived');
+  const approvalVariance = roundCurrency(submittedAmount - approvedAmount - rejectedAmount);
+  const approvedUnpaidBalance = roundCurrency(approvedAmount - actualWithholdingTax - netCashReceived);
+  const overallVariance = roundCurrency(submittedAmount - rejectedAmount - actualWithholdingTax - netCashReceived);
+
+  const receiptMonths = new Map<string, { netCashReceived: number; actualWithholdingTax: number; remittanceCount: number }>();
+  for (const item of remittances) {
+    if (!item.receiptDate) continue;
+    const month = item.receiptDate.slice(0, 7);
+    const current = receiptMonths.get(month) ?? { netCashReceived: 0, actualWithholdingTax: 0, remittanceCount: 0 };
+    current.netCashReceived = roundCurrency(current.netCashReceived + item.netCashReceived);
+    current.actualWithholdingTax = roundCurrency(current.actualWithholdingTax + item.actualWithholdingTax);
+    current.remittanceCount += 1;
+    receiptMonths.set(month, current);
+  }
+
+  return {
+    claimsPeriod,
+    submittedAmount: roundCurrency(submittedAmount),
+    provisionalWithholdingTax: roundCurrency(provisionalWithholdingTax),
+    approvedAmount,
+    rejectedAmount,
+    actualWithholdingTax,
+    netCashReceived,
+    approvalVariance,
+    approvedUnpaidBalance,
+    overallVariance,
+    receiptMonthTotals: [...receiptMonths.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([receiptMonth, totals]) => ({ receiptMonth, ...totals })),
+    balanced: Math.abs(approvalVariance) <= EPSILON && Math.abs(approvedUnpaidBalance) <= EPSILON,
+  };
+}
