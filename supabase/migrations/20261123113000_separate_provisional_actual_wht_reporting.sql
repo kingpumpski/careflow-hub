@@ -1,4 +1,5 @@
 -- Keep provisional estimates and confirmed actual WHT in separate reporting columns.
+-- Rejection records are separate events, not additional submitted claim value.
 -- The legacy withholding_tax_amount remains as the amount used by the outstanding
 -- calculation: provisional while awaiting payment advice, actual once actual WHT
 -- entries exist. Provisional estimates are never added to confirmed actual WHT.
@@ -11,7 +12,13 @@ WITH claim_periods AS (
     c.insurance_company_id,
     c.claim_year AS period_year,
     c.claim_month AS period_month,
-    sum(COALESCE(c.claim_amount, 0::numeric)) AS submitted_amount,
+    sum(
+      CASE
+        WHEN lower(COALESCE(c.status, ''::text)) <> 'rejected'::text
+          THEN COALESCE(c.claim_amount, 0::numeric)
+        ELSE 0::numeric
+      END
+    ) AS submitted_amount,
     sum(
       CASE
         WHEN lower(COALESCE(c.status, ''::text)) = 'rejected'::text
