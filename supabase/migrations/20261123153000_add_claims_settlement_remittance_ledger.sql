@@ -17,9 +17,9 @@ CREATE TABLE public.claims_settlement_remittances (
   advice_date DATE NOT NULL,
   receipt_date DATE,
   approved_gross_amount NUMERIC(14,2),
-  rejected_amount NUMERIC(14,2) NOT NULL,
-  actual_withholding_tax NUMERIC(14,2) NOT NULL,
-  net_cash_received NUMERIC(14,2) NOT NULL,
+  rejected_amount NUMERIC(14,2),
+  actual_withholding_tax NUMERIC(14,2),
+  net_cash_received NUMERIC(14,2),
   entry_source TEXT NOT NULL DEFAULT 'remittance',
   created_by UUID REFERENCES auth.users(id) NOT NULL DEFAULT auth.uid(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -28,9 +28,9 @@ CREATE TABLE public.claims_settlement_remittances (
   CONSTRAINT claims_settlement_remittance_amounts_ck
     CHECK (
       (approved_gross_amount IS NULL OR approved_gross_amount >= 0)
-      AND rejected_amount >= 0
-      AND actual_withholding_tax >= 0
-      AND net_cash_received >= 0
+      AND (rejected_amount IS NULL OR rejected_amount >= 0)
+      AND (actual_withholding_tax IS NULL OR actual_withholding_tax >= 0)
+      AND (net_cash_received IS NULL OR net_cash_received >= 0)
     ),
   CONSTRAINT claims_settlement_remittance_receipt_ck
     CHECK (net_cash_received = 0 OR receipt_date IS NOT NULL),
@@ -93,9 +93,9 @@ SELECT
   COALESCE(p.payment_advice_date, p.created_at::date),
   p.actual_receipt_date,
   NULL,
-  COALESCE(p.rejection_amount, 0),
-  COALESCE(p.actual_withholding_tax, 0),
-  COALESCE(p.payment_received, 0),
+  p.rejection_amount,
+  p.actual_withholding_tax,
+  p.payment_received,
   'legacy_snapshot',
   p.created_by,
   p.updated_at
@@ -183,9 +183,9 @@ BEGIN
 
   SELECT
     CASE WHEN bool_or(approved_gross_amount IS NULL) THEN NULL ELSE sum(approved_gross_amount) END,
-    COALESCE(sum(rejected_amount), 0),
-    COALESCE(sum(actual_withholding_tax), 0),
-    COALESCE(sum(net_cash_received), 0),
+    CASE WHEN bool_or(rejected_amount IS NULL) THEN NULL ELSE sum(rejected_amount) END,
+    CASE WHEN bool_or(actual_withholding_tax IS NULL) THEN NULL ELSE sum(actual_withholding_tax) END,
+    CASE WHEN bool_or(net_cash_received IS NULL) THEN NULL ELSE sum(net_cash_received) END,
     max(receipt_date)
   INTO v_approved, v_rejected, v_actual_wht, v_net_cash, v_latest_receipt
   FROM public.claims_settlement_remittances
@@ -206,7 +206,7 @@ BEGIN
       actual_receipt_date = v_latest_receipt,
       payment_advice_reference = v_latest_reference,
       payment_advice_date = v_latest_advice_date,
-      settlement_status = 'payment_advice_received',
+      settlement_status = CASE WHEN v_approved IS NULL OR v_rejected IS NULL OR v_actual_wht IS NULL OR v_net_cash IS NULL THEN 'awaiting_payment' ELSE 'payment_advice_received' END,
       confirmed_by = NULL,
       confirmed_at = NULL,
       updated_at = now()
