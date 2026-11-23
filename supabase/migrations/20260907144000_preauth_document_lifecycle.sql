@@ -69,7 +69,7 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.pre_authorization_versions v
+    SELECT 1 FROM public.preauthorization_versions v
     WHERE v.preauth_id = p_preauth_id
       AND v.version_number = p_version_number
   ) THEN
