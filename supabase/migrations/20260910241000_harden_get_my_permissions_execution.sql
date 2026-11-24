@@ -1,52 +1,52 @@
 -- Keep the permission RPC authoritative without exposing RBAC metadata tables to clients.
-create or replace FUNCTION public.get_my_permissions()
-returns table(permission_key TEXT)
+create or replace function public.get_my_permissions()
+returns table(permission_key text)
 language sql
 stable
 security definer
 set search_path = ''
-as $
-  SELECT ap.key
-  FROM public.app_permissions AS ap
-  WHERE EXISTS (
-    SELECT 1
-    FROM public.user_roles AS admin_role
-    WHERE admin_role.user_id = (SELECT auth.uid())
-      AND admin_role.role IN ('superuser', 'admin')
+as $perm$
+  select ap.key
+  from public.app_permissions as ap
+  where exists (
+    select 1
+    from public.user_roles as admin_role
+    where admin_role.user_id = (select auth.uid())
+      and admin_role.role in ('superuser', 'admin')
   )
-  UNION
-  SELECT rp.permission_key
-  FROM public.user_roles AS ur
-  JOIN public.role_permissions AS rp
-    ON rp.role = ur.role::TEXT
-  WHERE ur.user_id = (SELECT auth.uid())
-    AND rp.granted = true
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.user_roles AS admin_role
-      WHERE admin_role.user_id = (SELECT auth.uid())
-        AND admin_role.role IN ('superuser', 'admin')
+  union
+  select rp.permission_key
+  from public.user_roles as ur
+  join public.role_permissions as rp
+    on rp.role = ur.role::text
+  where ur.user_id = (select auth.uid())
+    and rp.granted = true
+    and not exists (
+      select 1
+      from public.user_roles as admin_role
+      where admin_role.user_id = (select auth.uid())
+        and admin_role.role in ('superuser', 'admin')
     )
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.user_permission_overrides AS uo
-      WHERE uo.user_id = (SELECT auth.uid())
-        AND uo.permission_key = rp.permission_key
+    and not exists (
+      select 1
+      from public.user_permission_overrides as uo
+      where uo.user_id = (select auth.uid())
+        and uo.permission_key = rp.permission_key
     )
-  UNION
-  SELECT uo.permission_key
-  FROM public.user_permission_overrides AS uo
-  WHERE uo.user_id = (SELECT auth.uid())
-    AND uo.granted = true
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.user_roles AS admin_role
-      WHERE admin_role.user_id = (SELECT auth.uid())
-        AND admin_role.role IN ('superuser', 'admin')
+  union
+  select uo.permission_key
+  from public.user_permission_overrides as uo
+  where uo.user_id = (select auth.uid())
+    and uo.granted = true
+    and not exists (
+      select 1
+      from public.user_roles as admin_role
+      where admin_role.user_id = (select auth.uid())
+        and admin_role.role in ('superuser', 'admin')
     );
-$$;
+$perm$;
 
-revoke all ON FUNCTION public.get_my_permissions() from public, anon;
-grant execute ON FUNCTION public.get_my_permissions() to authenticated;
+revoke all on function public.get_my_permissions() from public, anon;
+grant execute on function public.get_my_permissions() to authenticated;
 
 drop policy if exists "role_permissions_select" on public.role_permissions;
