@@ -10,6 +10,7 @@ as $$
   from public.app_permissions p
   join public.role_permissions rp on rp.permission_key = p.key
   join public.user_roles ur on ur.role::text = rp.role
+  AND rp.granted = true
   where ur.user_id = (select auth.uid())
   union
   select uo.permission_key
