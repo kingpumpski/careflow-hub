@@ -5,6 +5,10 @@
 -- A matching awaiting-payment settlement period is linked; a conflicting or
 -- already-advised period is never silently overwritten.
 
+-- Never silently apply the historical 5% column default to a new period.
+ALTER TABLE public.claims_settlement_periods
+  ALTER COLUMN withholding_tax_rate DROP DEFAULT;
+
 CREATE TABLE public.monthly_claim_submissions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   facility_id UUID NOT NULL REFERENCES public.facilities(id) ON DELETE RESTRICT,
