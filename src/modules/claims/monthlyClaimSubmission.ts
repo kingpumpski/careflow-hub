@@ -104,7 +104,7 @@ export function buildClaimRejectionSubmissionArgs(
     claim_amount: values.rejected_amount,
     claim_month: values.claim_month,
     claim_year: values.claim_year,
-  }, facilityId);
+  }, facilityId, "rejection-validation-key");
 
   return {
     p_insurance_company_id: base.p_insurance_company_id,
