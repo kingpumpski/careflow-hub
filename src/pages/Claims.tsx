@@ -16,6 +16,7 @@ import type { ImportColumn } from "@/lib/importUtils";
 import { buildMonthlyClaimSubmissionArgs, buildClaimRejectionSubmissionArgs } from "@/modules/claims/monthlyClaimSubmission";
 import { useMonthlyClaimSubmission } from "@/modules/claims/useMonthlyClaimSubmission";
 import { useClaimRejectionSubmission } from "@/modules/claims/useClaimRejectionSubmission";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -78,7 +79,7 @@ export default function Claims() {
   const handleSubmitClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const args = buildMonthlyClaimSubmissionArgs(form);
+      const args = buildMonthlyClaimSubmissionArgs(form, getStoredFacilityId());
       const result = await submitMonthlyClaim.mutateAsync(args);
       toast({
         title: "Claim submitted",
@@ -94,7 +95,7 @@ export default function Claims() {
   const handleSubmitRejection = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const args = buildClaimRejectionSubmissionArgs({ ...rejectForm, ...denialMeta });
+      const args = buildClaimRejectionSubmissionArgs({ ...rejectForm, ...denialMeta }, getStoredFacilityId());
       const result = await submitClaimRejection.mutateAsync(args);
       toast({
         title: "Rejection recorded",
