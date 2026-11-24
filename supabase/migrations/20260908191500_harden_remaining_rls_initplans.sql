@@ -30,6 +30,7 @@ CREATE POLICY "Users update own notifications"
   WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "System insert notifications" ON public.notifications;
+DROP POLICY IF EXISTS notifications_insert_scoped ON public.notifications;
 CREATE POLICY notifications_insert_scoped
   ON public.notifications FOR INSERT TO authenticated
   WITH CHECK (
