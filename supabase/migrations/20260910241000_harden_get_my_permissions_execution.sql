@@ -8,7 +8,7 @@ set search_path = ''
 as $$
   select distinct p.key
   from public.app_permissions p
-  join public.role_permissions rp on rp.permission_key = p.permission_key
+  join public.role_permissions rp on rp.permission_key = p.key
   join public.user_roles ur on ur.role::text = rp.role
   where ur.user_id = (select auth.uid())
   union
