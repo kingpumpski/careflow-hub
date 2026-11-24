@@ -11,6 +11,7 @@ export type MonthlyClaimSubmissionArgs = {
   p_claim_month: number;
   p_claim_year: number;
   p_facility_id: string;
+  p_idempotency_key: string;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,9 +24,14 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 export function buildMonthlyClaimSubmissionArgs(
   values: MonthlyClaimFormValues,
   facilityId: string | null | undefined,
+  idempotencyKey = crypto.randomUUID(),
 ): MonthlyClaimSubmissionArgs {
   if (!facilityId || !UUID_PATTERN.test(facilityId)) {
     throw new Error("Select an active facility before submitting claims.");
+  }
+
+  if (idempotencyKey.trim().length < 8 || idempotencyKey.length > 200) {
+    throw new Error("A valid monthly-claim idempotency key is required.");
   }
 
   const insurerId = values.insurance_company_id.trim();
@@ -62,6 +68,7 @@ export function buildMonthlyClaimSubmissionArgs(
     p_claim_month: month,
     p_claim_year: year,
     p_facility_id: facilityId,
+    p_idempotency_key: idempotencyKey.trim(),
   };
 }
 
