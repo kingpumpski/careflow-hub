@@ -242,6 +242,166 @@ export type Database = {
         }
         Relationships: []
       }
+      claim_cases: {
+        Row: {
+          approved_amount: number | null
+          approved_at: string | null
+          claim_number: string
+          closed_at: string | null
+          created_at: string
+          created_by: string
+          currency: string
+          date_of_service: string
+          denial_reason: string | null
+          diagnosis: string | null
+          facility_id: string
+          id: string
+          insurance_company_id: string
+          member_number: string | null
+          paid_amount: number
+          paid_at: string | null
+          patient_name: string
+          preauth_id: string | null
+          procedure_name: string | null
+          service_period_end: string
+          service_period_start: string
+          status: string
+          submitted_amount: number
+          submitted_at: string | null
+          clinical_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          approved_amount?: number | null
+          approved_at?: string | null
+          claim_number: string
+          closed_at?: string | null
+          created_at?: string
+          created_by: string
+          currency: string
+          date_of_service: string
+          denial_reason?: string | null
+          diagnosis?: string | null
+          facility_id: string
+          id?: string
+          insurance_company_id: string
+          member_number?: string | null
+          paid_amount?: number
+          paid_at?: string | null
+          patient_name: string
+          preauth_id?: string | null
+          procedure_name?: string | null
+          service_period_end: string
+          service_period_start: string
+          status?: string
+          submitted_amount: number
+          submitted_at?: string | null
+          clinical_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approved_amount?: number | null
+          approved_at?: string | null
+          claim_number?: string
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string
+          currency?: string
+          date_of_service?: string
+          denial_reason?: string | null
+          diagnosis?: string | null
+          facility_id?: string
+          id?: string
+          insurance_company_id?: string
+          member_number?: string | null
+          paid_amount?: number
+          paid_at?: string | null
+          patient_name?: string
+          preauth_id?: string | null
+          procedure_name?: string | null
+          service_period_end?: string
+          service_period_start?: string
+          status?: string
+          submitted_amount?: number
+          submitted_at?: string | null
+          clinical_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claim_cases_facility_id_fkey"
+            columns: ["facility_id"]
+            isOneToOne: false
+            referencedRelation: "facilities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_cases_insurance_company_id_fkey"
+            columns: ["insurance_company_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_cases_preauth_id_fkey"
+            columns: ["preauth_id"]
+            isOneToOne: false
+            referencedRelation: "pre_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      claim_case_events: {
+        Row: {
+          actor_id: string
+          claim_case_id: string
+          created_at: string
+          facility_id: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          note: string
+          to_status: string
+        }
+        Insert: {
+          actor_id: string
+          claim_case_id: string
+          created_at?: string
+          facility_id: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note: string
+          to_status: string
+        }
+        Update: {
+          actor_id?: string
+          claim_case_id?: string
+          created_at?: string
+          facility_id?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          note?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claim_case_events_facility_id_fkey"
+            columns: ["facility_id"]
+            isOneToOne: false
+            referencedRelation: "facilities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_case_events_claim_case_id_fkey"
+            columns: ["claim_case_id"]
+            isOneToOne: false
+            referencedRelation: "claim_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_companies: {
         Row: {
           company_name: string
@@ -1042,6 +1202,35 @@ export type Database = {
       current_user_has_permission: {
         Args: { p_permission_key: string }
         Returns: boolean
+      }
+      create_individual_claim_case: {
+        Args: {
+          p_facility_id: string
+          p_insurance_company_id: string
+          p_patient_name: string
+          p_date_of_service: string
+          p_submitted_amount: number
+          p_member_number?: string | null
+          p_procedure_name?: string | null
+          p_diagnosis?: string | null
+          p_clinical_notes?: string | null
+          p_preauth_id?: string | null
+          p_service_period_start?: string | null
+          p_service_period_end?: string | null
+          p_currency?: string | null
+        }
+        Returns: { case_id: string; claim_number: string; status: string }[]
+      }
+      transition_individual_claim_case: {
+        Args: {
+          p_claim_case_id: string
+          p_target_status: string
+          p_note: string
+          p_approved_amount?: number | null
+          p_paid_amount?: number | null
+          p_denial_reason?: string | null
+        }
+        Returns: { case_id: string; claim_number: string; status: string }[]
       }
       log_claim_diagnosis_event: {
         Args: {

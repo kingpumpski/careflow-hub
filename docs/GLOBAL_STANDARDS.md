@@ -37,7 +37,17 @@ The Ghana Cedi presentation is the initial deployment default, not a core invari
 
 `draft → verified → submitted → acknowledged → under_review → queried → approved → partially_approved → rejected → appealed → partially_paid → paid → reconciled → closed`
 
-The framework-independent transition catalogue in `src/modules/claims/lifecycle.ts` is a domain contract only. It is not yet enforced by the Claims UI or the database. Until a server-side transition RPC and migration are implemented, do not treat it as a production authorization boundary.
+The framework-independent transition catalogue in `src/modules/claims/lifecycle.ts` is the canonical status contract. The individual claim-case implementation in branch `feat/individual-claim-cases-rebased` adds a separate facility-scoped `claim_cases` table, server-side transactional creation/transition RPCs, immutable `claim_case_events`, and a dedicated Claims UI. It is not yet merged or deployed and must not be treated as a production authorization boundary until disposable-database integration tests, migration-history reconciliation, and controlled deployment succeed.
+
+## Individual claim cases versus monthly aggregates
+
+The existing `public.claims` table and Monthly Claims Entry remain the legacy insurer-level monthly aggregate workflow. Do not reinterpret or backfill those rows as individual patient claims.
+
+Individual claim cases use a separate `public.claim_cases` model scoped to a facility. Each case has a unique facility claim reference, insurer, patient-name/member-number snapshot, service date/period, submitted/approved/paid amounts, currency, optional same-facility/same-insurer pre-authorization link, and a lifecycle status. Every creation and status transition writes an immutable `claim_case_events` record.
+
+The case lifecycle is enforced by server-side RPCs, row locking, permission checks and facility-membership checks. Authenticated clients have read-only table access; direct PostgREST writes are revoked. Case creation and transition do not automatically create monthly aggregate claims, payments, WHT or ledger entries. A separate controlled financial posting/reconciliation workflow is required to avoid double counting.
+
+A facility record and active facility membership are prerequisites. Facility-scoped access is not a substitute for the still-pending organization-level tenancy model.
 
 ## Financial domain target
 
