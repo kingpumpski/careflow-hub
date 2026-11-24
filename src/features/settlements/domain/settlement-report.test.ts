@@ -46,6 +46,7 @@ describe('settlement reporting', () => {
     expect(summary.totalSubmitted).toBe(2500);
     expect(summary.totalPaymentReceived).toBe(1230);
     expect(summary.totalRejectionAmount).toBe(190);
+    expect(summary.totalProvisionalWht).toBe(150);
     expect(summary.totalActualWht).toBe(80);
     expect(summary.totalWhtVariance).toBe(-20);
     expect(summary.totalResidual).toBe(0);
@@ -60,7 +61,6 @@ describe('settlement reporting', () => {
   it('reports signed under- and over-settlement without hiding negative residuals', () => {
     const rows = [
       period({ id: 'under', settlementStatus: 'reconciled', paymentReceived: 750, rejectionAmount: 100, actualWithholdingTax: 50 }),
-      // 900 + 100 rejected + 50 WHT exceeds 1,000 submitted by 50.
       period({ id: 'over', settlementStatus: 'reconciled', paymentReceived: 900, rejectionAmount: 100, actualWithholdingTax: 50 }),
     ];
     const summary = summarizeSettlementPeriods(rows);
