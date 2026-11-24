@@ -6,7 +6,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select distinct p.permission_key
+  select distinct p.key
   from public.app_permissions p
   join public.role_permissions rp on rp.permission_key = p.permission_key
   join public.user_roles ur on ur.role::text = rp.role
