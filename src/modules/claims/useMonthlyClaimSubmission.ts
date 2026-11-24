@@ -8,6 +8,8 @@ export type MonthlyClaimSubmissionResult = {
   claim_id: string;
   tax_rate: number;
   tax_amount: number;
+  settlement_period_id: string;
+  idempotent: boolean;
 };
 
 type RpcResult = {
