@@ -39,7 +39,7 @@ as $$
       from public.user_permission_overrides uo
       where uo.user_id = (select auth.uid())
         and uo.permission_key = p_permission_key
-        and uo.allowed = true
+        and uo.granted = true
     )
     or (
       not exists (
