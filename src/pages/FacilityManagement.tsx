@@ -21,6 +21,7 @@ type FacilityRow = {
   default_currency: string;
   date_format: string;
   active: boolean;
+  settings?: Record<string, unknown> | null;
 };
 type MembershipRow = {
   id: string;
@@ -57,6 +58,8 @@ export default function FacilityManagement() {
   const selectedFacility = facilityRows.find((facility) => facility.id === selectedFacilityId) ?? null;
   const [creating, setCreating] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
+  const [provisionalWhtRate, setProvisionalWhtRate] = useState("");
+  const [savingWhtRate, setSavingWhtRate] = useState(false);
   const [facilityForm, setFacilityForm] = useState({
     code: "",
     name: "",
@@ -81,6 +84,11 @@ export default function FacilityManagement() {
   useEffect(() => {
     if (selectedFacilityId) storeFacilityId(selectedFacilityId);
   }, [selectedFacilityId]);
+
+  useEffect(() => {
+    const rate = selectedFacility?.settings?.withholding_tax_rate;
+    setProvisionalWhtRate(rate == null ? "" : String(rate));
+  }, [selectedFacility?.id, selectedFacility?.settings?.withholding_tax_rate]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["facilities"] });
@@ -113,6 +121,30 @@ export default function FacilityManagement() {
       toast({ title: "Unable to create facility", description: cause instanceof Error ? cause.message : "Facility creation failed.", variant: "destructive" });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const saveProvisionalWhtRate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const rate = Number(provisionalWhtRate);
+    if (!selectedFacilityId || !canManageFacilities || !provisionalWhtRate.trim()
+      || !Number.isFinite(rate) || rate < 0 || rate > 100) {
+      toast({ title: "Invalid WHT rate", description: "Enter an approved rate between 0 and 100 percent.", variant: "destructive" });
+      return;
+    }
+    setSavingWhtRate(true);
+    try {
+      const { error } = await callFacilityRpc("set_facility_provisional_wht_rate", {
+        p_facility_id: selectedFacilityId,
+        p_rate: rate,
+      });
+      if (error) throw new Error(error.message);
+      toast({ title: "Facility WHT rate saved", description: "This rate will be used only for provisional estimates. Actual WHT is recorded from insurer payment advice." });
+      await queryClient.invalidateQueries({ queryKey: ["facilities"] });
+    } catch (cause) {
+      toast({ title: "Unable to save facility WHT rate", description: cause instanceof Error ? cause.message : "The rate could not be saved.", variant: "destructive" });
+    } finally {
+      setSavingWhtRate(false);
     }
   };
 
@@ -178,7 +210,7 @@ export default function FacilityManagement() {
 
     <section className="stat-card space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><Building2 className="h-5 w-5" /><h2 className="font-semibold">Registered facilities</h2></div><Badge variant="outline">{facilityRows.length} facilities</Badge></div>
-      {!facilityRows.length ? <p className="rounded-md border p-5 text-sm text-muted-foreground">No facilities have been registered yet. Create the first facility above to enable facility-scoped workflows.</p> : <div className="space-y-3"><Label htmlFor="facility-select">Manage facility</Label><select id="facility-select" value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm">{facilityRows.map((facility) => <option key={facility.id} value={facility.id}>{facility.name} ({facility.code})</option>)}</select>{selectedFacility && <div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-2"><p><span className="text-muted-foreground">Country:</span> {selectedFacility.country_code ?? "—"}</p><p><span className="text-muted-foreground">Currency:</span> {selectedFacility.default_currency}</p><p><span className="text-muted-foreground">Time zone:</span> {selectedFacility.timezone}</p><p><span className="text-muted-foreground">Date format:</span> {selectedFacility.date_format}</p></div>}</div>}
+      {!facilityRows.length ? <p className="rounded-md border p-5 text-sm text-muted-foreground">No facilities have been registered yet. Create the first facility above to enable facility-scoped workflows.</p> : <div className="space-y-3"><Label htmlFor="facility-select">Manage facility</Label><select id="facility-select" value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm">{facilityRows.map((facility) => <option key={facility.id} value={facility.id}>{facility.name} ({facility.code})</option>)}</select>{selectedFacility && <><div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-2"><p><span className="text-muted-foreground">Country:</span> {selectedFacility.country_code ?? "—"}</p><p><span className="text-muted-foreground">Currency:</span> {selectedFacility.default_currency}</p><p><span className="text-muted-foreground">Time zone:</span> {selectedFacility.timezone}</p><p><span className="text-muted-foreground">Date format:</span> {selectedFacility.date_format}</p></div><form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_auto] sm:items-end" onSubmit={(event) => void saveProvisionalWhtRate(event)}><div className="space-y-2"><Label htmlFor="facility-provisional-wht-rate">Approved provisional WHT rate (%)</Label><Input id="facility-provisional-wht-rate" type="number" min="0" max="100" step="0.0001" required value={provisionalWhtRate} onChange={(event) => setProvisionalWhtRate(event.target.value)} placeholder="Enter facility-approved rate" /><p className="text-xs text-muted-foreground">Used only to estimate WHT on submitted claims. Actual WHT is recorded separately from insurer payment advice.</p></div><Button type="submit" disabled={savingWhtRate || offline}>{savingWhtRate ? "Saving…" : "Save approved rate"}</Button></form></>}</div>}
     </section>
 
     {selectedFacility && <section className="stat-card space-y-4">
