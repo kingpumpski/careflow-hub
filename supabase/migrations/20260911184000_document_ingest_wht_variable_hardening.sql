@@ -15,7 +15,7 @@ begin
   v_definition := replace(
     v_definition,
     '  v_tax_rate numeric;',
-    '  v_tax_rate numeric;\n  v_old_tax_amount numeric;'
+    E'  v_tax_rate numeric;\n  v_old_tax_amount numeric;'
   );
 
   v_definition := replace(
