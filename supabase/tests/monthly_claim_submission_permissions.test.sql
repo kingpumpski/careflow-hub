@@ -2,14 +2,15 @@
 -- Contract checks for the least-privilege monthly claim + system posting RPCs.
 DO $test$
 DECLARE
-  v_public_claim text := 'public.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid)';
-  v_internal_claim text := 'security_internal.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid)';
+  v_public_claim text := 'public.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid,text)';
+  v_internal_claim text := 'security_internal.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid,text)';
   v_public_rejection text := 'public.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text,uuid)';
   v_internal_rejection text := 'security_internal.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text,uuid)';
   v_role text;
   v_view_definition text;
   v_claim_definition text;
   v_rejection_definition text;
+  v_submission_definition text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.app_permissions
@@ -91,6 +92,41 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
+  v_submission_definition := pg_get_functiondef(v_internal_claim::regprocedure);
+
+  IF position('pg_advisory_xact_lock' in v_submission_definition) = 0
+     OR position('idempotency_key' in v_submission_definition) = 0
+     OR position('claims_settlement_periods' in v_submission_definition) = 0
+     OR position('monthly_claim_submissions' in v_submission_definition) = 0 THEN
+    RAISE EXCEPTION 'Monthly claim RPC must be idempotent and atomically link its settlement period';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.monthly_claim_submissions'::regclass
+      AND conname = 'monthly_claim_submission_period_once'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.monthly_claim_submissions'::regclass
+      AND conname = 'monthly_claim_submission_idempotency_once'
+  ) THEN
+    RAISE EXCEPTION 'Monthly claim period and idempotency uniqueness constraints are required';
+  END IF;
+
+  IF has_table_privilege('authenticated', 'public.monthly_claim_submissions', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.monthly_claim_submissions', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.monthly_claim_submissions', 'DELETE') THEN
+    RAISE EXCEPTION 'Authenticated clients must not write directly to the immutable monthly submission ledger';
+  END IF;
+
+  IF (
+    SELECT column_default FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'claims_settlement_periods'
+      AND column_name = 'withholding_tax_rate'
+  ) IS NOT NULL THEN
+    RAISE EXCEPTION 'Settlement WHT rate must not have an implicit default';
+  END IF;
+
   v_claim_definition := pg_get_functiondef(v_internal_claim::regprocedure);
   v_rejection_definition := pg_get_functiondef(v_internal_rejection::regprocedure);
 
