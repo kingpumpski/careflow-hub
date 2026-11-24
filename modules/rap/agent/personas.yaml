@@ -1,0 +1,33 @@
+version: 1
+minimum_confidence: 0.85
+approval:
+  required_for_mutation: true
+  ttl_minutes: 15
+  single_use: true
+personas:
+  claims_specialist:
+    flag: RAP_AGENT_CLAIMS_ENABLED
+    external_egress: false
+    partner_submission: false
+    knowledge_base_write: false
+    purpose: rejection advice analysis, deterministic diagnosis review, preauthorization drafts
+  project_administrator:
+    flag: RAP_AGENT_ADMIN_ENABLED
+    external_egress: false
+    partner_submission: false
+    knowledge_base_write: false
+    purpose: read-only integrity, coverage, permission, retention and rejection-spike scans
+  it_officer:
+    flag: RAP_AGENT_IT_ENABLED
+    external_egress: proxy-only
+    partner_submission: false
+    knowledge_base_write: false
+    purpose: security advisory research and IT reports
+external_processing:
+  raw_phi: forbidden
+  raw_pii: forbidden
+  secrets: forbidden
+  internal_ids: forbidden
+  foreign_llm_retention: forbidden
+  foreign_llm_training: forbidden
+  cross_border_non_phi: documented_ghana_approval_required
