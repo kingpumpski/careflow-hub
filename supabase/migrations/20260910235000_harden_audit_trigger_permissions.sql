@@ -9,6 +9,6 @@ grant select on table public.audit_logs to authenticated;
 -- The audit trigger only needs to write audit rows through its definer privileges.
 -- Restrict function execution to the trigger mechanism rather than exposing it as
 -- a callable RPC to clients.
-revoke all on function public.audit_trigger_fn() from public;
+revoke all on function public.audit_trigger_fn() from public, anon, authenticated;
 
 -- Existing triggers invoke the function internally; no client execute grant is needed.
