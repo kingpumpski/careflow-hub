@@ -34,6 +34,7 @@ export default function Claims() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [detailInsurer, setDetailInsurer] = useState<any>(null);
   const [form, setForm] = useState({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+  const [monthlySubmissionKey, setMonthlySubmissionKey] = useState(() => crypto.randomUUID());
   const [rejectForm, setRejectForm] = useState({ insurance_company_id: "", rejected_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
   const [denialMeta, setDenialMeta] = useState({ denial_category: "", denial_reason: "", root_cause: "", denial_notes: "" });
 
@@ -76,7 +77,7 @@ export default function Claims() {
   const handleSubmitClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const args = buildMonthlyClaimSubmissionArgs(form, getStoredFacilityId());
+      const args = buildMonthlyClaimSubmissionArgs(form, getStoredFacilityId(), monthlySubmissionKey);
       const result = await submitMonthlyClaim.mutateAsync(args);
       toast({
         title: "Claim submitted",
@@ -84,6 +85,7 @@ export default function Claims() {
       });
       setAddDialogOpen(false);
       setForm({ insurance_company_id: "", claim_amount: "", claim_month: "", claim_year: String(new Date().getFullYear()) });
+      setMonthlySubmissionKey(crypto.randomUUID());
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "The monthly claim could not be submitted.";
       toast({ title: "Error", description: message, variant: "destructive" });
