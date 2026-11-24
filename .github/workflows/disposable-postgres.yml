@@ -3,8 +3,11 @@ name: Disposable PostgreSQL Migration Tests
 on:
   push:
     branches:
-      - fix/atomic-monthly-claim-submission
-      - feat/individual-claim-cases-rebased
+      - main
+      - development
+      - "feat/**"
+      - "fix/**"
+      - feature/rap-reconciled
   pull_request:
     branches: [main]
 
