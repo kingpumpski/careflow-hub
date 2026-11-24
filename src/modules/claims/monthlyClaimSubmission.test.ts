@@ -12,13 +12,18 @@ const validForm = {
 
 describe("buildMonthlyClaimSubmissionArgs", () => {
   it("preserves the exact decimal amount and normalizes the period", () => {
-    expect(buildMonthlyClaimSubmissionArgs(validForm, facilityId)).toEqual({
+    expect(buildMonthlyClaimSubmissionArgs(validForm, facilityId, "monthly-claim-key-001")).toEqual({
       p_insurance_company_id: validForm.insurance_company_id,
       p_claim_amount: "1250.40",
       p_claim_month: 11,
       p_claim_year: 2026,
       p_facility_id: facilityId,
+      p_idempotency_key: "monthly-claim-key-001",
     });
+  });
+
+  it("rejects malformed idempotency keys", () => {
+    expect(() => buildMonthlyClaimSubmissionArgs(validForm, facilityId, "short")).toThrow(/idempotency key/i);
   });
 
   it("rejects a missing or malformed insurer", () => {
