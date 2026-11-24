@@ -298,3 +298,20 @@ This evidence strengthens the conclusion that the repository's colliding early m
 3. `preauth_audit_events` and `preauth_workflow_transitions` are not present as the corresponding live table/function contracts. Production uses different audit tables and an atomic transition function.
 
 **Disposition:** do not solve these collisions by simply re-versioning one file or merging their SQL. First recover the unmatched production migration sources (including the security-internal wrappers/implementations and document registry introduction), then classify each repository-only migration as superseded, never deployed, or required for clean bootstrap. The clean replay must reproduce the current production object model, not merely execute every historical source file in the current directory. No production mutation was performed.
+
+
+## Production data-presence check — 2026-11-24
+
+A read-only count-only query against production project `jajfdgknctzqypdtvmxo` returned:
+
+| Object | Rows |
+|---|---:|
+| `public.facilities` | 0 |
+| `public.facility_memberships` | 0 |
+| Active facility memberships | 0 |
+| `public.claims_settlement_periods` | 0 |
+| Settlement periods with legacy advice/payment/WHT values | 0 |
+
+This confirms there are currently no facility onboarding records, memberships, claims-settlement periods, or legacy advice rows in this production project. The remittance-ledger migration's legacy snapshot query therefore has zero source rows to migrate at the time of this observation. This is a point-in-time result, not a guarantee about later data changes.
+
+Operational implication: the new facility-scoped claims settlement workflow cannot be verified against real production facility memberships or populated claims periods yet. The disposable database must seed test facilities, users, memberships and permissions for meaningful RLS/transaction tests. Production onboarding/data setup remains a separate controlled operational step; no facility, membership, claim or settlement data was inserted by this inspection.
