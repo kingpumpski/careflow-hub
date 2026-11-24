@@ -19,37 +19,37 @@ CREATE POLICY ledger_entries_facility_read
   ON public.ledger_entries FOR SELECT TO authenticated
   USING (
     facility_id IS NOT NULL
-    AND public.user_has_facility_access(facility_id)
+    AND security_internal.user_has_facility_access(facility_id)
     AND (
-      public.current_user_has_permission('ledger.read')
-      OR public.current_user_has_permission('reports.read')
+      security_internal.current_user_has_permission('ledger.read')
+      OR security_internal.current_user_has_permission('reports.read')
     )
   );
 CREATE POLICY ledger_entries_facility_insert
   ON public.ledger_entries FOR INSERT TO authenticated
   WITH CHECK (
     facility_id IS NOT NULL
-    AND public.user_has_facility_access(facility_id)
-    AND public.current_user_has_permission('ledger.write')
+    AND security_internal.user_has_facility_access(facility_id)
+    AND security_internal.current_user_has_permission('ledger.write')
   );
 CREATE POLICY ledger_entries_facility_update
   ON public.ledger_entries FOR UPDATE TO authenticated
   USING (
     facility_id IS NOT NULL
-    AND public.user_has_facility_access(facility_id)
-    AND public.current_user_has_permission('ledger.write')
+    AND security_internal.user_has_facility_access(facility_id)
+    AND security_internal.current_user_has_permission('ledger.write')
   )
   WITH CHECK (
     facility_id IS NOT NULL
-    AND public.user_has_facility_access(facility_id)
-    AND public.current_user_has_permission('ledger.write')
+    AND security_internal.user_has_facility_access(facility_id)
+    AND security_internal.current_user_has_permission('ledger.write')
   );
 CREATE POLICY ledger_entries_facility_delete
   ON public.ledger_entries FOR DELETE TO authenticated
   USING (
     facility_id IS NOT NULL
-    AND public.user_has_facility_access(facility_id)
-    AND public.current_user_has_permission('ledger.write')
+    AND security_internal.user_has_facility_access(facility_id)
+    AND security_internal.current_user_has_permission('ledger.write')
   );
 
 -- Remove the older unscoped RPC signatures so callers cannot bypass the
@@ -75,7 +75,7 @@ BEGIN
     RAISE EXCEPTION 'Authentication is required to read the facility withholding-tax rate.'
       USING ERRCODE = '42501';
   END IF;
-  IF p_facility_id IS NULL OR NOT public.user_has_facility_access(p_facility_id) THEN
+  IF p_facility_id IS NULL OR NOT security_internal.user_has_facility_access(p_facility_id) THEN
     RAISE EXCEPTION 'Active membership in the selected facility is required.'
       USING ERRCODE = '42501';
   END IF;
@@ -136,7 +136,7 @@ BEGIN
     RAISE EXCEPTION 'claims.write and claims.submit_monthly permissions are required.'
       USING ERRCODE = '42501';
   END IF;
-  IF p_facility_id IS NULL OR NOT public.user_has_facility_access(p_facility_id) THEN
+  IF p_facility_id IS NULL OR NOT security_internal.user_has_facility_access(p_facility_id) THEN
     RAISE EXCEPTION 'Active membership in the selected facility is required.'
       USING ERRCODE = '42501';
   END IF;
@@ -268,7 +268,7 @@ BEGIN
     RAISE EXCEPTION 'claims.write and claims.submit_monthly permissions are required.'
       USING ERRCODE = '42501';
   END IF;
-  IF p_facility_id IS NULL OR NOT public.user_has_facility_access(p_facility_id) THEN
+  IF p_facility_id IS NULL OR NOT security_internal.user_has_facility_access(p_facility_id) THEN
     RAISE EXCEPTION 'Active membership in the selected facility is required.'
       USING ERRCODE = '42501';
   END IF;
