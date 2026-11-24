@@ -2,12 +2,14 @@
 -- Contract checks for the least-privilege monthly claim + system posting RPCs.
 DO $test$
 DECLARE
-  v_public_claim text := 'public.submit_monthly_claim_atomic(uuid,numeric,integer,integer)';
-  v_internal_claim text := 'security_internal.submit_monthly_claim_atomic(uuid,numeric,integer,integer)';
-  v_public_rejection text := 'public.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text)';
-  v_internal_rejection text := 'security_internal.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text)';
+  v_public_claim text := 'public.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid)';
+  v_internal_claim text := 'security_internal.submit_monthly_claim_atomic(uuid,numeric,integer,integer,uuid)';
+  v_public_rejection text := 'public.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text,uuid)';
+  v_internal_rejection text := 'security_internal.submit_claim_rejection_atomic(uuid,numeric,integer,integer,text,text,text,text,uuid)';
   v_role text;
   v_view_definition text;
+  v_claim_definition text;
+  v_rejection_definition text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.app_permissions
@@ -33,11 +35,11 @@ BEGIN
     RAISE EXCEPTION 'Claims roles must not receive general payment or ledger write permissions';
   END IF;
 
-  IF has_function_privilege('authenticated', 'security_internal.configured_withholding_tax_rate()', 'EXECUTE') THEN
+  IF has_function_privilege('authenticated', 'security_internal.configured_withholding_tax_rate(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Configured WHT rate helper must not expose the internal system setting directly';
   END IF;
 
-  IF position('No withholding-tax rate is configured' in pg_get_functiondef('security_internal.configured_withholding_tax_rate()'::regprocedure)) = 0
+  IF position('No approved provisional WHT rate is configured for this facility' in pg_get_functiondef('security_internal.configured_withholding_tax_rate()'::regprocedure)) = 0
      OR position('5.00' in pg_get_functiondef('security_internal.configured_withholding_tax_rate()'::regprocedure)) > 0 THEN
     RAISE EXCEPTION 'Monthly claim posting must fail closed when the approved WHT rate is not configured; no implicit tax rate is permitted';
   END IF;
@@ -89,6 +91,29 @@ BEGIN
      OR position('claims.write' in pg_get_functiondef(v_internal_rejection::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private posting helpers must enforce claims.write and claims.submit_monthly';
   END IF;
+  v_claim_definition := pg_get_functiondef(v_internal_claim::regprocedure);
+  v_rejection_definition := pg_get_functiondef(v_internal_rejection::regprocedure);
+
+  IF position('user_has_facility_access' in v_claim_definition) = 0
+     OR position('p_facility_id' in v_claim_definition) = 0
+     OR position('withholding_tax_rate' in v_claim_definition) = 0
+     OR position('facility_id' in v_claim_definition) = 0 THEN
+    RAISE EXCEPTION 'Monthly claim posting must validate facility membership, use the facility-approved WHT rate and persist facility scope';
+  END IF;
+
+  IF position('user_has_facility_access' in v_rejection_definition) = 0
+     OR position('p_facility_id' in v_rejection_definition) = 0
+     OR position('facility_id' in v_rejection_definition) = 0 THEN
+    RAISE EXCEPTION 'Claim rejection posting must validate facility membership and persist facility scope';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'ledger_entries' AND column_name = 'facility_id'
+  ) THEN
+    RAISE EXCEPTION 'Ledger entries must carry facility ownership';
+  END IF;
+
   v_view_definition := lower(pg_get_viewdef('public.claims_outstanding_periods'::regclass));
 
   IF position('status' in v_view_definition) = 0
@@ -103,8 +128,8 @@ BEGIN
     RAISE EXCEPTION 'The outstanding-period view must use only actual WHT once payment advice is recorded';
   END IF;
 
-  IF position('INSERT INTO public.withholding_tax' in pg_get_functiondef(v_internal_rejection::regprocedure)) > 0
-     OR position('configured_withholding_tax_rate' in pg_get_functiondef(v_internal_rejection::regprocedure)) > 0 THEN
+  IF position('INSERT INTO public.withholding_tax' in v_rejection_definition) > 0
+     OR position('configured_withholding_tax_rate' in v_rejection_definition) > 0 THEN
     RAISE EXCEPTION 'Recording a rejection must not create or reverse provisional WHT; actual WHT is captured from payment advice';
   END IF;
 
