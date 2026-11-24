@@ -265,3 +265,36 @@ Observed production objects:
 - The live 74-row migration ledger records `20260907140000_preauth_versions_workflow_hardening` under version `20260908182040`. It contains no separate entries named for `preauth_atomic_hardening`, either duplicate `20260907144000` document migration, or either duplicate `20260907145000` audit/transition migration.
 
 This is additional evidence that the duplicate source files are not represented as distinct applied migrations in the current production ledger, and that the current production document implementation is a separate registry-based design. It is **not** proof that the repository files are the original SQL deployed to production, nor does absence of an object prove that no equivalent behavior exists inside another schema or wrapper. Do not simply rename, delete, or replay these historical files based on this observation. Recover the verified backup/deployed source bundle, map the live wrappers and `security_internal` implementations, and design a reviewed forward-only migration sequence before removing the duplicate-version replay blocker.
+
+
+## Expanded production pre-authorization implementation inventory — 2026-11-24
+
+A second read-only catalog pass inspected the current production table and function signatures in both `public` and `security_internal`. This is a live-schema inventory, not a complete source-history reconstruction.
+
+### Production tables observed
+
+- `public.preauthorization_versions` — facility-scoped immutable revision rows.
+- `public.preauth_submissions` — submission lifecycle rows with facility scope.
+- `public.preauth_document_registry` — document snapshot/hash registry with facility scope; this is the active document metadata model, not `public.preauth_documents`.
+- `public.preauth_handoff_log` and `public.preauth_email_log` — handoff/email history.
+- `public.preauth_versions` — a separate legacy/version model also exists and must not be confused with `preauthorization_versions`.
+- `public.audit_logs` and `public.security_audit_log` — audit tables observed; no `public.preauth_audit_events` table was found.
+
+### Production function architecture observed
+
+- Public `create_preauthorization_atomic` and `update_preauthorization_atomic` are SQL wrappers delegating to `security_internal` implementations.
+- Public `preauth_snapshot` delegates to `security_internal.preauth_snapshot`.
+- Public `register_preauth_document` delegates to `security_internal.register_preauth_document` and returns `preauth_document_registry`.
+- Public `preauth_complete_fingerprint` has both a JSONB signature and a 16-argument typed signature; the typed signature delegates to `pre_auth_complete_fingerprint`.
+- The live function inventory includes `transition_preauthorization_atomic`, not the source migration's `transition_preauthorization_status`.
+- The live duplicate-guard and facility authorization logic resides in `security_internal` functions/triggers.
+
+### Consequence for the duplicate migration groups
+
+This evidence strengthens the conclusion that the repository's colliding early migrations are not a faithful standalone representation of the production pre-authorization schema:
+
+1. `preauth_atomic_hardening` is not a distinct production ledger row. Its public function contract differs from the live public wrapper/security-internal implementation.
+2. Both `preauth_document_integrity` and `preauth_document_lifecycle` target `preauth_documents`, which is absent in production. The live document registry has a different table and RPC return type.
+3. `preauth_audit_events` and `preauth_workflow_transitions` are not present as the corresponding live table/function contracts. Production uses different audit tables and an atomic transition function.
+
+**Disposition:** do not solve these collisions by simply re-versioning one file or merging their SQL. First recover the unmatched production migration sources (including the security-internal wrappers/implementations and document registry introduction), then classify each repository-only migration as superseded, never deployed, or required for clean bootstrap. The clean replay must reproduce the current production object model, not merely execute every historical source file in the current directory. No production mutation was performed.
