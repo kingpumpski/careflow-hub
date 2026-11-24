@@ -15,12 +15,12 @@ as $$
   select uo.permission_key
   from public.user_permission_overrides uo
   where uo.user_id = (select auth.uid())
-    and uo.allowed = true
+    and uo.granted = true
   except
   select uo.permission_key
   from public.user_permission_overrides uo
   where uo.user_id = (select auth.uid())
-    and uo.allowed = false;
+    and uo.granted = false;
 $$;
 
 revoke all on function public.get_my_permissions() from public, anon;
