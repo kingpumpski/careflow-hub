@@ -51,7 +51,7 @@ as $$
       and exists (
         select 1
         from public.user_roles ur
-        join public.role_permissions rp on rp.role = ur.role
+        join public.role_permissions rp on rp.role = ur.role::text
         where ur.user_id = (select auth.uid())
           and rp.permission_key = p_permission_key
       )
