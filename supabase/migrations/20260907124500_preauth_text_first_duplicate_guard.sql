@@ -51,7 +51,7 @@ SET search_path = ''
 AS $$
 DECLARE
   fingerprint TEXT;
-  existing_request BIGINT;
+  existing_request TEXT;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
