@@ -1,18 +1,20 @@
 -- Claims officers need to record insurer payment advice for the claims
 -- department without receiving broad payments.write or ledger.write authority.
-INSERT INTO public.app_permissions (permission_key, label, description)
+INSERT INTO public.app_permissions (key, label, category, description)
 VALUES
   (
     'claims.settlement.read',
     'View claim settlement advice',
+    'Claims',
     'View insurer payment advice, approved claim amounts and confirmed WHT for claims reconciliation.'
   ),
   (
     'claims.settlement.write',
     'Record claim settlement advice',
+    'Claims',
     'Create and update claim settlement periods and record actual payment-advice figures without granting general payment or ledger write access.'
   )
-ON CONFLICT (permission_key) DO UPDATE
+ON CONFLICT (key) DO UPDATE
 SET label = EXCLUDED.label,
     description = EXCLUDED.description;
 
