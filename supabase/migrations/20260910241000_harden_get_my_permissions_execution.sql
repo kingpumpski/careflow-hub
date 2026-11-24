@@ -6,21 +6,21 @@ stable
 security definer
 set search_path = ''
 as $$
-  select distinct p.permission_key
+  select distinct p.key
   from public.app_permissions p
   join public.role_permissions rp on rp.permission_key = p.permission_key
-  join public.user_roles ur on ur.role = rp.role
+  join public.user_roles ur on ur.role::text = rp.role
   where ur.user_id = (select auth.uid())
   union
   select uo.permission_key
   from public.user_permission_overrides uo
   where uo.user_id = (select auth.uid())
-    and uo.allowed = true
+    and uo.granted = true
   except
   select uo.permission_key
   from public.user_permission_overrides uo
   where uo.user_id = (select auth.uid())
-    and uo.allowed = false;
+    and uo.granted = false;
 $$;
 
 revoke all on function public.get_my_permissions() from public, anon;
