@@ -39,7 +39,7 @@ export default function ClaimsSettlement() {
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [insurerFilter, setInsurerFilter] = useState("all");
-  const selectedFacility = (facilities || []).find((row: any) => row.id === facilityId);
+  const selectedFacility = (facilities || []).find((row) => row.id === facilityId);
   const approvedFacilityRate = selectedFacility?.settings?.withholding_tax_rate;
   const submitted = Number(form.totalClaimsSubmitted) || 0;
   const rate = Number(approvedFacilityRate) || 0;
