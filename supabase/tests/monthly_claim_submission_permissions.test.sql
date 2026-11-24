@@ -14,7 +14,7 @@ DECLARE
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.app_permissions
-    WHERE permission_key = 'claims.submit_monthly'
+    WHERE key = 'claims.submit_monthly'
   ) THEN
     RAISE EXCEPTION 'Dedicated monthly claim submission permission is missing';
   END IF;
@@ -22,7 +22,7 @@ BEGIN
   FOREACH v_role IN ARRAY ARRAY['superuser','admin','claims_officer','data_entry_officer'] LOOP
     IF NOT EXISTS (
       SELECT 1 FROM public.role_permissions
-      WHERE role = v_role::public.app_role AND permission_key = 'claims.submit_monthly'
+      WHERE role = v_role AND permission_key = 'claims.submit_monthly'
     ) THEN
       RAISE EXCEPTION 'Monthly claim submission permission is not granted to role %', v_role;
     END IF;
