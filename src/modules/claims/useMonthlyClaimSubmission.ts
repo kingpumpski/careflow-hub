@@ -48,7 +48,7 @@ export function useMonthlyClaimSubmission() {
     },
     onSuccess: async () => {
       await Promise.all(
-        ["claims", "withholding_tax", "ledger_entries", "claims_outstanding_periods"].map((table) =>
+        ["claims", "withholding_tax", "ledger_entries", "claims_outstanding_periods", "claims_settlement_periods"].map((table) =>
           queryClient.invalidateQueries({ queryKey: [table] }),
         ),
       );
