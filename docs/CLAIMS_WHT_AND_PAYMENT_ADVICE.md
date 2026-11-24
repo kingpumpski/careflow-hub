@@ -144,3 +144,20 @@ The aggregate monthly outstanding view now also uses the insurer-stated approved
 
 
 Reconciliation confirmation is now blocked unless the period has an explicitly captured insurer-approved gross amount. This prevents a historical one-advice record with unknown approved gross from being marked reconciled using an inferred submitted-minus-rejected value. Such legacy periods remain flagged as unknown until their source advice can be verified; the new workflow does not fabricate a backfill.
+
+
+## Implementation status — 2026-11-24
+
+The source implementation now includes the previously identified remittance-ledger and correction requirements:
+
+- Monthly aggregate submission is recorded once per facility + insurer + claims month/year in an immutable `monthly_claim_submissions` ledger. A stable idempotency key returns the original result after a retry; a different key cannot post the same monthly cycle again.
+- The monthly submission RPC creates or links the matching `claims_settlement_periods` row atomically with the submitted claim, facility-approved provisional WHT record and ledger postings. Conflicting pre-existing period figures or advice are not silently overwritten.
+- The provisional WHT rate is read from the selected facility's settings. It must be explicitly configured; no implicit 5% or other fallback is applied to a new settlement period. Facility Management already provides the rate-setting interaction.
+- Provisional WHT remains based on the original submitted gross. The insurer-approved gross, rejected amount, actual WHT and net cash remain separate advice values. Actual receipt month remains distinct from originating claims month.
+- The append-only remittance ledger and compensating-reversal workflow preserve the original advice events and exclude reversed events from receipt-month totals.
+
+On main commit `d3d27d790273359a119f08777501c786e620f807`, the disposable PostgreSQL workflow completed the full source migration replay (with test-only temporary version normalization for the three documented legacy duplicate prefixes) and all 10 SQL contract files passed. The CareFlow Quality Gate, dependency audit, and GitHub Pages published-site smoke test also passed on that commit. A later documentation/UI-preservation commit is undergoing a fresh validation run.
+
+The Claims Settlement WHT input retains its existing label and presentation; its value is supplied from the facility-approved setting rather than treated as an independently entered period rate. The calculation and persistence path, not the screen layout, is the intended change.
+
+**Production boundary:** none of these migrations or Edge Function source changes have been deployed to the live Supabase project. No production database schema/data/ledger or Auth changes were made. The disposable replay does not resolve the authoritative production migration crosswalk or replace backup/restored-copy verification. Production rollout remains a separate approved operation.
