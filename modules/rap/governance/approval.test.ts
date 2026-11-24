@@ -6,6 +6,11 @@ describe("RAP approval boundary", () => {
     expect(hashApprovalPayload({ b: 2, a: 1 })).toBe(hashApprovalPayload({ a: 1, b: 2 }));
   });
 
+  it("canonicalizes dense arrays with multiple numeric indices", () => {
+    expect(hashApprovalPayload([1, 2, 3])).toBe(hashApprovalPayload([1, 2, 3]));
+    expect(hashApprovalPayload([1, 2])).not.toBe(hashApprovalPayload([1, 2, 3]));
+  });
+
   it("rejects ambiguous or non-JSON approval payloads", () => {
     expect(() => hashApprovalPayload({ value: undefined })).toThrow(/JSON-compatible/i);
     expect(() => hashApprovalPayload({ value: Number.NaN })).toThrow(/non-finite/i);
