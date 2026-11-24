@@ -6,8 +6,8 @@ import type { ClaimRejectionSubmissionArgs } from "./monthlyClaimSubmission";
 
 export type ClaimRejectionSubmissionResult = {
   claim_id: string;
-  tax_rate: number;
-  tax_amount: number;
+  rejected_amount: number;
+  facility_id: string;
 };
 
 type RpcResult = {
