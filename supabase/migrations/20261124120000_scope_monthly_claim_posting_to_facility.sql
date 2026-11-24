@@ -24,6 +24,13 @@ CREATE POLICY ledger_entries_facility_read
       security_internal.current_user_has_permission('ledger.read')
       OR security_internal.current_user_has_permission('reports.read')
     )
+    OR (
+      security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role, 'admin'::public.app_role])
+      AND (
+        security_internal.current_user_has_permission('ledger.read')
+        OR security_internal.current_user_has_permission('reports.read')
+      )
+    )
   );
 CREATE POLICY ledger_entries_facility_insert
   ON public.ledger_entries FOR INSERT TO authenticated
