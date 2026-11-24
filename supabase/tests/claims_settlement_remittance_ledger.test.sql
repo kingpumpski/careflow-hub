@@ -52,6 +52,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Explicit approved gross and actual receipt date fields are missing';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.claims_settlement_remittances'::regclass
+      AND conname = 'claims_settlement_remittance_receipt_ck'
+      AND position('legacy_snapshot' in pg_get_constraintdef(oid)) > 0
+  ) THEN
+    RAISE EXCEPTION 'Legacy advice snapshots must preserve unknown receipt dates without inventing values';
+  END IF;
   IF NOT (SELECT coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[] FROM pg_proc p WHERE p.oid = v_rpc) THEN
     RAISE EXCEPTION 'Security-definer remittance RPC must pin an empty search_path';
   END IF;
