@@ -13,6 +13,8 @@ export interface ClaimsSettlementPeriod {
   periodEnd: string;
   periodType: 'month' | 'quarter' | 'custom';
   totalClaimsSubmitted: number;
+  approvedGrossAmount?: number | null;
+  actualReceiptDate?: string | null;
   withholdingTaxRate: number;
   provisionalWithholdingTax: number;
   paymentReceived: number | null;
@@ -52,6 +54,63 @@ export function parseApprovedWithholdingTaxRate(input: string): number {
 
 const roundCurrency = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100;
+
+/** Monthly settlement periods must align to a complete calendar month. */
+export function isFullCalendarMonth(periodStart: string, periodEnd: string): boolean {
+  const startMatch = /^(\d{4})-(\d{2})-01$/.exec(periodStart);
+  const endMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(periodEnd);
+  if (!startMatch || !endMatch) return false;
+
+  const [, startYear, startMonth] = startMatch;
+  const [, endYear, endMonth, endDay] = endMatch;
+  if (startYear !== endYear || startMonth !== endMonth) return false;
+
+  const year = Number(startYear);
+  const month = Number(startMonth);
+  if (month < 1 || month > 12) return false;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Number(endDay) === lastDay;
+}
+
+/**
+ * Returns the gross amount approved by the insurer after confirmed rejections.
+ * Rejections are kept separate from the original submitted amount and never
+ * mutate the provisional WHT estimate.
+ */
+export function calculateApprovedClaimAmount(
+  totalClaimsSubmitted: number,
+  rejectionAmount: number,
+): number {
+  if (!Number.isFinite(totalClaimsSubmitted) || totalClaimsSubmitted < 0) {
+    throw new Error('Total claims submitted must be a non-negative number.');
+  }
+  if (!Number.isFinite(rejectionAmount) || rejectionAmount < 0) {
+    throw new Error('Rejection amount must be a non-negative number.');
+  }
+  if (rejectionAmount > totalClaimsSubmitted) {
+    throw new Error('Rejection amount cannot exceed the total claims submitted.');
+  }
+
+  return roundCurrency(totalClaimsSubmitted - rejectionAmount);
+}
+
+/**
+ * Calculates expected actual WHT from the insurer-approved gross amount.
+ * Call only when payment advice has been received; this is not the provisional
+ * estimate calculated at claim submission.
+ */
+export function calculateActualWithholdingTax(
+  totalClaimsSubmitted: number,
+  rejectionAmount: number,
+  withholdingTaxRate: number,
+): number {
+  if (!Number.isFinite(withholdingTaxRate) || withholdingTaxRate < 0 || withholdingTaxRate > 100) {
+    throw new Error('Withholding tax rate must be between 0 and 100.');
+  }
+
+  const approvedAmount = calculateApprovedClaimAmount(totalClaimsSubmitted, rejectionAmount);
+  return roundCurrency((approvedAmount * withholdingTaxRate) / 100);
+}
 
 const finiteAmount = (value: number | null): number =>
   value === null ? 0 : Number(value);
@@ -136,6 +195,32 @@ export function calculateSettlementReconciliation(
   };
 }
 
+export interface ExplicitAdviceReconciliationResult {
+  approvalVariance: number | null;
+  approvedUnpaidBalance: number | null;
+}
+
+/** Compare insurer-stated approved gross independently from submitted/rejected and cash/WHT. */
+export function calculateExplicitAdviceReconciliation(input: {
+  submittedAmount: number;
+  approvedGrossAmount: number | null;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+}): ExplicitAdviceReconciliationResult {
+  const { submittedAmount, approvedGrossAmount, rejectedAmount, actualWithholdingTax, netCashReceived } = input;
+  const amounts = [submittedAmount, rejectedAmount, actualWithholdingTax, netCashReceived];
+  if (amounts.some((value) => !Number.isFinite(value) || value < 0)
+    || (approvedGrossAmount !== null && (!Number.isFinite(approvedGrossAmount) || approvedGrossAmount < 0))) {
+    throw new Error('Advice reconciliation amounts must be non-negative finite values.');
+  }
+  if (approvedGrossAmount === null) return { approvalVariance: null, approvedUnpaidBalance: null };
+  return {
+    approvalVariance: roundCurrency(submittedAmount - approvedGrossAmount - rejectedAmount),
+    approvedUnpaidBalance: roundCurrency(approvedGrossAmount - actualWithholdingTax - netCashReceived),
+  };
+}
+
 export function isSettlementConfirmed(status: SettlementStatus): boolean {
   return status === 'payment_advice_received' || status === 'reconciled';
 }
@@ -144,11 +229,142 @@ export function isSettlementConfirmed(status: SettlementStatus): boolean {
  * Reconciliation is an explicit operational confirmation after payment advice
  * has been entered. It cannot be performed while the period is still awaiting payment.
  */
-export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'paymentAdviceReference' | 'paymentAdviceDate'>): boolean {
+export function canReconcileSettlement(period: Pick<ClaimsSettlementPeriod, 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'paymentAdviceReference' | 'paymentAdviceDate' | 'approvedGrossAmount'>): boolean {
   return period.settlementStatus === 'payment_advice_received'
+    && period.approvedGrossAmount !== null
+    && period.approvedGrossAmount !== undefined
     && period.paymentReceived !== null
     && period.rejectionAmount !== null
     && period.actualWithholdingTax !== null
     && Boolean(period.paymentAdviceReference?.trim())
     && Boolean(period.paymentAdviceDate);
+}
+
+
+/**
+ * One insurer advice/remittance event linked to the claims cycle it settles.
+ * adviceDate and receiptDate are deliberately separate: advice may be issued
+ * in one month and cash may arrive in another. Amounts are incremental for
+ * this event (not cumulative statement balances).
+ */
+export interface ClaimsCycleRemittance {
+  adviceReference: string;
+  adviceDate: string;
+  receiptDate: string | null;
+  approvedAmount: number;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+}
+
+export interface ClaimsCycleReconciliation {
+  claimsPeriod: string;
+  submittedAmount: number;
+  provisionalWithholdingTax: number;
+  approvedAmount: number;
+  rejectedAmount: number;
+  actualWithholdingTax: number;
+  netCashReceived: number;
+  approvalVariance: number;
+  approvedUnpaidBalance: number;
+  overallVariance: number;
+  receiptMonthTotals: Array<{
+    receiptMonth: string;
+    netCashReceived: number;
+    actualWithholdingTax: number;
+    remittanceCount: number;
+  }>;
+  balanced: boolean;
+}
+
+/**
+ * Matches remittances to their originating claims cycle, regardless of the
+ * later advice/receipt month. The caller must scope cycles by facility and
+ * insurer before calling this function. Duplicate advice references are
+ * rejected to prevent accidental double counting.
+ *
+ * submitted = approved + rejected + approval variance
+ * approved = actual WHT + net cash + approved unpaid balance
+ *
+ * Provisional WHT remains a separate estimate on the original submitted
+ * amount and is never substituted for or added to actual WHT.
+ */
+export function reconcileClaimsCycle(input: {
+  claimsPeriod: string;
+  submittedAmount: number;
+  provisionalWithholdingTax: number;
+  remittances: ClaimsCycleRemittance[];
+}): ClaimsCycleReconciliation {
+  const { claimsPeriod, submittedAmount, provisionalWithholdingTax, remittances } = input;
+  const nonNegative = [submittedAmount, provisionalWithholdingTax];
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(claimsPeriod)) {
+    throw new Error('Claims period must use YYYY-MM format.');
+  }
+  if (nonNegative.some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new Error('Submitted amount and provisional WHT must be non-negative.');
+  }
+
+  const references = new Set<string>();
+  const isValidCalendarDate = (value: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day;
+  };
+
+  for (const item of remittances) {
+    const normalizedReference = item.adviceReference.trim().toLocaleLowerCase('en');
+    if (!normalizedReference || references.has(normalizedReference)) {
+      throw new Error('Each remittance must have a unique, non-empty advice reference.');
+    }
+    references.add(normalizedReference);
+    if (!isValidCalendarDate(item.adviceDate)
+      || (item.receiptDate !== null && !isValidCalendarDate(item.receiptDate))) {
+      throw new Error('Advice and receipt dates must be valid calendar dates in YYYY-MM-DD format.');
+    }
+    if ([item.approvedAmount, item.rejectedAmount, item.actualWithholdingTax, item.netCashReceived]
+      .some((value) => !Number.isFinite(value) || value < 0)) {
+      throw new Error('Remittance amounts must be non-negative.');
+    }
+  }
+
+  const sum = (key: 'approvedAmount' | 'rejectedAmount' | 'actualWithholdingTax' | 'netCashReceived') =>
+    roundCurrency(remittances.reduce((total, item) => total + item[key], 0));
+  const approvedAmount = sum('approvedAmount');
+  const rejectedAmount = sum('rejectedAmount');
+  const actualWithholdingTax = sum('actualWithholdingTax');
+  const netCashReceived = sum('netCashReceived');
+  const approvalVariance = roundCurrency(submittedAmount - approvedAmount - rejectedAmount);
+  const approvedUnpaidBalance = roundCurrency(approvedAmount - actualWithholdingTax - netCashReceived);
+  const overallVariance = roundCurrency(submittedAmount - rejectedAmount - actualWithholdingTax - netCashReceived);
+
+  const receiptMonths = new Map<string, { netCashReceived: number; actualWithholdingTax: number; remittanceCount: number }>();
+  for (const item of remittances) {
+    if (!item.receiptDate) continue;
+    const month = item.receiptDate.slice(0, 7);
+    const current = receiptMonths.get(month) ?? { netCashReceived: 0, actualWithholdingTax: 0, remittanceCount: 0 };
+    current.netCashReceived = roundCurrency(current.netCashReceived + item.netCashReceived);
+    current.actualWithholdingTax = roundCurrency(current.actualWithholdingTax + item.actualWithholdingTax);
+    current.remittanceCount += 1;
+    receiptMonths.set(month, current);
+  }
+
+  return {
+    claimsPeriod,
+    submittedAmount: roundCurrency(submittedAmount),
+    provisionalWithholdingTax: roundCurrency(provisionalWithholdingTax),
+    approvedAmount,
+    rejectedAmount,
+    actualWithholdingTax,
+    netCashReceived,
+    approvalVariance,
+    approvedUnpaidBalance,
+    overallVariance,
+    receiptMonthTotals: [...receiptMonths.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([receiptMonth, totals]) => ({ receiptMonth, ...totals })),
+    balanced: Math.abs(approvalVariance) <= EPSILON && Math.abs(approvedUnpaidBalance) <= EPSILON,
+  };
 }

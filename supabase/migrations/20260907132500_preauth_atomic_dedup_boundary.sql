@@ -42,7 +42,7 @@ DECLARE
   v_preauth public.pre_authorizations;
   v_item JSONB;
   v_fingerprint TEXT;
-  v_existing BIGINT;
+  v_existing TEXT;
   v_name TEXT := trim(coalesce(p_payload->>'client_name',''));
   v_items JSONB := coalesce(p_items,'[]'::jsonb);
 BEGIN

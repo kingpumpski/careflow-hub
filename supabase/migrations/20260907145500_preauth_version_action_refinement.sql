@@ -38,7 +38,7 @@ BEGIN
   INTO v_snapshot
   FROM public.pre_authorizations p WHERE p.id = NEW.id;
 
-  INSERT INTO public.pre_authorization_versions (
+  INSERT INTO public.preauthorization_versions (
     preauth_id, version_number, action, snapshot, fingerprint, created_by
   ) VALUES (
     NEW.id, v_version, v_action, v_snapshot,

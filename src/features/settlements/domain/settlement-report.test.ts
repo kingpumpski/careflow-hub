@@ -46,6 +46,7 @@ describe('settlement reporting', () => {
     expect(summary.totalSubmitted).toBe(2500);
     expect(summary.totalPaymentReceived).toBe(1230);
     expect(summary.totalRejectionAmount).toBe(190);
+    expect(summary.totalProvisionalWht).toBe(150);
     expect(summary.totalActualWht).toBe(80);
     expect(summary.totalWhtVariance).toBe(-20);
     expect(summary.totalResidual).toBe(0);

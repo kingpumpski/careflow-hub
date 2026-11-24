@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { CheckCircle2, Clock3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useSupabaseQuery, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
+import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
-import { toast } from "@/hooks/use-toast";
 import { usePermissions } from "@/modules/security/usePermissions";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -14,15 +12,26 @@ type TaxRecord = { id: string; insurance_company_id: string; month: number; year
 type Insurer = { id: string; company_name: string; color?: string; email?: string; phone?: string; address?: string; contact_person?: string };
 type TaxFilters = { company?: string; month?: string; year?: string };
 type Setting = { key: string; value?: string | null };
+type SettlementAdviceRow = {
+  id: string;
+  insurance_company_id: string;
+  period_start: string;
+  period_end: string;
+  total_claims_submitted: number | null;
+  rejection_amount: number | null;
+  payment_received: number | null;
+  actual_withholding_tax: number | null;
+  payment_advice_reference: string | null;
+  settlement_status: string;
+};
 
 export default function WithholdingTax() {
   const { can, loading: permissionsLoading } = usePermissions();
-  const canReadWHT = can("payments.read") || can("ledger.read") || can("reports.read");
-  const canWriteWHT = can("payments.write");
+  const canReadWHT = can("payments.read") || can("claims.settlement.read") || can("ledger.read") || can("reports.read");
   const { data: taxRecords, isLoading } = useSupabaseQuery("withholding_tax", { enabled: canReadWHT && !permissionsLoading });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadWHT && !permissionsLoading });
   const { data: settings } = useSupabaseQuery("system_settings", { enabled: can("settings.manage") && !permissionsLoading });
-  const updateWHT = useSupabaseUpdate("withholding_tax");
+  const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods", { enabled: canReadWHT && !permissionsLoading });
   const [filters, setFilters] = useState<TaxFilters>({});
   const [detailInsurer, setDetailInsurer] = useState<string | null>(null);
   const configuredRateValue = ((settings || []) as unknown as Setting[]).find((s) => s.key === "withholding_tax_rate")?.value;
@@ -36,9 +45,24 @@ export default function WithholdingTax() {
     let records = taxRows.filter((t) => t.insurance_company_id === ins.id);
     if (filters.month) records = records.filter((t) => t.month === parseInt(filters.month, 10));
     if (filters.year) records = records.filter((t) => t.year === parseInt(filters.year, 10));
-    const totalTax = records.reduce((s, t) => s + Number(t.tax_amount || 0), 0);
-    const totalClaims = records.reduce((s, t) => s + Number(t.claim_total || 0), 0);
-    const actualCount = records.filter((t) => t.is_actual === true).length;
+    const byPeriod = new Map<string, { provisional: number; actual: number; hasActual: boolean; provisionalClaimBase: number; actualClaimBase: number; hasProvisional: boolean }>();
+    records.forEach((record) => {
+      const key = `${record.year}|${record.month}`;
+      const current = byPeriod.get(key) || { provisional: 0, actual: 0, hasActual: false, provisionalClaimBase: 0, actualClaimBase: 0, hasProvisional: false };
+      if (record.is_actual) {
+        current.actual += Number(record.tax_amount || 0);
+        current.hasActual = true;
+        current.actualClaimBase += Number(record.claim_total || 0);
+      } else {
+        current.provisional += Number(record.tax_amount || 0);
+        current.provisionalClaimBase += Number(record.claim_total || 0);
+        current.hasProvisional = true;
+      }
+      byPeriod.set(key, current);
+    });
+    const totalTax = [...byPeriod.values()].reduce((sum, period) => sum + (period.hasActual ? period.actual : period.provisional), 0);
+    const totalClaims = [...byPeriod.values()].reduce((sum, period) => sum + (period.hasProvisional ? period.provisionalClaimBase : period.actualClaimBase), 0);
+    const actualCount = [...byPeriod.values()].filter((period) => period.hasActual).length;
     return { ...ins, records, totalTax, totalClaims, actualCount };
   }).filter((a) => a.records.length > 0);
 
@@ -47,20 +71,16 @@ export default function WithholdingTax() {
   const { sorted, sort, handleSort } = useSort(displayData, "totalTax");
   const grandTotalTax = displayData.reduce((s, a) => s + a.totalTax, 0);
   const grandTotalClaims = displayData.reduce((s, a) => s + a.totalClaims, 0);
+  const confirmedAdviceRows = ((settlementPeriods || []) as unknown as SettlementAdviceRow[]).filter((row) =>
+    ["payment_advice_received", "reconciled"].includes(row.settlement_status)
+      && row.actual_withholding_tax != null
+  );
+  const confirmedAdviceWht = confirmedAdviceRows.reduce((sum, row) => sum + Number(row.actual_withholding_tax || 0), 0);
 
   if (permissionsLoading) return <div className="stat-card py-12 text-center text-muted-foreground">Checking withholding tax access…</div>;
   if (!canReadWHT) return <div className="stat-card py-12 text-center"><h1 className="font-semibold">Withholding tax access restricted</h1><p className="mt-1 text-sm text-muted-foreground">You do not have permission to view withholding tax records.</p></div>;
 
-  const confirmActual = async (record: TaxRecord) => {
-    if (!canWriteWHT) { toast({ title: "Permission required", description: "You need payments write permission to change WHT settlement state.", variant: "destructive" }); return; }
-    try {
-      await updateWHT.mutateAsync({ id: record.id, is_actual: !record.is_actual });
-      toast({ title: record.is_actual ? "WHT returned to provisional" : "WHT confirmed as actual", description: `${monthNames[record.month]} ${record.year} settlement state updated.` });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Please try again.";
-      toast({ title: "Unable to update WHT", description: message, variant: "destructive" });
-    }
-  };
+
 
   if (detailInsurer) {
     const ins = aggregated.find((a) => a.id === detailInsurer);
@@ -69,8 +89,8 @@ export default function WithholdingTax() {
       <div className="space-y-6">
         <div className="flex items-center gap-3"><button onClick={() => setDetailInsurer(null)} className="text-sm text-primary hover:underline">← Back</button><h1 className="page-title flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ backgroundColor: ins.color || "#3b82f6" }} />{ins.company_name} — WHT Details</h1></div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-primary">{currentRateLabel}</p><p className="text-xs text-muted-foreground mt-1">Tax Rate</p></div><div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {ins.totalClaims.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Claims Base</p></div><div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">GH¢ {ins.totalTax.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Deducted</p></div></div>
-        <div className="stat-card overflow-x-auto"><table className="data-table"><thead><tr><th>Month</th><th>Year</th><th>Claim Total (GH¢)</th><th>Rate</th><th>Tax Amount (GH¢)</th><th>Settlement</th><th>Action</th></tr></thead><tbody>
-          {[...ins.records].sort((a, b) => b.year - a.year || b.month - a.month).map((t) => <tr key={t.id} className="hover:bg-muted/50 transition-colors"><td>{monthNames[t.month]}</td><td>{t.year}</td><td>{Number(t.claim_total).toLocaleString()}</td><td>{Number(t.tax_rate)}%</td><td className="font-semibold text-primary">GH¢ {Number(t.tax_amount).toLocaleString()}</td><td><Badge variant="outline" className={t.is_actual ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>{t.is_actual ? <><CheckCircle2 className="w-3 h-3 mr-1" />Actual</> : <><Clock3 className="w-3 h-3 mr-1" />Provisional</>}</Badge></td><td>{canWriteWHT ? <Button size="sm" variant="outline" disabled={updateWHT.isPending} onClick={() => void confirmActual(t)}>{t.is_actual ? "Mark provisional" : "Confirm actual"}</Button> : <span className="text-xs text-muted-foreground">Read only</span>}</td></tr>)}
+        <div className="stat-card overflow-x-auto"><table className="data-table"><thead><tr><th>Month</th><th>Year</th><th>Claim Total (GH¢)</th><th>Rate</th><th>Tax Amount (GH¢)</th><th>Settlement</th><th>Source</th></tr></thead><tbody>
+          {[...ins.records].sort((a, b) => b.year - a.year || b.month - a.month).map((t) => <tr key={t.id} className="hover:bg-muted/50 transition-colors"><td>{monthNames[t.month]}</td><td>{t.year}</td><td>{Number(t.claim_total).toLocaleString()}</td><td>{Number(t.tax_rate)}%</td><td className="font-semibold text-primary">GH¢ {Number(t.tax_amount).toLocaleString()}</td><td><Badge variant="outline" className={t.is_actual ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"}>{t.is_actual ? <><CheckCircle2 className="w-3 h-3 mr-1" />Actual</> : <><Clock3 className="w-3 h-3 mr-1" />Provisional</>}</Badge></td><td>{t.is_actual ? <span className="text-xs text-muted-foreground">Confirmed record</span> : <span className="text-xs text-muted-foreground">Estimate only</span>}</td></tr>)}
         </tbody></table></div>
       </div>
     );
@@ -78,9 +98,17 @@ export default function WithholdingTax() {
 
   return (
     <div className="space-y-6">
-      <div className="page-header"><h1 className="page-title">Withholding Tax</h1><p className="page-description">Auto-calculated WHT is provisional until confirmed as an actual settlement component.</p></div>
+      <div className="page-header"><h1 className="page-title">Withholding Tax</h1><p className="page-description">Claim-side WHT estimates remain provisional. Actual WHT is recorded from insurer payment advice in Claims Settlement; this register displays those confirmed advice values separately.</p></div>
       <FilterBar filters={filters} onChange={setFilters} showCompany />
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Current Tax Rate</p><p className="text-2xl font-bold font-heading text-primary mt-1">{currentRateLabel}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Total WHT</p><p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalTax.toLocaleString()}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Claims Base</p><p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalClaims.toLocaleString()}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Actual Records</p><p className="text-2xl font-bold font-heading text-success mt-1">{displayData.reduce((s, a) => s + a.actualCount, 0)}</p></div></div>
+      <section className="stat-card space-y-3">
+        <div><h2 className="font-semibold">Confirmed WHT from payment advice</h2><p className="text-xs text-muted-foreground">Actual values below come from insurer payment advice. Provisional estimates are not added to this total.</p></div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-sm text-muted-foreground">Confirmed actual WHT</span><span className="text-2xl font-bold text-success">GH¢ {confirmedAdviceWht.toLocaleString()}</span></div>
+        <div className="overflow-x-auto"><table className="data-table min-w-[900px]"><thead><tr><th>Period</th><th>Insurer</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Net Cash</th><th>Actual WHT</th><th>Advice Reference</th><th>Status</th></tr></thead><tbody>
+          {confirmedAdviceRows.map((row) => <tr key={row.id}><td>{row.period_start} → {row.period_end}</td><td>{insurerRows.find((ins) => ins.id === row.insurance_company_id)?.company_name || row.insurance_company_id}</td><td>{Number(row.total_claims_submitted || 0).toLocaleString()}</td><td>{Number(row.rejection_amount || 0).toLocaleString()}</td><td>{Math.max(0, Number(row.total_claims_submitted || 0) - Number(row.rejection_amount || 0)).toLocaleString()}</td><td>{row.payment_received == null ? "—" : Number(row.payment_received).toLocaleString()}</td><td className="font-semibold text-success">{Number(row.actual_withholding_tax || 0).toLocaleString()}</td><td className="font-mono text-xs">{row.payment_advice_reference || "—"}</td><td><Badge variant="outline">{String(row.settlement_status).replace(/_/g, " ")}</Badge></td></tr>)}
+          {!confirmedAdviceRows.length && <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">No confirmed payment-advice WHT records.</td></tr>}
+        </tbody></table></div>
+      </section>
       <div className="stat-card overflow-x-auto">{isLoading ? <div className="space-y-3">{[1,2,3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div> : <table className="data-table"><thead><tr><SortableHeader label="Insurance Company" sortKey="company_name" currentSort={sort} onSort={handleSort} /><SortableHeader label="Records" sortKey="records.length" currentSort={sort} onSort={handleSort} /><SortableHeader label="Claims Base (GH¢)" sortKey="totalClaims" currentSort={sort} onSort={handleSort} /><SortableHeader label="WHT (GH¢)" sortKey="totalTax" currentSort={sort} onSort={handleSort} /><th>Actual</th></tr></thead><tbody>{sorted.map((a) => <tr key={a.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDetailInsurer(a.id)}><td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color || "#3b82f6" }} /><span className="text-primary hover:underline">{a.company_name}</span></div></td><td>{a.records.length}</td><td>{a.totalClaims.toLocaleString()}</td><td className="font-semibold text-warning">GH¢ {a.totalTax.toLocaleString()}</td><td><Badge variant="outline" className="bg-success/10 text-success border-success/20">{a.actualCount}/{a.records.length}</Badge></td></tr>)}{sorted.length === 0 && <tr><td colSpan={5} className="text-center text-muted-foreground py-8">No WHT records.</td></tr>}</tbody>{sorted.length > 0 && <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>{displayData.reduce((s, a) => s + a.records.length, 0)}</td><td>{grandTotalClaims.toLocaleString()}</td><td className="text-warning">GH¢ {grandTotalTax.toLocaleString()}</td><td>{displayData.reduce((s, a) => s + a.actualCount, 0)}</td></tr></tfoot>}</table>}</div>
     </div>
   );

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.preauthorization_versions (
   UNIQUE (preauth_id, version_number)
 );
 CREATE INDEX IF NOT EXISTS preauth_versions_lookup_idx ON public.preauthorization_versions(preauth_id, version_number DESC);
-ALTER TABLE public.pre_authorization_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.preauthorization_versions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS preauth_versions_select ON public.preauthorization_versions;
 CREATE POLICY preauth_versions_select ON public.preauthorization_versions FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
 REVOKE INSERT, UPDATE, DELETE ON public.preauthorization_versions FROM authenticated, anon;
