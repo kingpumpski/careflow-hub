@@ -13,6 +13,7 @@ AS $$
     ON rp.permission_key = p.key
   JOIN public.user_roles AS ur
     ON ur.role::TEXT = rp.role
+  AND rp.granted = true
   WHERE ur.user_id = (SELECT auth.uid())
   UNION
   SELECT uo.permission_key
