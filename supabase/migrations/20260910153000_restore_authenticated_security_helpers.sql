@@ -47,7 +47,7 @@ AS $$
     AND EXISTS (
       SELECT 1
       FROM public.user_roles ur
-      JOIN public.role_permissions rp ON rp.role = ur.role
+      JOIN public.role_permissions rp ON rp.role = ur.role::text
       WHERE ur.user_id = (SELECT auth.uid())
         AND rp.permission_key = p_permission_key
     )
