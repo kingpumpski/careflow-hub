@@ -18,6 +18,44 @@ CREATE TABLE IF NOT EXISTS public.preauth_documents (
   CONSTRAINT preauth_documents_status_valid CHECK (status IN ('pending','generated','failed','superseded'))
 );
 
+-- The preceding same-version integrity migration may have created the initial
+-- metadata shape first. Extend it in place so this lifecycle definition is
+-- replayable regardless of which compatible definition created the table.
+ALTER TABLE public.preauth_documents
+  ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'pdf',
+  ADD COLUMN IF NOT EXISTS storage_provider TEXT,
+  ADD COLUMN IF NOT EXISTS content_sha256 TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'generated',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- The lifecycle identity includes format. Replace the narrower unique key
+-- declared by the integrity variant so multiple formats can coexist per version.
+ALTER TABLE public.preauth_documents
+  DROP CONSTRAINT IF EXISTS preauth_documents_preauth_id_version_number_document_type_key;
+
+DO $preauth_document_constraints$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.preauth_documents'::regclass
+      AND conname = 'preauth_documents_version_positive'
+  ) THEN
+    ALTER TABLE public.preauth_documents
+      ADD CONSTRAINT preauth_documents_version_positive CHECK (version_number > 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.preauth_documents'::regclass
+      AND conname = 'preauth_documents_status_valid'
+  ) THEN
+    ALTER TABLE public.preauth_documents
+      ADD CONSTRAINT preauth_documents_status_valid
+      CHECK (status IN ('pending','generated','failed','superseded'));
+  END IF;
+END;
+$preauth_document_constraints$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS preauth_documents_version_type_idx
   ON public.preauth_documents(preauth_id, version_number, document_type, format);
 
@@ -69,7 +107,7 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.pre_authorization_versions v
+    SELECT 1 FROM public.preauthorization_versions v
     WHERE v.preauth_id = p_preauth_id
       AND v.version_number = p_version_number
   ) THEN
