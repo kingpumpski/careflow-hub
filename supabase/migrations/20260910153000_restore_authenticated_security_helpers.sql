@@ -35,7 +35,7 @@ AS $$
     FROM public.user_permission_overrides uo
     WHERE uo.user_id = (SELECT auth.uid())
       AND uo.permission_key = p_permission_key
-      AND uo.allowed = true
+      AND uo.granted = true
   )
   OR (
     NOT EXISTS (
