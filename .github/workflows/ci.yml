@@ -43,33 +43,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Normalize historical duplicate versions only in this disposable CI checkout.
-      - name: Normalize duplicate migration versions for validation
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          directory = Path("supabase/migrations")
-          groups = {}
-          for path in sorted(directory.glob("*.sql")):
-              match = re.match(r"^(\d{14})_(.+)$", path.name)
-              if match:
-                  groups.setdefault(match.group(1), []).append(path)
-          used = {int(version) for version in groups}
-          for version, paths in sorted(groups.items()):
-              next_version = int(version) + 1
-              for path in paths[1:]:
-                  while next_version in used:
-                      next_version += 1
-                  target = path.with_name(f"{next_version:014d}_{path.name[15:]}")
-                  if target.exists():
-                      raise SystemExit(f"Refusing to overwrite migration: {target}")
-                  path.rename(target)
-                  used.add(next_version)
-                  print(f"TEST-ONLY VERSION MAP: {path.name} -> {target.name}")
-                  next_version += 1
-          PY
-
       - name: Migration version integrity
         run: npm run verify:migrations
 
