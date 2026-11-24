@@ -23,6 +23,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Test-only normalization: the historical migration directory contains duplicate
+      # 14-digit versions. Give later siblings unique temporary versions so the
+      # disposable replay can execute every SQL file. This does not rename or
+      # rewrite migration history in the repository or any hosted database.
+      - name: Normalize duplicate migration versions for disposable replay
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          directory = Path("supabase/migrations")
+          groups = {}
+          for path in sorted(directory.glob("*.sql")):
+              match = re.match(r"^(\d{14})_(.+)$", path.name)
+              if match:
+                  groups.setdefault(match.group(1), []).append(path)
+
+          used = {int(version) for version in groups}
+          for version, paths in sorted(groups.items()):
+              if len(paths) < 2:
+                  continue
+              next_version = int(version) + 1
+              for path in paths[1:]:
+                  while next_version in used:
+                      next_version += 1
+                  target = path.with_name(f"{next_version:014d}_{path.name[15:]}")
+                  if target.exists():
+                      raise SystemExit(f"Refusing to overwrite migration: {target}")
+                  path.rename(target)
+                  used.add(next_version)
+                  print(f"TEST-ONLY VERSION MAP: {path.name} -> {target.name}")
+                  next_version += 1
+          PY
+
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v1
         with:
