@@ -9,7 +9,7 @@ as $$
   select distinct p.permission_key
   from public.app_permissions p
   join public.role_permissions rp on rp.permission_key = p.permission_key
-  join public.user_roles ur on ur.role = rp.role
+  join public.user_roles ur on ur.role::text = rp.role
   where ur.user_id = (select auth.uid())
   union
   select uo.permission_key
