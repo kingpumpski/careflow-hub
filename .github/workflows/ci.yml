@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, development]
+    branches: [main, development, "feat/**", "fix/**"]
   push:
     branches: [main, development, feature/rap-reconciled]
 
@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+        
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -43,8 +43,54 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Normalize historical duplicate versions only in this disposable CI checkout.
+      - name: Normalize duplicate migration versions for validation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          directory = Path("supabase/migrations")
+          groups = {}
+          for path in sorted(directory.glob("*.sql")):
+              match = re.match(r"^(\d{14})_(.+)$", path.name)
+              if match:
+                  groups.setdefault(match.group(1), []).append(path)
+          used = {int(version) for version in groups}
+          for version, paths in sorted(groups.items()):
+              next_version = int(version) + 1
+              for path in paths[1:]:
+                  while next_version in used:
+                      next_version += 1
+                  target = path.with_name(f"{next_version:014d}_{path.name[15:]}")
+                  if target.exists():
+                      raise SystemExit(f"Refusing to overwrite migration: {target}")
+                  path.rename(target)
+                  used.add(next_version)
+                  print(f"TEST-ONLY VERSION MAP: {path.name} -> {target.name}")
+                  next_version += 1
+          PY
+
+      - name: Migration version integrity
+        run: npm run verify:migrations
+
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Backup and recovery tests
+        run: npm run test:backup
+
+      - name: Backup script syntax
+        run: |
+          node --check scripts/system-backup.mjs
+          node --check scripts/verify-system-backup.mjs
+          node --check scripts/restore-storage.mjs
+          bash -n scripts/restore-system-backup.sh scripts/restore-database.sh
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -53,12 +99,6 @@ jobs:
         env:
           PGPASSWORD: rap-test-password
         run: bash scripts/test-rap-migrations.sh
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: npm test
 
       - name: Production build
         run: npm run build
