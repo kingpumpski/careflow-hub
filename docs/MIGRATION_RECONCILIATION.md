@@ -315,3 +315,32 @@ A read-only count-only query against production project `jajfdgknctzqypdtvmxo` r
 This confirms there are currently no facility onboarding records, memberships, claims-settlement periods, or legacy advice rows in this production project. The remittance-ledger migration's legacy snapshot query therefore has zero source rows to migrate at the time of this observation. This is a point-in-time result, not a guarantee about later data changes.
 
 Operational implication: the new facility-scoped claims settlement workflow cannot be verified against real production facility memberships or populated claims periods yet. The disposable database must seed test facilities, users, memberships and permissions for meaningful RLS/transaction tests. Production onboarding/data setup remains a separate controlled operational step; no facility, membership, claim or settlement data was inserted by this inspection.
+
+
+## CareFlow mainline replay and SQL contract status — 2026-11-24 14:05 UTC
+
+The mainline source tree has advanced beyond the earlier pre-authorization replay failures. On commit `d3d27d790273359a119f08777501c786e620f807`, the disposable Supabase workflow completed the ordered migration replay successfully and then executed all 10 SQL contract files with `psql -v ON_ERROR_STOP=1`; all 10 passed. The test runner was changed from `supabase test db` because the repository's existing `.test.sql` files are executable SQL/PLpgSQL assertion blocks, not pgTAP TAP suites. The direct `psql` runner executes each file and stops on the first SQL exception.
+
+The successful disposable replay still uses **test-only normalization** to assign temporary unique versions to the three documented duplicate timestamp groups. The source filenames and production migration ledger were not renamed or repaired. Therefore this result establishes that the complete checked-in SQL sequence can execute in a disposable database under that explicit test-only ordering; it does not establish the authoritative production migration crosswalk or prove byte-for-byte equivalence with historical deployed SQL.
+
+### Additional schema and permission corrections
+
+- The permission catalogue's actual key column is `public.app_permissions.key`; `role_permissions.permission_key` and `user_permission_overrides.permission_key/granted` remain separate fields. Monthly-claim and settlement permission seeds, their contract tests, and the `admin-user-action` Edge Function now use those actual column names.
+- `public.get_my_permissions()` now joins the catalogue through `app_permissions.key`, returns all catalogue permissions to system superusers/admins, and for ordinary users resolves only `role_permissions.granted = true` plus explicit per-user grants/denials.
+- `security_internal.current_user_has_permission(text)` now respects revoked role grants while preserving the documented system-admin authority and explicit override behavior.
+- Audit trigger functions have explicit EXECUTE revokes for `PUBLIC`, `anon`, and `authenticated`; PostgreSQL trigger invocation remains intact.
+- Monthly aggregate claim posting now has an immutable, idempotency-key ledger, serializes same-period submissions, and links each submission to the matching monthly settlement period. The facility-approved provisional WHT rate remains separate from insurer-advised actual WHT.
+
+The following checks on the same commit completed successfully:
+- Disposable PostgreSQL Migration Tests: success (complete replay plus 10 SQL contract tests).
+- CareFlow Quality Gate: success.
+- Dependency Security Audit: success.
+- GitHub Pages build, deployment, and published-site smoke test: success.
+
+The separate CI workflow was still pending at the time of this entry; it must be checked before calling every check green.
+
+### Production boundary remains unchanged
+
+No production database migration, schema change, data insert/update, migration-ledger repair, Auth mutation, or Edge Function deployment was performed. The production project `jajfdgknctzqypdtvmxo` remains subject to the prior read-only inventory: 74 ledger rows, no facility or membership records, and no claims settlement periods at the last count. The source changes and passing disposable tests are not evidence that those changes have been applied to production.
+
+Before any production migration rollout, retain the verified backup, recover the authoritative deployed migration bundle/crosswalk, and test against a restored copy of the production backup. The three duplicate source version groups remain documented technical debt and must not be blindly renamed in production.
