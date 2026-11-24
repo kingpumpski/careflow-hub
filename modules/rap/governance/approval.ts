@@ -40,7 +40,7 @@ export function stableSerialize(value: unknown): string {
     try {
       if (Array.isArray(current)) {
         const ownKeys = Reflect.ownKeys(current);
-        if (ownKeys.some((key) => typeof key === "symbol" || (key !== "length" && !/^(0|[1-9]\\d*)$/.test(key)))) {
+        if (ownKeys.some((key) => typeof key === "symbol" || (key !== "length" && !/^(0|[1-9]\d*)$/.test(key)))) {
           throw new Error("RAP approval arrays must not contain custom properties.");
         }
         if (ownKeys.length !== current.length + 1) {
