@@ -3,7 +3,7 @@ name: Dependency Security Audit
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "feat/**", "fix/**"]
   schedule:
     - cron: '17 4 * * 1'
   workflow_dispatch:
