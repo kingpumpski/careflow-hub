@@ -20,7 +20,7 @@ DECLARE
   v_version public.preauthorization_versions%rowtype;
   v_document public.preauth_document_registry%rowtype;
   v_handoff public.preauth_handoff_log%rowtype;
-  v_submission public.pre_auth_submissions%rowtype;
+  v_submission public.preauth_submissions%rowtype;
   v_version_number integer;
   v_hash text;
   v_document_name text;
@@ -102,7 +102,7 @@ BEGIN
     p_recipient_manifest,coalesce(p_subject,''),coalesce(p_message_body,''),v_attachment_name
   );
 
-  INSERT INTO public.pre_auth_submissions(
+  INSERT INTO public.preauth_submissions(
     preauth_id,version_number,channel,status,idempotency_key,recipient,submitted_by,facility_id
   ) VALUES (
     p_preauth_id,v_version_number,'email','queued',p_idempotency_key,

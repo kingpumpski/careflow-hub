@@ -71,7 +71,7 @@ BEGIN
   INSERT INTO public.preauthorization_versions(preauth_id,version_number,action,snapshot,fingerprint,created_by,facility_id) VALUES(p_preauth_id,v_version_number,'prepared',p_snapshot,v_hash,v_uid,v_row.facility_id) RETURNING * INTO v_version;
   v_document := security_internal.register_preauth_document(p_preauth_id,v_version_number,p_snapshot,v_document_name,v_row.facility_id);
   v_handoff := security_internal.prepare_preauth_handoff(v_document.id,v_document.snapshot_hash,p_idempotency_key,p_recipient_manifest,coalesce(p_subject,''),coalesce(p_message_body,''),v_attachment_name);
-  INSERT INTO public.pre_auth_submissions(preauth_id,version_number,channel,status,idempotency_key,recipient,submitted_by,facility_id) VALUES(p_preauth_id,v_version_number,'email','queued',p_idempotency_key,(SELECT elem->>'email' FROM jsonb_array_elements(p_recipient_manifest) elem WHERE elem->>'type'='to' LIMIT 1),v_uid,v_row.facility_id) RETURNING * INTO v_submission;
+  INSERT INTO public.preauth_submissions(preauth_id,version_number,channel,status,idempotency_key,recipient,submitted_by,facility_id) VALUES(p_preauth_id,v_version_number,'email','queued',p_idempotency_key,(SELECT elem->>'email' FROM jsonb_array_elements(p_recipient_manifest) elem WHERE elem->>'type'='to' LIMIT 1),v_uid,v_row.facility_id) RETURNING * INTO v_submission;
   UPDATE public.pre_authorizations SET document_revision=v_version_number,document_payload=p_snapshot,document_finalized_at=coalesce(document_finalized_at,now()) WHERE id=p_preauth_id;
   RETURN jsonb_build_object('version_id',v_version.id,'version_number',v_version_number,'submission_id',v_submission.id,'document_id',v_document.id,'handoff_id',v_handoff.id,'idempotent',false);
 END;

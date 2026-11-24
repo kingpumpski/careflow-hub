@@ -340,3 +340,54 @@ PRs #52, #53, #57 and #71 were closed as superseded by PR #72. The consolidated 
 - The production ledger/repository snapshot records 74 ledger rows and 116 repository migration files; only 56 normalized names match directly, with 60 repository files and 18 ledger rows requiring manual source/schema mapping. Three duplicate migration timestamp groups remain.
 - The SQL contract tests included in PRs #48, #61 and #72 have not been executed against a disposable Supabase database.
 - No production migration, migration-ledger repair, RLS/grant/Auth configuration change, production data change, paid Supabase branch or replacement project has been performed.
+
+## Latest engineering continuation — 2026-11-22
+
+This update supersedes earlier PR and repository inventory status where it conflicts.
+
+### Repository and pull-request state
+
+- Main is at `f79f807382f1af8a65007983f89a9f82942214f5`; CI, CareFlow Quality Gate, Dependency Security Audit and GitHub Pages deployment passed on that commit.
+- PR #48 settlement exception lifecycle is merged. Its settlement-exception tables are still absent from production; migration deployment remains blocked.
+- PR #61 monthly claims/rejections is open and remains draft. Head `57fc00494b57be6e89e3db6d4c460b91aeb508a0` passed CI, CareFlow Quality Gate and Dependency Security Audit.
+- PR #72 facility onboarding and individual claim cases is open and not draft. Its latest recorded head is `fb536da55bca7dbec26f625b0d0dd9bccbaa405e`; Dependency Security Audit passed, while CI and CareFlow Quality Gate were still running at the time of this update. The branch remains 0 commits behind main.
+- PR #23 remains isolated and draft; it is not part of this release.
+
+### Additional PR #61 corrections
+
+Read-only inspection of the live production schema found that `app_permissions` uses `permission_key,label,description` and `role_permissions` uses `role,permission_key`. PR #61's migration and tests were corrected to use those existing columns and no longer refer to nonexistent `key`, `category` or `granted` columns.
+
+The monthly outstanding-period view was also corrected so rejected adjustment rows are not double-counted as submitted claims and negative provisional WHT reversals cannot inflate outstanding balances. The view retains its existing output columns and `security_invoker=true` option. These are repository changes only; the migration has not been applied to production.
+
+### Additional PR #72 corrections
+
+- Individual claim-case default service dates now use the browser's local calendar date instead of converting through UTC, preventing a date shift near midnight in time zones east of UTC. A Vitest regression test was added.
+- The live catalog showed `security_internal.set_preauth_request_number()` using `search_path=public`. A forward-only migration now pins it to an empty search path while preserving its PA request-number format and existing trigger binding.
+- The live catalog also showed `public.audit_trigger_fn()`, `public.handle_new_user()` and `public.has_role(uuid,public.app_role)` as SECURITY DEFINER functions using `search_path=public`. A separate forward-only migration pins these functions to an empty search path, schema-qualifies table access, and preserves their trigger/function behavior and existing ACLs.
+- The public schema currently denies CREATE to anon, authenticated and PUBLIC. The catalog finding therefore did not establish an immediate untrusted-schema-write path; the forward-only changes are defense in depth.
+- SQL catalog/trigger contract tests and Vitest migration-contract tests were added. They have not yet been executed against a disposable Supabase database.
+
+### Updated migration inventory and live catalog findings
+
+The current main-branch inventory is 117 SQL migration files against 74 production ledger rows. The conservative normalized-name comparison finds 56 candidate matches, 61 repository files without a direct ledger-name match, 18 ledger entries without an exact repository filename match, and three duplicate timestamp groups. The snapshot and reconciliation documents were refreshed to main commit `f79f807382f1af8a65007983f89a9f82942214f5`. Candidate matches remain leads, not proof of applied SQL equivalence.
+
+Read-only catalog inspection confirmed that the live facility, membership, audit-log, insurer, pre-authorization, claim, payment and WHT columns referenced by PR #72 and PR #61's reviewed fixes exist. It did not establish that the new feature migrations will replay successfully from a clean database.
+
+### Backup and production boundary
+
+The latest observed scheduled full-system backup run `45006967540` failed before archive generation because the `production-backup` environment lacks the required configuration. No encrypted backup or verified manifest exists, and no restore rehearsal has passed. The project owner must configure the required secrets in GitHub's protected environment and run the workflow.
+
+No production migration, migration-ledger repair, RLS/grant/Auth change, production data change, paid Supabase branch or replacement project has been performed. Disposable-database transaction/RLS/concurrency testing, migration reconciliation, and verified backup/restore remain mandatory release gates.
+
+### Additional production-catalog hardening — 2026-11-22
+
+A read-only production catalog inspection found four legacy SECURITY DEFINER functions whose stored search path was `public`:
+
+- `security_internal.set_preauth_request_number()`
+- `public.audit_trigger_fn()`
+- `public.handle_new_user()`
+- `public.has_role(uuid, public.app_role)`
+
+The facility/claim candidate now includes forward-only replacements using `SET search_path = ''` and schema-qualified table/function references. The original trigger bindings and function execution ACLs are preserved; the auth signup trigger and six audit triggers were confirmed in the live catalog. The pre-authorization request-number output format is preserved. SQL catalog/trigger assertions and Vitest migration-contract checks were added. No production DDL or grants were executed.
+
+These changes are repository changes only. The exact PR head passed CI, CareFlow Quality Gate and Dependency Security Audit, but the SQL migration tests still require execution on a disposable Supabase database before any deployment or merge decision. The full-system backup/restore and migration-ledger reconciliation gates remain open.

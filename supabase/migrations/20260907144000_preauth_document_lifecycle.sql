@@ -71,6 +71,8 @@ CREATE POLICY preauth_documents_select_authenticated
 
 REVOKE INSERT, UPDATE, DELETE ON public.preauth_documents FROM anon, authenticated;
 
+DROP FUNCTION IF EXISTS public.register_preauth_document(UUID, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB);
+
 CREATE OR REPLACE FUNCTION public.register_preauth_document(
   p_preauth_id UUID,
   p_version_number INTEGER,
