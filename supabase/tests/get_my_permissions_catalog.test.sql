@@ -15,8 +15,10 @@ BEGIN
 
   v_definition := pg_get_functiondef('public.get_my_permissions()'::regprocedure);
 
-  IF position('rp.permission_key = p.key' in v_definition) = 0
+  IF position('FROM public.app_permissions AS ap' in v_definition) = 0
      OR position('rp.granted = true' in v_definition) = 0
+     OR position('rp.granted = true' in v_definition) = 0
+     OR position('admin_role.role in (''superuser'', ''admin'')' in lower(v_definition)) = 0
      OR position('p.permission_key' in v_definition) > 0 THEN
     RAISE EXCEPTION 'get_my_permissions must join app_permissions.key and filter granted role permissions';
   END IF;
