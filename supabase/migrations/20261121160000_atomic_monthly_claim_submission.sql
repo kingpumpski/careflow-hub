@@ -45,13 +45,14 @@ REVOKE ALL ON FUNCTION security_internal.configured_withholding_tax_rate() FROM 
 -- A monthly aggregate submission creates fixed, server-derived WHT and ledger
 -- side effects. Grant this narrowly scoped capability to claims roles without
 -- granting those users arbitrary payment or ledger write access.
-INSERT INTO public.app_permissions (permission_key, label, description)
+INSERT INTO public.app_permissions (key, label, category, description)
 VALUES (
   'claims.submit_monthly',
   'Submit monthly claims',
+  'Claims',
   'Submit insurer-level monthly claim totals with their system-generated provisional WHT and ledger postings.'
 )
-ON CONFLICT (permission_key) DO UPDATE
+ON CONFLICT (key) DO UPDATE
 SET label = EXCLUDED.label, description = EXCLUDED.description;
 
 INSERT INTO public.role_permissions (role, permission_key)
