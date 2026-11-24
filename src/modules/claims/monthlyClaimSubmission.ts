@@ -10,6 +10,7 @@ export type MonthlyClaimSubmissionArgs = {
   p_claim_amount: string;
   p_claim_month: number;
   p_claim_year: number;
+  p_facility_id: string;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,7 +22,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
  */
 export function buildMonthlyClaimSubmissionArgs(
   values: MonthlyClaimFormValues,
+  facilityId: string | null | undefined,
 ): MonthlyClaimSubmissionArgs {
+  if (!facilityId || !UUID_PATTERN.test(facilityId)) {
+    throw new Error("Select an active facility before submitting claims.");
+  }
+
   const insurerId = values.insurance_company_id.trim();
   if (!UUID_PATTERN.test(insurerId)) {
     throw new Error("Select a valid insurance company.");
@@ -55,6 +61,7 @@ export function buildMonthlyClaimSubmissionArgs(
     p_claim_amount: amount,
     p_claim_month: month,
     p_claim_year: year,
+    p_facility_id: facilityId,
   };
 }
 
@@ -78,17 +85,19 @@ export type ClaimRejectionSubmissionArgs = {
   p_denial_reason: string | null;
   p_root_cause: string | null;
   p_denial_notes: string | null;
+  p_facility_id: string;
 };
 
 export function buildClaimRejectionSubmissionArgs(
   values: ClaimRejectionFormValues,
+  facilityId: string | null | undefined,
 ): ClaimRejectionSubmissionArgs {
   const base = buildMonthlyClaimSubmissionArgs({
     insurance_company_id: values.insurance_company_id,
     claim_amount: values.rejected_amount,
     claim_month: values.claim_month,
     claim_year: values.claim_year,
-  });
+  }, facilityId);
 
   return {
     p_insurance_company_id: base.p_insurance_company_id,
@@ -99,5 +108,6 @@ export function buildClaimRejectionSubmissionArgs(
     p_denial_reason: values.denial_reason.trim() || null,
     p_root_cause: values.root_cause.trim() || null,
     p_denial_notes: values.denial_notes.trim() || null,
+    p_facility_id: base.p_facility_id,
   };
 }
