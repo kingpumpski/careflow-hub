@@ -33,7 +33,10 @@ CREATE TABLE public.claims_settlement_remittances (
       AND (net_cash_received IS NULL OR net_cash_received >= 0)
     ),
   CONSTRAINT claims_settlement_remittance_receipt_ck
-    CHECK ((net_cash_received = 0 AND actual_withholding_tax = 0) OR receipt_date IS NOT NULL),
+    CHECK (
+      entry_source = 'legacy_snapshot'
+      OR ((net_cash_received = 0 AND actual_withholding_tax = 0) OR receipt_date IS NOT NULL)
+    ),
   CONSTRAINT claims_settlement_remittance_source_ck
     CHECK (entry_source IN ('legacy_snapshot', 'remittance'))
 );
