@@ -72,8 +72,11 @@ jobs:
       - name: Replay the complete migration chain on disposable PostgreSQL
         run: supabase db reset --local --no-seed
 
-      - name: Run database SQL tests
-        run: supabase test db
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run database SQL contract tests
+        run: bash scripts/run-sql-contract-tests.sh
 
       - name: Stop disposable local Supabase
         if: always()
