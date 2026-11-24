@@ -49,7 +49,7 @@ CREATE OR REPLACE FUNCTION public.find_duplicate_preauthorization(
 )
 RETURNS TABLE (
   id UUID,
-  request_number BIGINT,
+  request_number TEXT,
   status TEXT,
   current_state TEXT,
   created_at TIMESTAMPTZ,
