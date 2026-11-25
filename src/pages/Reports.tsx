@@ -31,8 +31,7 @@ export default function Reports() {
   const { data: settings } = useQuery({
     queryKey: ["report-letterhead-settings"],
     queryFn: async () => {
-      const rpc = supabase.rpc.bind(supabase) as unknown as (functionName: "get_report_letterhead_settings") => Promise<{ data: Array<{ key: string; value: string | null }> | null; error: unknown }>;
-      const { data, error } = await rpc("get_report_letterhead_settings");
+      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
       if (error) throw error;
       return data || [];
     },
