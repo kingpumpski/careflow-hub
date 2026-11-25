@@ -9,7 +9,7 @@ import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/s
 import { usePermissions } from "@/modules/security/usePermissions";
 import type { Permission } from "@/modules/security";
 
-type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "claims_settlement_remittances" | "claims_settlement_receipt_months" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts";
+type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "claims_settlement_remittances" | "claims_settlement_receipt_months" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts" | "claim_cases" | "claim_case_events" | "facilities" | "facility_memberships";
 
 const REALTIME_TABLES = ["claims", "payments", "withholding_tax", "ledger_entries"];
 const OFFLINE_ENTITY_BY_TABLE: Partial<Record<TableName, OfflineEntity>> = {
@@ -153,7 +153,7 @@ async function queueOfflinePreauthTransition(id: string, values: Record<string, 
   if (targetState === "Rejected" && !String(values.rejection_reason ?? values.note ?? "").trim()) throw new Error("A rejection reason is required.");
   const status = targetState === "PendingApproval" ? "pending" : targetState.toLowerCase(); const now = new Date().toISOString();
   const record = { ...existing, current_state: targetState, status, ...(targetState === "PendingApproval" ? { submitted_at: existing.submitted_at ?? now } : {}), ...(targetState === "Approved" ? { approved_at: now } : {}), ...(targetState === "Rejected" ? { rejection_reason: String(values.rejection_reason ?? values.note).trim() } : {}), updated_at: now };
-  await putOffline(entity, record); await enqueueSyncOperation({ table: "pre_authorizations", type: "rpc", recordId: id, rpcName: "transition_preauthorization_atomic", rpcArgs: { p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null }, facilityId: record.facility_id });
+  await putOffline(entity, record); await enqueueSyncOperation({ table: "pre_authorizations", type: "rpc", recordId: id, rpcName: "transition_preauthorization_atomic", rpcArgs: { p_preauth_id: id, p_target_state: targetState, p_note: values.rejection_reason ?? values.note ?? null }, facilityId: (record as any).facility_id });
   return record;
 }
 

@@ -142,9 +142,9 @@ export default function DocumentIntake() {
       if (invalidCount > 0) throw new Error(`${invalidCount} selected record${invalidCount === 1 ? " is" : "s are"} missing required fields or valid entity data.`);
 
       const sourceHash = await sha256(file);
-      const { data, error } = await supabase.rpc("ingest_document_records", { p_source_filename: file.name, p_source_hash: sourceHash, p_records: normalized });
+      const { data, error } = await (supabase.rpc as any)("ingest_document_records", { p_source_filename: file.name, p_source_hash: sourceHash, p_records: normalized });
       if (error) throw error;
-      const summary = data as IngestSummary;
+      const summary = data as unknown as IngestSummary;
       setIngestSummary(summary);
       toast({ title: "Database synchronization complete", description: `${summary.inserted} new, ${summary.updated} updated, ${summary.duplicates} exact duplicates, ${summary.conflicts} conflicts and ${summary.invalid} invalid records.` });
     } catch (error: unknown) {

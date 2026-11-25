@@ -12,7 +12,7 @@ interface BulkImportDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   columns: ImportColumn[];
-  onImport: (rows: Record<string, any>[]) => Promise<void>;
+  onImport: (rows: Record<string, any>[]) => Promise<unknown>;
   /** Optional file name for the in-dialog template download. */
   templateName?: string;
   description?: string;

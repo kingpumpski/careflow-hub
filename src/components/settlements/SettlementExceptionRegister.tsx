@@ -95,7 +95,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
         return;
       }
       if (offline) {
-        await syncOfflineSettlementExceptions(periods);
+        await syncOfflineSettlementExceptions(periods as any);
         setOfflineExceptions(await listOfflineSettlementExceptions());
       } else if (!canWrite) {
         await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });

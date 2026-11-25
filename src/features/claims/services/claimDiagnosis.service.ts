@@ -171,7 +171,7 @@ export function mapClaimCatalogItems(catalogRows: Array<Record<string, unknown>>
   }));
 
   const merged = [...catalog, ...procedures].filter((item) => item.name.trim());
-  return merged.filter((item, index) => merged.findIndex((entry) => entry.id === item.id) === index);
+  return merged.filter((item, index) => merged.findIndex((entry) => entry.id === item.id) === index) as ClaimCatalogItem[];
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -242,7 +242,7 @@ export async function recordClaimDiagnosisEvent(
   action: string,
   metadata: ClaimDiagnosisEventMetadata,
 ): Promise<void> {
-  const { error } = await supabase.rpc("log_claim_diagnosis_event", {
+  const { error } = await (supabase.rpc as any)("log_claim_diagnosis_event", {
     p_record_id: analysisId,
     p_action: action,
     p_metadata: metadata,
@@ -270,7 +270,7 @@ export async function saveClaimDiagnosisDraft(
   const dateOfService = parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === input.date_of_service
     ? input.date_of_service
     : null;
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("claim_diagnosis_drafts")
     .insert({
       facility_id: facilityId,
