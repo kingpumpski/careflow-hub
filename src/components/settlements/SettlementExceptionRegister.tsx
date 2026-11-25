@@ -70,7 +70,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
   const [error, setError] = useState<string | null>(null);
   // Do not issue a PostgREST request until the permission check has completed.
   // RLS remains the server-side boundary; this avoids unnecessary unauthorized reads.
-  const onlineQuery = useSupabaseQuery("settlement_exceptions", { orderBy: "detected_at", enabled: !offline && canRead });
+  const onlineQuery = useSupabaseQuery("settlement_exceptions", { orderBy: "detected_at", enabled: !offline && canRead, missingSchemaBehavior: "error" });
   const exceptions = offline ? offlineExceptions : ((onlineQuery.data ?? []) as SettlementExceptionRow[]).map(toExceptionRow);
 
   const refresh = useCallback(async () => {
@@ -84,6 +84,8 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
       if (offline) {
         await syncOfflineSettlementExceptions(periods, new Date(), user?.id ?? null);
         setOfflineExceptions(await listOfflineSettlementExceptions());
+      } else if (onlineQuery.error) {
+        throw onlineQuery.error;
       } else if (!canWrite) {
         await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
       } else {
@@ -121,7 +123,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     } finally {
       setIsLoading(false);
     }
-  }, [offline, periods, canRead, canWrite, queryClient, user?.id]);
+  }, [offline, periods, canRead, canWrite, queryClient, user?.id, onlineQuery.error]);
 
   useEffect(() => {
     void refresh();
