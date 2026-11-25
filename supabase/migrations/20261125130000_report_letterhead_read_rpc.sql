@@ -23,8 +23,6 @@ BEGIN
     'logo_url',
     'letterhead_accent',
     'letterhead_style',
-    'letterhead_show_banking',
-    'banking_partners',
     'letterhead_footer_note'
   ]::text[])
   ORDER BY setting.key;
