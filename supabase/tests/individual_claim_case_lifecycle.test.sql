@@ -103,5 +103,45 @@ BEGIN
      OR security_internal.claim_case_transition_allowed('closed', 'draft') THEN
     RAISE EXCEPTION 'Claim lifecycle transition matrix failed its contract checks';
   END IF;
+
+  -- Compare every source/target pair against the canonical transition matrix.
+  -- This protects the database RPC from drifting away from the Claims UI.
+  DECLARE
+    v_from text;
+    v_to text;
+    v_expected text[];
+    v_statuses text[] := ARRAY[
+      'draft','verified','submitted','acknowledged','under_review','queried',
+      'approved','partially_approved','rejected','appealed','partially_paid',
+      'paid','reconciled','closed'
+    ];
+  BEGIN
+    FOR v_from, v_expected IN
+      SELECT matrix.from_status, matrix.allowed_targets
+      FROM (VALUES
+        ('draft', ARRAY['verified']::text[]),
+        ('verified', ARRAY['submitted','draft']::text[]),
+        ('submitted', ARRAY['acknowledged','under_review','queried','rejected']::text[]),
+        ('acknowledged', ARRAY['under_review','queried','rejected']::text[]),
+        ('under_review', ARRAY['queried','approved','partially_approved','rejected']::text[]),
+        ('queried', ARRAY['verified','submitted','under_review','rejected']::text[]),
+        ('approved', ARRAY['partially_paid','paid','reconciled']::text[]),
+        ('partially_approved', ARRAY['partially_paid','paid','appealed','reconciled']::text[]),
+        ('rejected', ARRAY['appealed','closed','submitted']::text[]),
+        ('appealed', ARRAY['approved','partially_approved','rejected','closed']::text[]),
+        ('partially_paid', ARRAY['paid','reconciled']::text[]),
+        ('paid', ARRAY['reconciled','closed']::text[]),
+        ('reconciled', ARRAY['closed']::text[]),
+        ('closed', ARRAY[]::text[])
+      ) AS matrix(from_status, allowed_targets)
+    LOOP
+      FOREACH v_to IN ARRAY v_statuses LOOP
+        IF security_internal.claim_case_transition_allowed(v_from, v_to)
+           IS DISTINCT FROM (v_to = ANY(v_expected)) THEN
+          RAISE EXCEPTION 'Database claim transition matrix mismatch: % -> %', v_from, v_to;
+        END IF;
+      END LOOP;
+    END LOOP;
+  END;
 END;
 $test$;
