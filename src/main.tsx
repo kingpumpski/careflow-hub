@@ -9,26 +9,15 @@ if (!root) {
   throw new Error("CareFlow root element was not found. Check index.html.");
 }
 
-// GitHub Pages redirects unknown deep links through public/404.html. Restore
-// the original application route before BrowserRouter reads the location.
-if (typeof window !== "undefined") {
-  const params = new URLSearchParams(window.location.search);
-  const restoredRoute = params.get("cf_route");
-  if (restoredRoute) {
-    const cleanRoute = restoredRoute.startsWith("/") ? restoredRoute : `/${restoredRoute}`;
-    const restoredQuery = new URLSearchParams(window.location.search);
-    restoredQuery.delete("cf_route");
-    const queryString = restoredQuery.toString();
-    window.history.replaceState(null, "", `${cleanRoute}${queryString ? `?${queryString}` : ""}${window.location.hash}`);
-  }
-
-  // Older shared Codespaces links sometimes retain the GitHub Pages project
-  // prefix (/careflow-hub/). Codespaces serves the SPA from /, so normalize
-  // that legacy prefix before BrowserRouter applies its basename.
-  if (import.meta.env.BASE_URL === "/" && window.location.pathname.startsWith("/careflow-hub")) {
-    const normalizedPath = window.location.pathname.replace(/^\/careflow-hub(?=\/|$)/, "") || "/";
-    window.history.replaceState(null, "", `${normalizedPath}${window.location.search}${window.location.hash}`);
-  }
+// Hash-based routing keeps application routes in the URL fragment, so
+// GitHub Pages always receives the project entry-point path rather than a
+// route-specific document request. Normalize legacy project-prefixed links
+// when the app is served from the root (for example, Codespaces previews).
+if (typeof window !== "undefined"
+  && import.meta.env.BASE_URL === "/"
+  && window.location.pathname.startsWith("/careflow-hub")) {
+  const normalizedPath = window.location.pathname.replace(/^\\/careflow-hub(?=\\/|$)/, "") || "/";
+  window.history.replaceState(null, "", `${normalizedPath}${window.location.search}${window.location.hash}`);
 }
 
 createRoot(root).render(
