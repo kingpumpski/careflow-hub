@@ -1,0 +1,1 @@
+ALTER TABLE public.audit_logs ALTER COLUMN changed_by SET DEFAULT auth.uid();

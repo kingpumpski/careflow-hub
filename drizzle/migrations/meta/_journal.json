@@ -8,6 +8,27 @@
       "when": 1795603507589,
       "tag": "0000_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795603675169,
+      "tag": "0001_role_scoped_access_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795603710963,
+      "tag": "0002_staff_directory_and_audit_insert",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795603724585,
+      "tag": "0003_audit_changed_by_default",
+      "breakpoints": true
     }
   ]
 }

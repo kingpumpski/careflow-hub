@@ -39,7 +39,8 @@ export default function Chat() {
   const { user } = useAuth();
   const { loading: permissionsLoading } = usePermissions();
   const canUseChat = Boolean(user) && !permissionsLoading;
-  const { data: profiles } = useSupabaseQuery("profiles", { limit: MAX_PROFILES });
+  const [profiles, setProfiles] = useState<any[]>([]);
+  useEffect(() => { (supabase.rpc as any)("staff_directory").then(({ data }: any) => setProfiles((data || []).slice(0, MAX_PROFILES))); }, []);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("__broadcast__");
   const [subject, setSubject] = useState("");
