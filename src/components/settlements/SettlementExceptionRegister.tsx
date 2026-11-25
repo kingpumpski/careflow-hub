@@ -110,7 +110,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
             settlementStatus: period.settlement_status as "awaiting_payment" | "payment_advice_received" | "reconciled",
             paymentReceived: period.payment_received ?? null,
             rejectionAmount: period.rejection_amount ?? null,
-            actualWithholdingTax: period.actual_withholding_tax ?? null,
+            actualWithholdingTax: period.actual_withholding_tax == null ? null : Number(period.actual_withholding_tax),
             withholdingTaxVariance: period.withholding_tax_variance ?? null,
             paymentAdviceReference: period.payment_advice_reference ?? null,
             paymentAdviceDate: period.payment_advice_date ?? null,
