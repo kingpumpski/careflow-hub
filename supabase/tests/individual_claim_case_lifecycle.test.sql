@@ -4,6 +4,14 @@ DO $test$
 DECLARE
   v_create_signature text := 'public.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)';
   v_transition_signature text := 'public.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)';
+  v_from text;
+  v_to text;
+  v_expected text[];
+  v_statuses text[] := ARRAY[
+    'draft','verified','submitted','acknowledged','under_review','queried',
+    'approved','partially_approved','rejected','appealed','partially_paid',
+    'paid','reconciled','closed'
+  ];
 BEGIN
   IF to_regclass('public.claim_cases') IS NULL OR to_regclass('public.claim_case_events') IS NULL THEN
     RAISE EXCEPTION 'Individual claim case tables are missing';
@@ -106,17 +114,7 @@ BEGIN
 
   -- Compare every source/target pair against the canonical transition matrix.
   -- This protects the database RPC from drifting away from the Claims UI.
-  DECLARE
-    v_from text;
-    v_to text;
-    v_expected text[];
-    v_statuses text[] := ARRAY[
-      'draft','verified','submitted','acknowledged','under_review','queried',
-      'approved','partially_approved','rejected','appealed','partially_paid',
-      'paid','reconciled','closed'
-    ];
-  BEGIN
-    FOR v_from, v_expected IN
+  FOR v_from, v_expected IN
       SELECT matrix.from_status, matrix.allowed_targets
       FROM (VALUES
         ('draft', ARRAY['verified']::text[]),
@@ -141,7 +139,6 @@ BEGIN
           RAISE EXCEPTION 'Database claim transition matrix mismatch: % -> %', v_from, v_to;
         END IF;
       END LOOP;
-    END LOOP;
-  END;
+  END LOOP;
 END;
 $test$;
