@@ -59,9 +59,9 @@ export default function Reports() {
       const tax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
       const netClaim = submitted - rejected;
       const outstanding = netClaim - paid - tax;
-      return { company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
+      return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
     }).filter(r => r.submitted > 0 || r.paid > 0 || r.rejected > 0)
-      .filter((row: any) => selectedCompanyId === "all" || (insurers || []).some((ins: any) => ins.company_name === row.company && ins.id === selectedCompanyId));
+      .filter((row: any) => selectedCompanyId === "all" || row.id === selectedCompanyId);
   }, [claims, insurers, payments, withholdingTax, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   // Ledger-based reports
