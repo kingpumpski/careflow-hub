@@ -74,7 +74,7 @@ export default function Reports() {
   }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   const taxLiabilityData = useMemo(() => {
-    const filteredLedger = filterByPeriod((ledger || []).filter((entry: any) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
+    const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
@@ -84,7 +84,7 @@ export default function Reports() {
   const agingData = useMemo(() => {
     const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
     const today = new Date();
-    (insurers || []).filter((ins) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins: any) => {
+    (insurers || []).filter((ins) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins) => {
       const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
       // build per-month map
       const map: Record<string, { y: number; m: number; sub: number; rej: number; paid: number; wht: number }> = {};
