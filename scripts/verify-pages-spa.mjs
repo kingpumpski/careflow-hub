@@ -9,6 +9,7 @@ const appSourcePath = resolve(process.cwd(), "src/App.tsx");
 const [indexHtml, legacyFallback, appSource, assetNames] = await Promise.all([
   readFile(indexPath, "utf8"),
   readFile(legacyFallbackPath, "utf8"),
+  readFile(appSourcePath, "utf8"),
   readdir(resolve(distDir, "assets")),
 ]);
 
@@ -21,10 +22,10 @@ if (!legacyFallback.includes('base + "#" + route')) {
 if (legacyFallback.includes("cf_route")) {
   throw new Error("Obsolete cf_route query-string routing must not be published.");
 }
-const jsBundles = assetNames.filter((name) => name.endsWith(".js"));
-if (!jsBundles.length) throw new Error("No JavaScript bundles were emitted.");
-const bundleContents = await Promise.all(jsBundles.map((name) => readFile(resolve(distDir, "assets", name), "utf8")));
-if (!bundleContents.some((content) => content.includes("HashRouter"))) {
-  throw new Error("Built application does not contain the expected HashRouter runtime.");
+if (!appSource.includes("HashRouter") || appSource.includes("BrowserRouter")) {
+  throw new Error("Application source must use HashRouter rather than BrowserRouter.");
+}
+if (!assetNames.some((name) => name.endsWith(".js"))) {
+  throw new Error("No JavaScript bundles were emitted.");
 }
 console.log("GitHub Pages hash routing verified: app routes stay in the URL fragment; legacy paths redirect to #/ routes.");
