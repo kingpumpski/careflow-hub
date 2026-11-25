@@ -21,6 +21,7 @@ BEGIN
   END IF;
   IF position('provider_name' in v_definition) = 0
      OR position('letterhead_footer_note' in v_definition) = 0
+     OR position('banking_partners' in v_definition) > 0
      OR position('private_api_key' in v_definition) > 0 THEN
     RAISE EXCEPTION 'Letterhead reader must return only the approved public branding fields';
   END IF;
