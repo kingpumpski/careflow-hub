@@ -1,0 +1,36 @@
+name: Temporary npm lockfile repair
+
+on:
+  push:
+    branches:
+      - feat/financial-reports-superuser-admin-rebased
+    paths:
+      - .github/workflows/temporary-lockfile-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Regenerate lockfile from package manifest
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Apply compatible security updates
+        run: npm audit fix --package-lock-only --ignore-scripts || true
+      - name: Commit updated lockfile
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore(deps): regenerate and audit npm lockfile"
+          git push
