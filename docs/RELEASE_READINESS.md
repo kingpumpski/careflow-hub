@@ -20,9 +20,12 @@
 
 ## Database gates
 
-- [ ] PR #84: branded financial report print output, per-insurer report selection, and print-only removal of interactive sort controls are merged and validated.
-- [ ] PR #84: Facilities & Access is restricted to superusers in navigation, direct routes, RPCs, and database policies.
-- [ ] PR #84: least-privilege report-letterhead RPC and facility administration security tests pass on a disposable database.
+- [x] PR #84: branded financial report print output, per-insurer report selection, and print-only removal of interactive sort controls are merged and validated.
+- [x] PR #84: Facilities & Access is restricted to superusers in navigation, direct routes, RPCs, and database policies; the migration and authorization tests pass on disposable PostgreSQL.
+- [x] PR #84: least-privilege report-letterhead RPC and facility administration security tests pass on a disposable database.
+- [x] PR #84 merge commit `19474435e286c5a1f1fbb5703c8f29e7dfb0dfad` passes the main CI, quality, dependency audit and disposable migration-replay workflows.
+- [x] GitHub Pages deployment and post-deploy smoke test succeed for the PR #84 merge commit; the published site is `https://kingpumpski.github.io/careflow-hub/`.
+- [ ] Apply the PR #84 Supabase migrations to production only after the required encrypted backup/restore evidence, production migration-ledger reconciliation and protected `production-database` approval are complete. The current production project ledger has 74 entries and its latest applied migration is `20260921160938`; the new report-letterhead and superuser-facility RPCs are not yet present in production.
 - [x] Schema changes are represented by versioned files under `supabase/migrations/`.
 - [x] RLS policies are enabled for application tables and reviewed for the affected role boundary.
 - [x] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
