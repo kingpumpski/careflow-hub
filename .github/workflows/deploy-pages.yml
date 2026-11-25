@@ -127,3 +127,8 @@ jobs:
           # Verify that the fallback body still contains the app root.
           curl --silent --show-error --location "$SITE_URL/claims" -o /tmp/careflow-claims.html
           grep -q '<div id="root"></div>' /tmp/careflow-claims.html
+
+          # Reports is the route reported as failing by users. Verify that a
+          # direct deep-link request receives the SPA fallback document.
+          curl --silent --show-error --location "$SITE_URL/reports" -o /tmp/careflow-reports.html
+          grep -q '<div id="root"></div>' /tmp/careflow-reports.html
