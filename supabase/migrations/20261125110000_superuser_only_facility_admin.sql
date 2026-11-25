@@ -83,7 +83,12 @@ DROP POLICY IF EXISTS facilities_select_member ON public.facilities;
 CREATE POLICY facilities_select_member ON public.facilities
   FOR SELECT TO authenticated
   USING (
-    public.user_has_facility_access(facilities.id)
+    EXISTS (
+      SELECT 1 FROM public.facility_memberships fm
+      WHERE fm.facility_id = facilities.id
+        AND fm.user_id = (select auth.uid())
+        AND fm.status = 'active'
+    )
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
@@ -95,7 +100,12 @@ CREATE POLICY facility_memberships_select_member ON public.facility_memberships
   FOR SELECT TO authenticated
   USING (
     user_id = (select auth.uid())
-    OR public.user_has_facility_access(facility_memberships.facility_id)
+    OR EXISTS (
+      SELECT 1 FROM public.facility_memberships own_membership
+      WHERE own_membership.facility_id = facility_memberships.facility_id
+        AND own_membership.user_id = (select auth.uid())
+        AND own_membership.status = 'active'
+    )
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
