@@ -362,3 +362,50 @@ PRs #52, #53, #57 and #71 were closed as superseded by PR #72. The consolidated 
 ### Monthly claims withholding-tax configuration safety — 2026-11-22
 
 A read-only production query found no `system_settings` row with key `withholding_tax_rate`. The atomic monthly-claims migration therefore now fails closed when that setting is missing or blank; it no longer silently assumes 5%. An authorized administrator must enter the approved rate in CareFlow Settings before monthly claim submissions can proceed. The helper continues to reject rates outside 0–100. No production setting was inserted or changed.
+
+
+## Consolidated implementation and release update — 2026-11-25
+
+This entry supersedes older PR-status and deployment entries above where they conflict.
+
+### Main branch and deployment
+
+- Main commit: `1fc030e4a09540043039a2a0c92a53c1987d5a98`.
+- PR #72 (facility onboarding and individual claim-case lifecycle) is merged.
+- PRs #86–#88 (decimal-safe financial arithmetic and settlement/WHT corrections) are merged.
+- PR #91 (decimal-safe settlement reporting, Backup Center type safety and backup CORS restriction) is merged.
+- PR #92 (GitHub Pages HashRouter migration and authentication callback compatibility) is merged.
+- PRs #89 and #90 were closed as superseded; no open PRs were present at the latest repository inventory.
+
+The GitHub Pages deployment run `45637863039` completed successfully, including typecheck, lint, tests, production build, HashRouter verification, deployment and published-site smoke test. The current route format is `https://kingpumpski.github.io/careflow-hub/#/reports`. Clean-path legacy bookmarks can still receive the initial GitHub Pages 404 before their compatibility redirect.
+
+### Latest automated checks on main
+
+| Workflow | Run | Result |
+|---|---:|---|
+| CareFlow Quality Gate | 45637863079 | Passed |
+| CI | 45637863129 | Passed |
+| Dependency Security Audit | 45637863268 | Passed |
+| Disposable PostgreSQL Migration Tests | 45637863077 | Passed |
+| GitHub Pages deployment and smoke test | 45637863039 | Passed |
+
+The disposable migration workflow runs all source SQL and SQL contract tests after temporarily assigning unique versions to the three documented duplicate source prefixes inside the disposable job. This is not a production migration repair and does not prove the live ledger/source crosswalk.
+
+### Current implementation boundary
+
+- Claims settlement now has decimal-safe calculations, separate provisional/actual WHT, approved-gross reconciliation, a remittance child ledger, receipt-month reporting and compensating reversals in source.
+- Facility onboarding, individual claim-case lifecycle and settlement exception lifecycle code/migrations are in the repository and pass disposable migration replay.
+- The production Supabase project has not received these source migrations as part of this work. The last documented live-schema observations still show important drift and missing newer tables.
+- Organization-level tenancy remains a design proposal; facility membership is not equivalent to organization isolation.
+- The encrypted full-system backup and replacement-project restore rehearsal remain unverified. Backup configuration requires owner-managed secrets and an offline age identity; no secret values should be entered in chat.
+
+### Next release blockers
+
+1. Recover and reconcile the authoritative production migration history and actual schema effects; do not infer from filenames or temporary replay normalization.
+2. Complete a verified encrypted backup and restore rehearsal on a separate replacement project before any production schema changes.
+3. Implement organization tenancy only through a reviewed end-to-end plan covering business records, RPCs, RLS, storage, realtime, audit, offline sync and cross-tenant negative tests.
+4. Verify the exception/remittance workflows against realistic multi-role, concurrency, reversal and cross-month scenarios.
+5. Complete a coordinated schema + Edge Function release only after the restored-copy rehearsal and explicit project-owner approval.
+
+No production database writes, migrations, ledger repairs, Auth mutations, or Edge Function deployments were performed by this update.
+
