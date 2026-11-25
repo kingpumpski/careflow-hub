@@ -1192,6 +1192,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_report_letterhead_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: { key: string; value: string | null }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
