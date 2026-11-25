@@ -115,9 +115,9 @@ export function summarizeSettlementPeriods(
 
     const reconciliation = classifyReconciliation(period);
     if (reconciliation) {
-      summary.totalResidual += reconciliation.residual;
-      summary.totalOutstanding += reconciliation.outstanding;
-      summary.totalOverSettled += reconciliation.overSettled;
+      summary.totalResidual = addAmount(summary.totalResidual, reconciliation.residual);
+      summary.totalOutstanding = addAmount(summary.totalOutstanding, reconciliation.outstanding);
+      summary.totalOverSettled = addAmount(summary.totalOverSettled, reconciliation.overSettled);
       if (reconciliation.direction === 'balanced') summary.balancedCount += 1;
       if (reconciliation.direction === 'under_settlement') summary.underSettledCount += 1;
       if (reconciliation.direction === 'over_settlement') summary.overSettledCount += 1;
@@ -190,9 +190,9 @@ export function summarizeSettlementsByInsurer(
 
     const reconciliation = classifyReconciliation(period);
     if (reconciliation) {
-      current.totalResidual += reconciliation.residual;
-      current.totalOutstanding += reconciliation.outstanding;
-      current.totalOverSettled += reconciliation.overSettled;
+      current.totalResidual = addAmount(current.totalResidual, reconciliation.residual);
+      current.totalOutstanding = addAmount(current.totalOutstanding, reconciliation.outstanding);
+      current.totalOverSettled = addAmount(current.totalOverSettled, reconciliation.overSettled);
       if (reconciliation.direction === 'balanced') current.balancedCount += 1;
       if (reconciliation.direction === 'under_settlement') current.underSettledCount += 1;
       if (reconciliation.direction === 'over_settlement') current.overSettledCount += 1;
