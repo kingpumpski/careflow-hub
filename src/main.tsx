@@ -16,7 +16,7 @@ if (!root) {
 if (typeof window !== "undefined"
   && import.meta.env.BASE_URL === "/"
   && window.location.pathname.startsWith("/careflow-hub")) {
-  const normalizedPath = window.location.pathname.replace(/^\\/careflow-hub(?=\\/|$)/, "") || "/";
+  const normalizedPath = window.location.pathname.slice("/careflow-hub".length) || "/";
   window.history.replaceState(null, "", `${normalizedPath}${window.location.search}${window.location.hash}`);
 }
 
