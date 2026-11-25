@@ -5,7 +5,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store";
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
-import { isFacilityInfrastructureAvailable, isMissingSchemaError } from "@/lib/schemaFallback";
+import { isFacilityInfrastructureAvailable, isMissingSchemaError, MissingSchemaError } from "@/lib/schemaFallback";
 import { usePermissions } from "@/modules/security/usePermissions";
 import type { Permission } from "@/modules/security";
 
@@ -66,7 +66,7 @@ async function listOfflineTable(table: TableName, options?: { orderBy?: string; 
   return options?.limit ? rows.slice(0, options.limit) : rows;
 }
 
-export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean; limit?: number }) {
+export function useSupabaseQuery(table: TableName, options?: { select?: string; orderBy?: string; filters?: Record<string, any>; enabled?: boolean; limit?: number; missingSchemaBehavior?: "empty" | "error" }) {
   const queryClient = useQueryClient(); const offline = getCareFlowDataMode() === "offline";
   const { can, loading: permissionsLoading } = usePermissions(); const enabled = options?.enabled ?? true;
   const requiredPermissions = READ_PERMISSIONS_BY_TABLE[table];
@@ -78,7 +78,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
     return () => { supabase.removeChannel(channel); };
   }, [table, queryClient, offline, queryEnabled]);
   return useQuery({
-    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, offline, queryEnabled], enabled: queryEnabled,
+    queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, options?.missingSchemaBehavior, offline, queryEnabled], enabled: queryEnabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
@@ -86,7 +86,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_settlement_receipt_months" ? query.order("receipt_month", { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : table === "system_settings" ? query.order("updated_at", { ascending: false }) : table === "preauth_items" ? query.order("id", { ascending: false }) : query.order("created_at", { ascending: false });
       if (options?.limit) query = query.limit(options.limit);
       const { data, error } = await query;
-      if (error) { if (isMissingSchemaError(error)) return []; throw error; }
+      if (error) { if (isMissingSchemaError(error)) { if (options?.missingSchemaBehavior === "error") throw new MissingSchemaError(table); return []; } throw error; }
       return data;
     }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
   });
