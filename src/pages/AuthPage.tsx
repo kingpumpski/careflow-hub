@@ -9,6 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { APP_BRAND } from "@/config/branding";
 
+const authCallbackUrl = () => `${window.location.origin}${import.meta.env.BASE_URL}#/auth`;
+
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -34,7 +36,7 @@ export default function AuthPage() {
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: authCallbackUrl(),
           },
         });
         if (error) throw error;
@@ -56,7 +58,7 @@ export default function AuthPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: authCallbackUrl(),
       },
     });
     setLoading(false);

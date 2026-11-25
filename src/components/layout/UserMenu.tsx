@@ -38,7 +38,7 @@ export default function UserMenu() {
   const handlePasswordReset = async () => {
     if (!user?.email) return;
     const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: `${window.location.origin}/auth`,
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/auth`,
     });
     if (error) toast({ title: "Failed to send", description: error.message, variant: "destructive" });
     else toast({ title: "Password reset email sent", description: `Check ${user.email}` });

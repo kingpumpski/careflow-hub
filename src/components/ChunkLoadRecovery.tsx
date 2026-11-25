@@ -2,7 +2,6 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 const RECOVERY_KEY = "careflow:chunk-recovery";
 const RECOVERY_WINDOW_MS = 30_000;
-const GITHUB_PAGES_BASE = "/careflow-hub/";
 
 type Props = { children: ReactNode };
 type State = { failed: boolean };
@@ -13,11 +12,6 @@ function isChunkLoadError(error: Error) {
     || message.includes("importing a module script failed")
     || message.includes("chunkloaderror")
     || message.includes("loading chunk");
-}
-
-function isGitHubPagesHost() {
-  return typeof window !== "undefined"
-    && (window.location.hostname.endsWith(".github.io") || import.meta.env.BASE_URL === GITHUB_PAGES_BASE);
 }
 
 function recoverFromStaleChunk() {
@@ -31,29 +25,9 @@ function recoverFromStaleChunk() {
     // Storage can be unavailable in privacy-restricted browsers; still attempt one reload.
   }
 
-  const url = new URL(window.location.href);
-
-  // GitHub Pages serves unknown deep links through 404.html. Recovery used to
-  // reload /careflow-hub/users?cf_refresh=..., which intentionally produces a
-  // document 404 before the SPA fallback can restore the route. Reload the
-  // known project entry point instead and carry the original route through the
-  // existing cf_route handoff. Codespaces and other SPA hosts keep the normal
-  // same-document path reload behavior.
-  if (isGitHubPagesHost()) {
-    const route = `${url.pathname}${url.search}${url.hash}`;
-    const cleanRoute = route.startsWith(GITHUB_PAGES_BASE)
-      ? route.slice(GITHUB_PAGES_BASE.length)
-      : route.replace(/^\/+/, "");
-    const target = `/${cleanRoute}`;
-    const recoveryUrl = new URL(GITHUB_PAGES_BASE, url.origin);
-    recoveryUrl.searchParams.set("cf_route", target);
-    recoveryUrl.searchParams.set("cf_refresh", String(now));
-    window.location.replace(recoveryUrl.toString());
-    return true;
-  }
-
-  url.searchParams.set("cf_refresh", String(now));
-  window.location.replace(url.toString());
+  // HashRouter keeps the route in the fragment. Reloading the current document
+  // requests only the project base path and preserves the route without a 404.
+  window.location.reload();
   return true;
 }
 
@@ -61,9 +35,7 @@ export class ChunkLoadRecovery extends Component<Props, State> {
   state: State = { failed: false };
 
   static getDerivedStateFromError(error: Error): State | null {
-    if (isChunkLoadError(error)) {
-      recoverFromStaleChunk();
-    }
+    if (isChunkLoadError(error)) recoverFromStaleChunk();
     return { failed: true };
   }
 
