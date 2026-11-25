@@ -377,3 +377,35 @@ Issue [#80](https://github.com/kingpumpski/careflow-hub/issues/80) tracks the pe
 6. The schema changes and matching Edge Function are deployed together under an approved release plan.
 
 This audit was read-only. No production schema, table data, migration ledger, Auth users/settings, Edge Functions, or secrets were changed. The GitHub source changes do not establish that production has received those changes.
+
+
+## Current source and replay status — 2026-11-25
+
+The main-branch source tree now contains **141 SQL migration files**. The same three legacy duplicate version prefixes remain:
+
+- `20260907140000`
+- `20260907144000`
+- `20260907145000`
+
+The latest main commit at this review is `1fc030e4a09540043039a2a0c92a53c1987d5a98`. Its disposable PostgreSQL workflow completed the full migration replay and all SQL contract tests successfully (workflow run `45637863077`). The workflow explicitly assigns temporary unique versions to duplicate siblings **inside the disposable test job only**. It does not rename source files, modify the production ledger, or prove the production migration history is canonical.
+
+This distinction supersedes the older statements above that the disposable replay was still failing at the pre-authorization request-number function. The historical mismatch remains relevant to source provenance, but the current replay harness now completes after the documented test-only normalization. The canonical migration history remains unresolved because the live ledger stores migration names/versions, not the SQL bytes originally executed.
+
+The latest repository quality gate, CI, dependency audit and GitHub Pages deployment also passed on the same main commit (runs `45637863079`, `45637863129`, `45637863268`, and `45637863039`). The production Pages deployment is independent of Supabase schema deployment.
+
+### Read-only source reconciliation tooling
+
+The branch implementing this update adds:
+
+- `npm run audit:migrations`: compares the repository SQL filenames with the committed 2026-11-22 ledger snapshot using the documented normalized-name heuristic.
+- SHA-256 hashes for each current source migration, to support provenance and review.
+- Explicit duplicate-version groups, unmatched ledger rows and unmatched source files.
+- `npm run test:migration-audit`: unit tests for snapshot parsing, normalization, collision reporting and non-inference behavior.
+- Quality-gate and CI steps that run the audit and its tests.
+
+The tool reads only repository files and the historical snapshot. It makes **no database connection**, does not call Supabase, and does not classify an unmatched migration as applied or unapplied. The 2026-11-22 snapshot remains historical; the tool does not silently refresh it or imply that its 74 ledger rows are current.
+
+### Production release boundary
+
+No production DDL, data changes, migration-ledger repair, Auth changes, or Edge Function deployments are authorized by this work. A successful disposable replay is necessary but not sufficient. Production migration work remains blocked until the project owner confirms the target project, a complete encrypted backup is verified, a replacement-project restore rehearsal passes, and an evidence-backed mapping reconciles the actual live schema and migration ledger to the source.
+

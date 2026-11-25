@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "verify:pages": "node scripts/verify-pages-spa.mjs",
     "verify:migrations": "node scripts/check-migration-versions.mjs",
-    "test:backup": "node --test scripts/tests/backup-restore.test.mjs"
+    "test:backup": "node --test scripts/tests/backup-restore.test.mjs",
+    "audit:migrations": "node scripts/audit-migration-reconciliation.mjs",
+    "test:migration-audit": "node --test scripts/tests/migration-audit.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
