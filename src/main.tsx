@@ -15,7 +15,7 @@ if (!root) {
 // when the app is served from the root (for example, Codespaces previews).
 if (typeof window !== "undefined"
   && import.meta.env.BASE_URL === "/"
-  && window.location.pathname.startsWith("/careflow-hub")) {
+  && (window.location.pathname === "/careflow-hub" || window.location.pathname.startsWith("/careflow-hub/"))) {
   const normalizedPath = window.location.pathname.slice("/careflow-hub".length) || "/";
   window.history.replaceState(null, "", `${normalizedPath}${window.location.search}${window.location.hash}`);
 }
