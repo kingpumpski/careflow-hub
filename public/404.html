@@ -3,15 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Claims Informatics</title>
+    <title>CareFlow Hub</title>
     <script>
-      // GitHub Pages has no server-side SPA fallback. Preserve deep links and
-      // hand them back to the Vite/React entry point.
+      // Compatibility bridge for old clean-path bookmarks. New application
+      // navigation uses #/routes and never requests these server-side paths.
       (function () {
         var base = "/careflow-hub/";
-        var target = window.location.pathname + window.location.search + window.location.hash;
-        if (target.indexOf(base) === 0) target = target.slice(base.length);
-        window.location.replace(base + "?cf_route=" + encodeURIComponent("/" + target));
+        var path = window.location.pathname;
+        if (path.indexOf(base) === 0) path = path.slice(base.length);
+        var route = "/" + path.replace(/^\\/+/, "");
+        if (route === "/") route = "/";
+        window.location.replace(base + "#" + route + window.location.search + window.location.hash);
       })();
     </script>
   </head>
