@@ -1,5 +1,4 @@
-import { detectSettlementExceptions } from "@/features/settlements/domain/settlement-exceptions";
-import type { SettlementStatus } from "@/features/settlements/domain/settlement";
+import { detectSettlementExceptions, type SettlementExceptionPeriodSource } from "@/features/settlements/domain/settlement-exceptions";
 import { createOfflineSettlementException, listOfflineSettlementExceptions } from "./settlement-exception-repository";
 
 /**
@@ -12,22 +11,8 @@ import { createOfflineSettlementException, listOfflineSettlementExceptions } fro
  * exception can be re-raised when the underlying facts materially change,
  * while repeated refreshes of the same unchanged exception remain idempotent.
  */
-type SettlementPeriodSource = {
-  id?: string;
-  facility_id?: string;
-  period_end: string;
-  total_claims_submitted?: number | null;
-  settlement_status: SettlementStatus;
-  actual_withholding_tax?: number | null;
-  payment_advice_reference?: string | null;
-  payment_advice_date?: string | null;
-  withholding_tax_variance?: number | null;
-  payment_received?: number | null;
-  rejection_amount?: number | null;
-  approved_gross_amount?: number | string | null;
-};
 
-export async function syncOfflineSettlementExceptions(periods: SettlementPeriodSource[], asOf = new Date()): Promise<number> {
+export async function syncOfflineSettlementExceptions(periods: SettlementExceptionPeriodSource[], asOf = new Date(), actorId: string | null = null): Promise<number> {
   const existing = await listOfflineSettlementExceptions();
   const signature = (item: { settlementPeriodId: string; type: string; severity: string; description: string }) =>
     `${item.settlementPeriodId}:${item.type}:${item.severity}:${item.description}`;
@@ -35,7 +20,7 @@ export async function syncOfflineSettlementExceptions(periods: SettlementPeriodS
   let created = 0;
 
   for (const period of periods) {
-    if (!period.facility_id || !period.id) continue;
+    if (!period.facility_id || !period.id || !period.period_end || !period.settlement_status) continue;
 
     const detected = detectSettlementExceptions({
       id: period.id,
@@ -68,7 +53,7 @@ export async function syncOfflineSettlementExceptions(periods: SettlementPeriodS
         resolutionNote: null,
         resolvedAt: null,
         resolvedBy: null,
-      });
+      }, actorId);
       keys.add(key);
       created += 1;
     }
