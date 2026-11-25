@@ -72,6 +72,30 @@ describe('settlement reporting', () => {
     expect(summary.overSettledCount).toBe(1);
   });
 
+  it('aggregates fractional GHS values without binary floating-point drift', () => {
+    const rows = [
+      period({ id: 'fraction-1', totalClaimsSubmitted: 0.1, provisionalWithholdingTax: 0.01, paymentReceived: 0.05, rejectionAmount: 0.02, actualWithholdingTax: 0.03, withholdingTaxVariance: 0.01 }),
+      period({ id: 'fraction-2', totalClaimsSubmitted: 0.2, provisionalWithholdingTax: 0.02, paymentReceived: 0.1, rejectionAmount: 0.04, actualWithholdingTax: 0.06, withholdingTaxVariance: -0.02 }),
+    ];
+
+    const summary = summarizeSettlementPeriods(rows);
+    expect(summary.totalSubmitted).toBe(0.3);
+    expect(summary.totalProvisionalWht).toBe(0.03);
+    expect(summary.totalPaymentReceived).toBe(0.15);
+    expect(summary.totalRejectionAmount).toBe(0.06);
+    expect(summary.totalActualWht).toBe(0.09);
+    expect(summary.totalWhtVariance).toBe(-0.01);
+    expect(summary.totalResidual).toBe(0);
+    expect(summary.balancedCount).toBe(2);
+
+    const [insurer] = summarizeSettlementsByInsurer(rows);
+    expect(insurer.totalSubmitted).toBe(0.3);
+    expect(insurer.totalPaymentReceived).toBe(0.15);
+    expect(insurer.totalRejectionAmount).toBe(0.06);
+    expect(insurer.totalWhtVariance).toBe(-0.01);
+    expect(insurer.totalResidual).toBe(0);
+  });
+
   it('groups signed reconciliation totals by insurer', () => {
     const rows = [
       period({ id: '1', paymentReceived: 800, rejectionAmount: 100, actualWithholdingTax: 50 }),
