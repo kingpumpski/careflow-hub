@@ -6,23 +6,28 @@ BEGIN;
 
 DO $fixtures$
 DECLARE
-  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
+  v_superuser_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
+  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000003';
 BEGIN
   INSERT INTO auth.users (
     id, aud, role, email, encrypted_password, email_confirmed_at,
     raw_app_meta_data, raw_user_meta_data, created_at, updated_at
   ) VALUES
-    (v_admin_id, 'authenticated', 'authenticated', 'facility-test-admin@example.invalid',
-     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Admin"}'::jsonb, now(), now()),
+    (v_superuser_id, 'authenticated', 'authenticated', 'facility-test-superuser@example.invalid',
+     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Superuser"}'::jsonb, now(), now()),
     (v_member_id, 'authenticated', 'authenticated', 'facility-test-member@example.invalid',
-     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Member"}'::jsonb, now(), now())
+     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Member"}'::jsonb, now(), now()),
+    (v_admin_id, 'authenticated', 'authenticated', 'facility-test-admin@example.invalid',
+     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Admin"}'::jsonb, now(), now())
   ON CONFLICT (id) DO NOTHING;
 
-  UPDATE public.user_roles
-  SET role = 'admin'::public.app_role
-  WHERE user_id = v_admin_id;
+  UPDATE public.user_roles SET role = 'superuser'::public.app_role WHERE user_id = v_superuser_id;
+  UPDATE public.user_roles SET role = 'admin'::public.app_role WHERE user_id = v_admin_id;
 
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_superuser_id AND role = 'superuser'::public.app_role) THEN
+    RAISE EXCEPTION 'Test superuser role fixture was not created';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_admin_id AND role = 'admin'::public.app_role) THEN
     RAISE EXCEPTION 'Test administrator role fixture was not created';
   END IF;
@@ -57,13 +62,13 @@ RESET ROLE;
 DO $owner_membership$
 DECLARE
   v_facility_id uuid := current_setting('test.facility_id')::uuid;
-  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
+  v_superuser_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_membership_id uuid;
 BEGIN
   SELECT fm.id INTO v_membership_id
   FROM public.facility_memberships fm
   WHERE fm.facility_id = v_facility_id
-    AND fm.user_id = v_admin_id
+    AND fm.user_id = v_superuser_id
     AND fm.role = 'owner'
     AND fm.status = 'active';
 
@@ -82,9 +87,11 @@ DO $membership_behavior$
 DECLARE
   v_facility_id uuid := current_setting('test.facility_id')::uuid;
   v_owner_membership_id uuid := current_setting('test.owner_membership_id')::uuid;
-  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
+  v_superuser_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
+  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000003';
   v_rejected boolean;
+  v_visible_facilities integer;
 BEGIN
   PERFORM * FROM public.add_facility_member_by_email(
     v_facility_id, 'facility-test-member@example.invalid', 'viewer'
@@ -93,7 +100,7 @@ BEGIN
   v_rejected := false;
   BEGIN
     PERFORM * FROM public.add_facility_member_by_email(
-      v_facility_id, 'facility-test-admin@example.invalid', 'member'
+      v_facility_id, 'facility-test-superuser@example.invalid', 'member'
     );
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM LIKE '%A facility must retain at least one active owner%' THEN
@@ -120,6 +127,39 @@ BEGIN
     RAISE EXCEPTION 'Suspending the last active facility owner should be rejected';
   END IF;
 
+  -- Administrators may administer other modules but must not see or mutate
+  -- global facility records through the Facilities & Access control plane.
+  PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_admin_id, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO v_visible_facilities FROM public.facilities;
+  IF v_visible_facilities <> 0 THEN
+    RAISE EXCEPTION 'An administrator without facility membership must not enumerate global facilities';
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM * FROM public.create_facility_with_owner(
+      'CFADMIN01', 'Admin Must Not Create Facility', 'GH', 'Africa/Accra', 'GHS', 'DD/MM/YYYY'
+    );
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'An administrator must not create facilities';
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM * FROM public.add_facility_member_by_email(
+      v_facility_id, 'facility-test-member@example.invalid', 'owner'
+    );
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'An administrator must not administer facility memberships';
+  END IF;
+
   -- A normal viewer must not be able to administer facility membership.
   PERFORM set_config('request.jwt.claim.sub', v_member_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_member_id, 'role', 'authenticated')::text, true);
@@ -129,7 +169,7 @@ BEGIN
       v_facility_id, 'facility-test-member@example.invalid', 'owner'
     );
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE '%System administrator permissions are required%' THEN
+    IF SQLERRM LIKE '%Only a superuser can administer facility access%' THEN
       v_rejected := true;
     ELSE
       RAISE;
@@ -140,8 +180,8 @@ BEGIN
   END IF;
 
   -- Restore actor identity for audit assertions in the next block.
-  PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
-  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_admin_id, 'role', 'authenticated')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', v_superuser_id::text, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_superuser_id, 'role', 'authenticated')::text, true);
 END;
 $membership_behavior$;
 
@@ -150,14 +190,14 @@ RESET ROLE;
 DO $persisted_state$
 DECLARE
   v_facility_id uuid := current_setting('test.facility_id')::uuid;
-  v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
+  v_superuser_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
   v_owner_count integer;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.facility_memberships fm
     WHERE fm.facility_id = v_facility_id
-      AND fm.user_id = v_admin_id
+      AND fm.user_id = v_superuser_id
       AND fm.role = 'owner'
       AND fm.status = 'active'
   ) THEN
@@ -195,7 +235,7 @@ BEGIN
     SELECT 1 FROM public.audit_logs al
     WHERE al.table_name = 'facility_memberships'
       AND al.action = 'upsert'
-      AND al.changed_by = v_admin_id
+      AND al.changed_by = v_superuser_id
   ) THEN
     RAISE EXCEPTION 'Membership creation must emit an audit record';
   END IF;
