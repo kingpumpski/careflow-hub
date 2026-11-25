@@ -433,6 +433,26 @@ The following relations and RPCs are still absent from production (verified by `
 
 The existing `public.claims_settlement_periods` relation is present. The permission catalogue and scoped settlement permission seed need to be reconciled before the settlement exception RPCs can authorize claims officers safely.
 
-A source-only compatibility change is being prepared to make the RBAC migrations select the deployed column names at migration time, supporting both the canonical `key/granted` layout and the legacy `permission_key/allowed` layout. This is not a production migration execution and does not prove that the full migration chain can be applied. The live ledger still has 74 entries while the current repository tree has 141 migration SQL files, including the previously documented duplicate version groups and historical source drift.
+The RBAC compatibility changes were merged in PR #103. They make the relevant permission migrations select the deployed column names at migration time, supporting both the canonical `key/granted` layout and the legacy `permission_key/allowed` layout. The `admin-user-action` Edge Function was deployed as version 5 after Deno type-checking; it probes the live schema and normalizes legacy rows for the existing UI. The explicit GitHub Pages origins were preserved. This is an Edge Function release only; no database migration was applied.
 
-**Release boundary remains unchanged:** no production DDL, permission seed, function replacement, migration-ledger repair, or data mutation was performed. The production project identity and complete migration crosswalk remain unresolved. Do not run `supabase db push --linked` or apply the missing table migrations until the ledger and source sequence have been reconciled and tested against a disposable/restored copy.
+**Release boundary remains unchanged:** no production DDL, permission seed, database function replacement, migration-ledger repair, or data mutation was performed. The production project identity and complete migration crosswalk remain unresolved. Do not run `supabase db push --linked` or apply the missing table migrations until the ledger and source sequence have been reconciled and tested against a disposable/restored copy.
+
+
+## 2026-11-25 settlement release preflight
+
+The connected Supabase account currently exposes one project: `claims tracker`, ref `jajfdgknctzqypdtvmxo`, status `ACTIVE_HEALTHY`, region `eu-west-1`. The repository's `supabase/config.toml` points to this same ref. The owner should still confirm that this legacy-named project is the intended CareFlow Hub production target before database changes.
+
+Additional read-only production checks confirmed:
+- `public.claims_settlement_remittances` is missing.
+- `public.claims_settlement_receipt_months` is missing.
+- `public.record_claims_settlement_remittance(uuid,text,date,date,numeric,numeric,numeric,numeric)` is missing.
+- `claims_settlement_periods.approved_gross_amount` and `claims_settlement_periods.actual_receipt_date` are missing.
+- The current `public.claims_outstanding_periods` view does not reference `claims_settlement_periods` or `claims_settlement_remittances`; it remains on the older claims/payments/withholding-tax source path.
+- Neither `claims.settlement.read` nor `claims.settlement.write` is present in the production permission catalogue.
+- The `settlement_exceptions`, `settlement_exception_audit_events`, `claim_cases`, and `claim_case_events` relations and their corresponding RPCs remain absent.
+
+The legacy remittance backfill preflight found zero `claims_settlement_periods` rows eligible for a legacy remittance snapshot. It also found no eligible rows with missing `created_by`, `created_at`, `updated_at`, or advice date values. This removes one known backfill-data risk, but does not remove the migration-ledger or project-identity release gates.
+
+The source migration for the monthly claims view was corrected in PR #105 so the legacy individual-claim fallback retains all submitted gross, including claims later rejected; the rejected amount remains separately reported. PR #107 added full 14-by-14 SQL coverage to ensure the database claim lifecycle transition helper matches the UI transition matrix.
+
+The production database remains read-only. No settlement permission rows, tables, columns, views, or database RPCs were added. Backup and restore work remains paused at the user's direction; the 74-row live migration ledger versus 141 source migration files, duplicate timestamp groups, and unmatched historical ledger entries still require a verified crosswalk before any production migration release.
