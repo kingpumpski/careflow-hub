@@ -20,7 +20,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
   END IF;
-  IF NOT security_internal.current_user_has_permission('payments.write') THEN
+  IF NOT (security_internal.current_user_has_permission('payments.write') OR security_internal.current_user_has_permission('claims.settlement.write')) THEN
     RAISE EXCEPTION 'PAYMENTS_WRITE_REQUIRED' USING ERRCODE = '42501';
   END IF;
   IF p_type NOT IN ('payment_variance','rejection_variance','withholding_tax_variance','missing_payment_advice','incomplete_payment_advice','overdue_settlement')
@@ -135,7 +135,7 @@ BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'AUTH_REQUIRED' USING ERRCODE = '42501';
   END IF;
-  IF NOT security_internal.current_user_has_permission('payments.write') THEN
+  IF NOT (security_internal.current_user_has_permission('payments.write') OR security_internal.current_user_has_permission('claims.settlement.write')) THEN
     RAISE EXCEPTION 'PAYMENTS_WRITE_REQUIRED' USING ERRCODE = '42501';
   END IF;
   IF p_target_status NOT IN ('open','under_review','resolved','waived') THEN
