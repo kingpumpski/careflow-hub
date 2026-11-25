@@ -93,8 +93,7 @@ AS $function$
       AND fm.status = 'active'
   );
 $function$;
-REVOKE ALL ON FUNCTION security_internal.is_active_facility_member(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION security_internal.is_active_facility_member(uuid) TO authenticated;
+REVOKE ALL ON FUNCTION security_internal.is_active_facility_member(uuid) FROM PUBLIC, anon, authenticated;
 
 -- Facility discovery remains available to system administrators for operational
 -- workflows such as pre-authorization. Membership visibility and all mutations
