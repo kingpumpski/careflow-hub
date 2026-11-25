@@ -75,3 +75,4 @@ jobs:
 
       - name: Production build
         run: npm run build
+\n      - name: Verify GitHub Pages hash routing\n        run: npm run verify:pages\n
