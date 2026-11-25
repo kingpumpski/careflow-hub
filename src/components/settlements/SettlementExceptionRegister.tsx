@@ -11,6 +11,7 @@ import { detectSettlementExceptions, type SettlementException, type SettlementEx
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { useQueryClient } from "@tanstack/react-query";
+import { hasSettlementExceptionReadAccess, hasSettlementExceptionWriteAccess } from "@/features/settlements/domain/settlement-exception-permissions";
 
 type SettlementPeriodInput = {
   id?: string;
@@ -74,8 +75,8 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
-  const canRead = !permissionsLoading && (can("payments.read") || can("claims.settlement.read"));
-  const canWrite = canRead && (can("payments.write") || can("claims.settlement.write"));
+  const canRead = !permissionsLoading && hasSettlementExceptionReadAccess(can);
+  const canWrite = canRead && hasSettlementExceptionWriteAccess(can);
   const [offlineExceptions, setOfflineExceptions] = useState<SettlementException[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
