@@ -45,10 +45,7 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: SPA fallback
-        run: cp dist/index.html dist/404.html
-
-      - name: Verify SPA fallback
+      - name: Verify GitHub Pages hash routing
         run: npm run verify:pages
 
       - name: Configure Pages
@@ -123,12 +120,7 @@ jobs:
               print(f"OK {target}")
           PY
 
-          # GitHub Pages serves the SPA fallback with a 404 status for deep links.
-          # Verify that the fallback body still contains the app root.
-          curl --silent --show-error --location "$SITE_URL/claims" -o /tmp/careflow-claims.html
-          grep -q '<div id="root"></div>' /tmp/careflow-claims.html
-
-          # Reports is the route reported as failing by users. Verify that a
-          # direct deep-link request receives the SPA fallback document.
-          curl --silent --show-error --location "$SITE_URL/reports" -o /tmp/careflow-reports.html
-          grep -q '<div id="root"></div>' /tmp/careflow-reports.html
+          # GitHub Pages receives only the base document for hash-based routes.
+          # Fragments are browser-only and are never sent in HTTP requests.
+          curl --fail --silent --show-error --location "$SITE_URL" -o /tmp/careflow-hash-entry.html
+          grep -q '<div id="root"></div>' /tmp/careflow-hash-entry.html
