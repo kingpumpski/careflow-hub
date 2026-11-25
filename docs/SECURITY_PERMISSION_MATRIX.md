@@ -41,6 +41,19 @@ An explicit user override takes precedence over the role default for that permis
 
 Role mutations are intentionally routed through `admin-user-action`, which validates the authenticated caller before using the service role. The `user_roles` Data API surface has no authenticated INSERT/UPDATE/DELETE policy.
 
+## Facility administration
+
+| Resource / action | Allowed authority | Client direct mutation |
+|---|---|---|
+| Discover facilities for operational workflows | Facility members; admin and superuser for authorized operational discovery | Read only |
+| Read own facility membership | Authenticated user | Read own row only |
+| List facility membership/access roster | Superuser | No |
+| Create facility and assign initial owner | Superuser | No |
+| Add or change facility membership | Superuser | No |
+| Suspend facility membership | Superuser | No |
+
+Facility administration is a superuser-only control plane. Public RPC wrappers perform server-side superuser checks and use a pinned search path; private mutation helpers are not executable by authenticated clients. The UI route guard and navigation visibility are secondary controls, not the authorization boundary.
+
 ## Non-operational security boundaries
 
 - Facility membership is required wherever operational records carry a `facility_id`.

@@ -1,13 +1,13 @@
 -- Behavioral integration test for facility onboarding and owner safety.
 -- Runs in a disposable PostgreSQL transaction and rolls back all fixtures.
--- RPC calls run as authenticated; catalog assertions run as the test DB owner
--- because the legacy membership SELECT policy invokes a restricted helper.
+-- RPC calls run as authenticated; catalog assertions run as the test DB owner.
 BEGIN;
 
 DO $fixtures$
 DECLARE
   v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
+  v_facility_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000003';
 BEGIN
   INSERT INTO auth.users (
     id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -16,14 +16,18 @@ BEGIN
     (v_admin_id, 'authenticated', 'authenticated', 'facility-test-admin@example.invalid',
      'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Admin"}'::jsonb, now(), now()),
     (v_member_id, 'authenticated', 'authenticated', 'facility-test-member@example.invalid',
-     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Member"}'::jsonb, now(), now())
+     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Member"}'::jsonb, now(), now()),
+    (v_facility_admin_id, 'authenticated', 'authenticated', 'facility-test-admin-2@example.invalid',
+     'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Administrator"}'::jsonb, now(), now())
   ON CONFLICT (id) DO NOTHING;
 
-  UPDATE public.user_roles
-  SET role = 'admin'::public.app_role
-  WHERE user_id = v_admin_id;
+  UPDATE public.user_roles SET role = 'superuser'::public.app_role WHERE user_id = v_admin_id;
+  UPDATE public.user_roles SET role = 'admin'::public.app_role WHERE user_id = v_facility_admin_id;
 
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_admin_id AND role = 'admin'::public.app_role) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_admin_id AND role = 'superuser'::public.app_role) THEN
+    RAISE EXCEPTION 'Test superuser role fixture was not created';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_facility_admin_id AND role = 'admin'::public.app_role) THEN
     RAISE EXCEPTION 'Test administrator role fixture was not created';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_member_id AND role = 'viewer'::public.app_role) THEN
@@ -84,6 +88,8 @@ DECLARE
   v_owner_membership_id uuid := current_setting('test.owner_membership_id')::uuid;
   v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
+  v_facility_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000003';
+  v_visible_memberships integer;
   v_rejected boolean;
 BEGIN
   PERFORM * FROM public.add_facility_member_by_email(
@@ -120,7 +126,26 @@ BEGIN
     RAISE EXCEPTION 'Suspending the last active facility owner should be rejected';
   END IF;
 
-  -- A normal viewer must not be able to administer facility membership.
+  -- An administrator is not a superuser and must not administer facilities.
+  PERFORM set_config('request.jwt.claim.sub', v_facility_admin_id::text, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_facility_admin_id, 'role', 'authenticated')::text, true);
+  v_rejected := false;
+  BEGIN
+    PERFORM * FROM public.add_facility_member_by_email(
+      v_facility_id, 'facility-test-member@example.invalid', 'owner'
+    );
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%Only a superuser can administer facility access%' THEN
+      v_rejected := true;
+    ELSE
+      RAISE;
+    END IF;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'An administrator must not be able to grant facility ownership';
+  END IF;
+
+  -- A normal viewer must not be able to administer facility membership or enumerate the roster.
   PERFORM set_config('request.jwt.claim.sub', v_member_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_member_id, 'role', 'authenticated')::text, true);
   v_rejected := false;
@@ -129,7 +154,7 @@ BEGIN
       v_facility_id, 'facility-test-member@example.invalid', 'owner'
     );
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE '%System administrator permissions are required%' THEN
+    IF SQLERRM LIKE '%Only a superuser can administer facility access%' THEN
       v_rejected := true;
     ELSE
       RAISE;
@@ -139,9 +164,20 @@ BEGIN
     RAISE EXCEPTION 'A viewer must not be able to grant facility ownership';
   END IF;
 
-  -- Restore actor identity for audit assertions in the next block.
+  SELECT count(*) INTO v_visible_memberships FROM public.facility_memberships;
+  IF v_visible_memberships <> 1 THEN
+    RAISE EXCEPTION 'A facility member may see only their own membership record, not the facility access roster';
+  END IF;
+
+  -- Restore superuser identity for audit assertions in the next block.
   PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_admin_id, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO v_visible_memberships
+  FROM public.facility_memberships
+  WHERE facility_id = v_facility_id;
+  IF v_visible_memberships <> 2 THEN
+    RAISE EXCEPTION 'A superuser must be able to view the complete facility access roster; found % rows', v_visible_memberships;
+  END IF;
 END;
 $membership_behavior$;
 

@@ -4,6 +4,8 @@
 
 CareFlow Hub is being developed as a globally deployable insurance-claims operations platform, not as a Ghana-only hospital billing application. Ghana remains the first reference market, but country-specific rules must be configurable rather than embedded in the core domain.
 
+The executable delivery sequence and current implementation gaps are tracked in [Cross-Module Modernization Roadmap](CROSS_MODULE_MODERNIZATION_ROADMAP.md).
+
 ## Non-negotiable architecture principles
 
 1. **Claims-first domain model** — model the insurance claim lifecycle as a first-class domain with immutable financial events, status transitions, adjustments, adjudication outcomes and reconciliation.

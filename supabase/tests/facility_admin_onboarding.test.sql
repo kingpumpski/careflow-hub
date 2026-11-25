@@ -33,13 +33,10 @@ BEGIN
      OR has_function_privilege('anon', v_suspend_helper, 'EXECUTE') THEN
     RAISE EXCEPTION 'Anonymous execution of private facility helpers must remain revoked';
   END IF;
-  IF NOT has_function_privilege('authenticated', v_create_helper, 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', v_add_helper, 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', v_suspend_helper, 'EXECUTE') THEN
-    RAISE EXCEPTION 'Authenticated private facility helper execution is not granted';
-  END IF;
-  IF NOT has_schema_privilege('authenticated', 'security_internal', 'USAGE') THEN
-    RAISE EXCEPTION 'Authenticated callers require schema usage for the private facility helpers';
+  IF has_function_privilege('authenticated', v_create_helper, 'EXECUTE')
+     OR has_function_privilege('authenticated', v_add_helper, 'EXECUTE')
+     OR has_function_privilege('authenticated', v_suspend_helper, 'EXECUTE') THEN
+    RAISE EXCEPTION 'Private facility mutation helpers must not be directly executable by authenticated users';
   END IF;
 
   IF EXISTS (
@@ -52,9 +49,9 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_proc p
     WHERE p.oid IN (v_create_signature::regprocedure, v_add_signature::regprocedure, v_suspend_signature::regprocedure)
-      AND p.prosecdef
+      AND (NOT p.prosecdef OR NOT coalesce(array_to_string(p.proconfig, ','), '') LIKE '%search_path=%')
   ) THEN
-    RAISE EXCEPTION 'Exposed facility administration wrappers must remain SECURITY INVOKER';
+    RAISE EXCEPTION 'Public facility administration wrappers must be SECURITY DEFINER with a pinned search_path';
   END IF;
 
   IF position('A facility must retain at least one active owner' in pg_get_functiondef(v_add_helper::regprocedure)) = 0

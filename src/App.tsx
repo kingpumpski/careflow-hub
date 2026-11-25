@@ -81,6 +81,12 @@ function PermissionRoute({ permission, children }: { permission: Permission; chi
   return can(permission) ? <>{children}</> : <AccessDenied permission={permission} />;
 }
 
+function SuperuserRoute({ children }: { children: ReactNode }) {
+  const { userRole, roleLoading } = useAuth();
+  if (roleLoading) return <RouteFallback />;
+  return userRole === "superuser" ? <>{children}</> : <AccessDenied permission="settings.manage" />;
+}
+
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
   if (loading) return <RouteFallback />;
@@ -91,7 +97,7 @@ function ProtectedRoutes() {
     <Route path="/pre-auth/studio" element={<PermissionRoute permission="preauth.write"><PreAuthorizationStudioRoute /></PermissionRoute>} />
     <Route path="/claims" element={<PermissionRoute permission="claims.read"><Claims /></PermissionRoute>} />
     <Route path="/claims/cases" element={<PermissionRoute permission="claims.read"><ClaimCases /></PermissionRoute>} />
-    <Route path="/facilities" element={<PermissionRoute permission="settings.manage"><FacilityManagement /></PermissionRoute>} />
+    <Route path="/facilities" element={<SuperuserRoute><FacilityManagement /></SuperuserRoute>} />
     <Route path="/claims/diagnosis-assistant" element={<PermissionRoute permission="claims.read"><ClaimDiagnosisAssistant /></PermissionRoute>} />
     <Route path="/claims/settlements" element={<PermissionRoute permission="payments.read"><ClaimsSettlement /></PermissionRoute>} />
     <Route path="/payments" element={<PermissionRoute permission="payments.read"><Payments /></PermissionRoute>} />

@@ -73,7 +73,7 @@ supabase/
 | **Claims Intelligence** | Monthly Claims Entry, Insurance Companies, Claims Schedule, Settlement Tracking, Outstanding, Rejections, Withholding Tax, Bulk Import, Duplicate Audit, Reports, General Ledger |
 | **Pre-Authorization** | Authorization Requests, Pre-Authorization Studio, Patients / Clients, Doctors, Procedures, Procedure Templates, Cost Builder Items, Diagnosis Master |
 | **Analytics** | Performance Analytics, Revenue & Trends, Provider Performance, Insurer Scorecard, Service Lines, Fraud Alerts, AI Insights |
-| **Administration** | Users & Roles, Audit Logs, Messages, Notifications, Settings |
+| **Administration** | Users & Roles, Facilities & Access (superuser only), Audit Logs, Messages, Notifications, Settings |
 
 Menu entries are filtered by the signed-in user's permissions, while database RLS and security-definer
 functions remain the authoritative access boundary.

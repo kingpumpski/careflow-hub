@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, Shield, FileCheck, TrendingUp, Settings2, ChevronDown, ChevronRight, Activity, type LucideIcon } from "lucide-react";
 import { usePermissions } from "@/modules/security";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/modules/security";
 import { APP_BRAND } from "@/config/branding";
 import ConnectivityStatus from "./ConnectivityStatus";
 
-interface NavChild { label: string; path: string; permission?: Permission; }
+interface NavChild { label: string; path: string; permission?: Permission; superuserOnly?: boolean; }
 interface NavGroup { label: string; icon: LucideIcon; path?: string; children?: NavChild[]; }
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -14,7 +15,6 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "Claims Intelligence", icon: Shield, children: [
     { label: "Monthly Claims Entry", path: "/claims", permission: "claims.read" },
     { label: "Individual Claim Cases", path: "/claims/cases", permission: "claims.read" },
-    { label: "Facilities & Access", path: "/facilities", permission: "settings.manage" },
   { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
   { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
   { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
@@ -54,12 +54,14 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Messages", path: "/chat" },
     { label: "Notifications", path: "/notifications" },
     { label: "Settings", path: "/settings", permission: "settings.manage" },
+    { label: "Facilities & Access", path: "/facilities", superuserOnly: true },
   ] },
 ];
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const location = useLocation();
   const { can } = usePermissions();
+  const { userRole } = useAuth();
   const groupContaining = (g: NavGroup) => g.children?.some((c) => c.path === location.pathname);
   const [expanded, setExpanded] = useState<string[]>(() => { const open = NAV_GROUPS.filter(groupContaining).map((g) => g.label); return open.length ? open : ["Claims Intelligence"]; });
 
@@ -71,7 +73,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
 
   const toggle = (label: string) => setExpanded((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   const isActive = (path: string) => location.pathname === path;
-  const visible = (child: NavChild) => !child.permission || can(child.permission);
+  const visible = (child: NavChild) => (child.superuserOnly ? userRole === "superuser" : true) && (!child.permission || can(child.permission));
   return <aside className="h-full w-64 max-w-[88vw] max-h-screen bg-sidebar !text-sidebar-foreground flex flex-col border-r border-sidebar-border no-print overflow-hidden">
     <div className="p-4 sm:p-5 border-b border-sidebar-border shrink-0">
       <div className="flex items-center gap-3 min-w-0">
