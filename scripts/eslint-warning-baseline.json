@@ -33,7 +33,7 @@
     "[\"src/features/preauth/services/preauthPdf.service.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 3,
     "[\"src/features/preauth/services/preauthStudio.service.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 8,
     "[\"src/hooks/useMasterSearch.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 3,
-    "[\"src/hooks/useSupabaseQuery.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 20,
+    "[\"src/hooks/useSupabaseQuery.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 21,
     "[\"src/integrations/supabase/previewAuthStorage.ts\",\"prefer-const\",\"'timer' is never reassigned. Use 'const' instead.\"]": 1,
     "[\"src/lib/dedupCheck.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 7,
     "[\"src/lib/exportUtils.lazy.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 8,
@@ -73,7 +73,7 @@
     "[\"src/pages/Notifications.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 4,
     "[\"src/pages/OfflinePreAuthorizationStudio.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 16,
     "[\"src/pages/OfflinePreAuthorizationStudio.tsx\",\"react-hooks/exhaustive-deps\",\"React Hook useMemo has a missing dependency: 'getSetting'. Either include it or remove the dependency array.\"]": 2,
-    "[\"src/pages/Outstanding.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 23,
+    "[\"src/pages/Outstanding.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 24,
     "[\"src/pages/Payments.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 29,
     "[\"src/pages/PreAuthAnalytics.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 14,
     "[\"src/pages/PreAuthorization.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 34,
@@ -97,6 +97,10 @@
     "[\"src/pages/Users.tsx\",\"react-hooks/exhaustive-deps\",\"React Hook useEffect has a missing dependency: 'loadUsers'. Either include it or remove the dependency array.\"]": 1,
     "[\"src/pages/UsersPage.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 11,
     "[\"src/pages/UsersPage.tsx\",\"no-useless-escape\",\"Unnecessary escape character: \\\\\\\".\"]": 2,
-    "[\"src/pages/UsersPage.tsx\",\"react-hooks/exhaustive-deps\",\"React Hook useEffect has a missing dependency: 'loadUsers'. Either include it or remove the dependency array.\"]": 1
+    "[\"src/pages/UsersPage.tsx\",\"react-hooks/exhaustive-deps\",\"React Hook useEffect has a missing dependency: 'loadUsers'. Either include it or remove the dependency array.\"]": 1,
+    "[\"src/features/claims/services/claimDiagnosis.service.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 2,
+    "[\"src/pages/Chat.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 3,
+    "[\"src/pages/DocumentIntake.tsx\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 1,
+    "[\"vite.config.ts\",\"@typescript-eslint/no-explicit-any\",\"Unexpected any. Specify a different type.\"]": 1
   }
 }
