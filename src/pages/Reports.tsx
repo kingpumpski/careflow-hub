@@ -61,12 +61,12 @@ export default function Reports() {
       const outstanding = netClaim - paid - tax;
       return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
     }).filter(r => r.submitted > 0 || r.paid > 0 || r.rejected > 0)
-      .filter((row: any) => selectedCompanyId === "all" || row.id === selectedCompanyId);
+      .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
   }, [claims, insurers, payments, withholdingTax, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   // Ledger-based reports
   const incomeData = useMemo(() => {
-    const filteredLedger = filterByPeriod((ledger || []).filter((entry: any) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
+    const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const revenue = filteredLedger.filter((e: any) => e.account_credit === "Claims Revenue").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
@@ -84,7 +84,7 @@ export default function Reports() {
   const agingData = useMemo(() => {
     const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
     const today = new Date();
-    (insurers || []).filter((ins: any) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins: any) => {
+    (insurers || []).filter((ins) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins: any) => {
       const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
       // build per-month map
       const map: Record<string, { y: number; m: number; sub: number; rej: number; paid: number; wht: number }> = {};
@@ -164,7 +164,7 @@ export default function Reports() {
     exportReportExcel(`${activePeriod} Report`, rows, "Report");
   };
 
-  const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company: any) => company.id === selectedCompanyId)?.company_name || "Selected Company";
+  const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company) => company.id === selectedCompanyId)?.company_name || "Selected Company";
   const periodLabel = `${activePeriod === "Total" ? "All Time" : `${activePeriod} — ${selectedYear}${activePeriod === "Monthly" ? ` ${monthNames[parseInt(selectedMonth)]}` : ""}`} · ${companyLabel}`;
 
   return (
@@ -182,7 +182,7 @@ export default function Reports() {
         {periods.map((p) => <Button key={p} variant={p === activePeriod ? "default" : "outline"} size="sm" onClick={() => setActivePeriod(p)}>{p}</Button>)}
       </div>
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2"><Label htmlFor="report-company" className="text-xs">Company:</Label><select id="report-company" className="h-8 min-w-52 rounded-md border border-input bg-background px-2 text-sm" value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}><option value="all">All companies (consolidated)</option>{(insurers || []).map((company: any) => <option key={company.id} value={company.id}>{company.company_name}</option>)}</select></div>
+        <div className="flex items-center gap-2"><Label htmlFor="report-company" className="text-xs">Company:</Label><select id="report-company" className="h-8 min-w-52 rounded-md border border-input bg-background px-2 text-sm" value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}><option value="all">All companies (consolidated)</option>{(insurers || []).map((company) => <option key={company.id} value={company.id}>{company.company_name}</option>)}</select></div>
         {activePeriod !== "Total" && <div className="flex items-center gap-2"><Label className="text-xs">Year:</Label><Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-24 h-8" /></div>}
         {(activePeriod === "Monthly" || activePeriod === "Quarterly" || activePeriod === "Bi-Annual") && (
           <div className="flex items-center gap-2"><Label className="text-xs">Month:</Label><select className="h-8 rounded-md border border-input bg-background px-2 text-sm" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>{monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select></div>
