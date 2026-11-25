@@ -1,7 +1,6 @@
 -- Behavioral integration test for facility onboarding and owner safety.
 -- Runs in a disposable PostgreSQL transaction and rolls back all fixtures.
--- RPC calls run as authenticated; catalog assertions run as the test DB owner
--- because the legacy membership SELECT policy invokes a restricted helper.
+-- RPC calls run as authenticated; catalog assertions run as the test DB owner.
 BEGIN;
 
 DO $fixtures$
