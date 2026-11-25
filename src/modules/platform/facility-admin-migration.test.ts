@@ -6,6 +6,10 @@ const migration = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20261120173000_facility_admin_onboarding.sql"),
   "utf8",
 );
+const securityMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261125120000_superuser_only_facility_admin.sql"),
+  "utf8",
+);
 
 describe("facility onboarding migration contract", () => {
   it("creates the first facility and assigns its creator as the first owner atomically", () => {
@@ -22,6 +26,16 @@ describe("facility onboarding migration contract", () => {
     expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.create_facility_with_owner[\s\S]*?FROM PUBLIC, anon, authenticated/i);
     expect(migration).toMatch(/FUNCTION public\.create_facility_with_owner[\s\S]*?SECURITY INVOKER[\s\S]*?SET search_path = ''/i);
     expect(migration).toMatch(/FUNCTION security_internal\.create_facility_with_owner[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+  });
+
+  it("restricts facility discovery and membership administration to the superuser boundary", () => {
+    expect(securityMigration).toContain("security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role])");
+    expect(securityMigration).toMatch(/FUNCTION public\.create_facility_with_owner[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(securityMigration).toMatch(/FUNCTION public\.add_facility_member_by_email[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+    expect(securityMigration).toMatch(/REVOKE ALL ON FUNCTION security_internal\.create_facility_with_owner[\s\S]*?FROM PUBLIC, anon, authenticated/i);
+    expect(securityMigration).toContain("user_id = (select auth.uid())");
+    expect(securityMigration).toContain("OR security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role])");
+    expect(securityMigration).not.toContain("is_active_facility_member");
   });
 
   it("requires an existing account before granting membership and audits membership changes", () => {
