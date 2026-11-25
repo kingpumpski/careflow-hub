@@ -92,6 +92,7 @@ DECLARE
   v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000003';
   v_rejected boolean;
   v_visible_facilities integer;
+  v_visible_memberships integer;
 BEGIN
   PERFORM * FROM public.add_facility_member_by_email(
     v_facility_id, 'facility-test-member@example.invalid', 'viewer'
@@ -132,8 +133,12 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_admin_id, 'role', 'authenticated')::text, true);
   SELECT count(*) INTO v_visible_facilities FROM public.facilities;
-  IF v_visible_facilities <> 0 THEN
-    RAISE EXCEPTION 'An administrator without facility membership must not enumerate global facilities';
+  IF v_visible_facilities <> 1 THEN
+    RAISE EXCEPTION 'An administrator must retain read-only facility discovery for operational workflows';
+  END IF;
+  SELECT count(*) INTO v_visible_memberships FROM public.facility_memberships;
+  IF v_visible_memberships <> 0 THEN
+    RAISE EXCEPTION 'An administrator without facility membership must not enumerate facility access records';
   END IF;
 
   v_rejected := false;
