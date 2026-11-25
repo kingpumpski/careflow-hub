@@ -172,6 +172,12 @@ BEGIN
   -- Restore superuser identity for audit assertions in the next block.
   PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_admin_id, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO v_visible_memberships
+  FROM public.facility_memberships
+  WHERE facility_id = v_facility_id;
+  IF v_visible_memberships <> 2 THEN
+    RAISE EXCEPTION 'A superuser must be able to view the complete facility access roster; found % rows', v_visible_memberships;
+  END IF;
 END;
 $membership_behavior$;
 
