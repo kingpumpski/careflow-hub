@@ -47,6 +47,11 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
     };
+    const targetIsSuperuser = async (id: string) => {
+      const { data, error } = await admin.from("user_roles").select("role").eq("user_id", id);
+      if (error) throw error;
+      return (data ?? []).some((r: { role?: string | null }) => r.role === "superuser");
+    };
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body || typeof body.action !== "string") return json(req, { error: "Invalid request" }, 400);
     const action = body.action;
@@ -140,6 +145,7 @@ Deno.serve(async (req) => {
     if (action === "delete_user") {
       if (!isUuid(targetUserId)) return json(req, { error: "Valid target_user_id required" }, 400);
       if (targetUserId === user.id) return json(req, { error: "A user cannot delete their own account from this action." }, 400);
+      if (!isSuperuser && await targetIsSuperuser(targetUserId)) return json(req, { error: "Only a superuser can modify a superuser account." }, 403);
       const { error } = await admin.auth.admin.deleteUser(targetUserId);
       if (error) throw error;
       await audit("delete_user", targetUserId);
@@ -162,6 +168,7 @@ Deno.serve(async (req) => {
       if (!isUuid(targetUserId) || typeof newPassword !== "string") return json(req, { error: "Valid target_user_id and new_password required" }, 400);
       if (newPassword.length < 12 || newPassword.length > 128) return json(req, { error: "Password must be between 12 and 128 characters." }, 400);
       if (targetUserId === user.id) return json(req, { error: "Use the normal account password flow for your own account." }, 400);
+      if (!isSuperuser && await targetIsSuperuser(targetUserId)) return json(req, { error: "Only a superuser can modify a superuser account." }, 403);
       const { error } = await admin.auth.admin.updateUserById(targetUserId, { password: newPassword });
       if (error) throw error;
       await audit("set_password", targetUserId);
