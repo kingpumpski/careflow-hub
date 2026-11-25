@@ -7,7 +7,7 @@
 ## Application gates
 
 - [x] TypeScript check passes.
-- [x] ESLint regression gate passes; main has 719 warnings (0 errors), down from the 720-warning baseline, with no new warning signatures. The remaining warnings are tracked for incremental cleanup.
+- [x] ESLint regression gate passes; the baseline now records 729 existing warnings (0 errors) across the current main code inventory, with no new warning signatures. The remaining warnings are tracked for incremental cleanup.
 - [x] Unit/regression tests pass.
 - [x] Production build completes successfully.
 - [x] Claims financial UI reads the authoritative `claims_outstanding_periods` view.
