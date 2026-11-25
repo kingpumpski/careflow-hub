@@ -17,7 +17,7 @@ BEGIN
  IF position('public.app_permissions' in v_definition)=0 OR position('rp.permission_key' in v_definition)=0
   OR position(v_catalog_key in v_definition)=0 OR position(v_role_grant in v_definition)=0
   OR position('uo.'||v_override_column||'=true' in replace(v_definition,' ',''))=0
-  OR position('admin_role.role::text in' in v_definition)=0 THEN
+  OR position('ar.role::text in' in v_definition)=0 THEN
   RAISE EXCEPTION 'get_my_permissions does not match deployed RBAC schema';
  END IF;
  IF has_function_privilege('anon','public.get_my_permissions()','EXECUTE') OR NOT has_function_privilege('authenticated','public.get_my_permissions()','EXECUTE') THEN
