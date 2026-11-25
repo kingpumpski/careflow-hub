@@ -48,6 +48,8 @@ jobs:
           deno-version: v2.x
       - name: Typecheck backup portal Edge Function
         run: deno check --no-lock supabase/functions/backup-control/index.ts
+      - name: Typecheck administrative user-action Edge Function
+        run: deno check --no-lock supabase/functions/admin-user-action/index.ts
       - name: Production build
         run: npm run build
       - name: Verify GitHub Pages hash routing
