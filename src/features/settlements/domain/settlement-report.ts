@@ -1,5 +1,8 @@
 import type { ClaimsSettlementPeriod } from './settlement';
-import { calculateSettlementReconciliation, type SettlementVarianceDirection } from './settlement';
+import type { SettlementVarianceDirection } from './settlement';
+import { addMoney, subtractMoney, toMinorUnits } from '@/modules/platform/decimalMoney';
+
+const REPORT_CURRENCY = 'GHS';
 
 export interface SettlementReportSummary {
   periodCount: number;
@@ -44,19 +47,42 @@ export const SETTLEMENT_REPORT_OVERDUE_DAYS = 30;
 const amount = (value: number | null | undefined): number =>
   Number.isFinite(Number(value)) ? Number(value) : 0;
 
-const round = (value: number): number =>
-  Math.round((value + Number.EPSILON) * 100) / 100;
+/** Add monetary values at currency precision instead of accumulating binary floats. */
+const addAmount = (total: number, value: number | null | undefined): number =>
+  Number(addMoney(String(total), String(amount(value)), REPORT_CURRENCY));
+
+interface ExactSettlementReconciliation {
+  residual: number;
+  outstanding: number;
+  overSettled: number;
+  direction: SettlementVarianceDirection;
+  balanced: boolean;
+}
 
 const classifyReconciliation = (
   period: ClaimsSettlementPeriod,
-): ReturnType<typeof calculateSettlementReconciliation> | null => {
+): ExactSettlementReconciliation | null => {
   if (period.paymentReceived === null || period.rejectionAmount === null || period.actualWithholdingTax === null) return null;
-  return calculateSettlementReconciliation(
-    amount(period.totalClaimsSubmitted),
-    amount(period.rejectionAmount),
-    amount(period.paymentReceived),
-    amount(period.actualWithholdingTax),
+  const residualText = subtractMoney(
+    subtractMoney(
+      subtractMoney(String(amount(period.totalClaimsSubmitted)), String(amount(period.rejectionAmount)), REPORT_CURRENCY),
+      String(amount(period.paymentReceived)),
+      REPORT_CURRENCY,
+    ),
+    String(amount(period.actualWithholdingTax)),
+    REPORT_CURRENCY,
   );
+  const residualMinor = toMinorUnits(residualText, REPORT_CURRENCY);
+  const zero = 0n;
+  const balanced = residualMinor === zero;
+  const residual = Number(residualText);
+  return {
+    residual,
+    outstanding: Number(residualMinor > zero ? residualText : '0'),
+    overSettled: Number(residualMinor < zero ? subtractMoney('0', residualText, REPORT_CURRENCY) : '0'),
+    direction: balanced ? 'balanced' : residualMinor > zero ? 'under_settlement' : 'over_settlement',
+    balanced,
+  };
 };
 
 export function isSettlementOverdue(
@@ -79,12 +105,12 @@ export function summarizeSettlementPeriods(
     if (period.settlementStatus === 'awaiting_payment') summary.awaitingPaymentCount += 1;
     if (period.settlementStatus === 'payment_advice_received') summary.adviceReceivedCount += 1;
     if (period.settlementStatus === 'reconciled') summary.reconciledCount += 1;
-    summary.totalSubmitted += amount(period.totalClaimsSubmitted);
-    summary.totalPaymentReceived += amount(period.paymentReceived);
-    summary.totalRejectionAmount += amount(period.rejectionAmount);
-    summary.totalProvisionalWht += amount(period.provisionalWithholdingTax);
-    summary.totalActualWht += amount(period.actualWithholdingTax);
-    summary.totalWhtVariance += amount(period.withholdingTaxVariance);
+    summary.totalSubmitted = addAmount(summary.totalSubmitted, period.totalClaimsSubmitted);
+    summary.totalPaymentReceived = addAmount(summary.totalPaymentReceived, period.paymentReceived);
+    summary.totalRejectionAmount = addAmount(summary.totalRejectionAmount, period.rejectionAmount);
+    summary.totalProvisionalWht = addAmount(summary.totalProvisionalWht, period.provisionalWithholdingTax);
+    summary.totalActualWht = addAmount(summary.totalActualWht, period.actualWithholdingTax);
+    summary.totalWhtVariance = addAmount(summary.totalWhtVariance, period.withholdingTaxVariance);
     if (isSettlementOverdue(period, asOf)) summary.overdueCount += 1;
 
     const reconciliation = classifyReconciliation(period);
@@ -119,15 +145,15 @@ export function summarizeSettlementPeriods(
 
   return {
     ...summary,
-    totalSubmitted: round(summary.totalSubmitted),
-    totalPaymentReceived: round(summary.totalPaymentReceived),
-    totalRejectionAmount: round(summary.totalRejectionAmount),
-    totalProvisionalWht: round(summary.totalProvisionalWht),
-    totalActualWht: round(summary.totalActualWht),
-    totalWhtVariance: round(summary.totalWhtVariance),
-    totalResidual: round(summary.totalResidual),
-    totalOutstanding: round(summary.totalOutstanding),
-    totalOverSettled: round(summary.totalOverSettled),
+    totalSubmitted: summary.totalSubmitted,
+    totalPaymentReceived: summary.totalPaymentReceived,
+    totalRejectionAmount: summary.totalRejectionAmount,
+    totalProvisionalWht: summary.totalProvisionalWht,
+    totalActualWht: summary.totalActualWht,
+    totalWhtVariance: summary.totalWhtVariance,
+    totalResidual: summary.totalResidual,
+    totalOutstanding: summary.totalOutstanding,
+    totalOverSettled: summary.totalOverSettled,
   };
 }
 
@@ -157,10 +183,10 @@ export function summarizeSettlementsByInsurer(
     if (period.settlementStatus === 'awaiting_payment') current.awaitingPaymentCount += 1;
     if (period.settlementStatus === 'payment_advice_received') current.adviceReceivedCount += 1;
     if (period.settlementStatus === 'reconciled') current.reconciledCount += 1;
-    current.totalSubmitted += amount(period.totalClaimsSubmitted);
-    current.totalPaymentReceived += amount(period.paymentReceived);
-    current.totalRejectionAmount += amount(period.rejectionAmount);
-    current.totalWhtVariance += amount(period.withholdingTaxVariance);
+    current.totalSubmitted = addAmount(current.totalSubmitted, period.totalClaimsSubmitted);
+    current.totalPaymentReceived = addAmount(current.totalPaymentReceived, period.paymentReceived);
+    current.totalRejectionAmount = addAmount(current.totalRejectionAmount, period.rejectionAmount);
+    current.totalWhtVariance = addAmount(current.totalWhtVariance, period.withholdingTaxVariance);
 
     const reconciliation = classifyReconciliation(period);
     if (reconciliation) {
@@ -175,13 +201,13 @@ export function summarizeSettlementsByInsurer(
   }
   return [...grouped.values()].map((row) => ({
     ...row,
-    totalSubmitted: round(row.totalSubmitted),
-    totalPaymentReceived: round(row.totalPaymentReceived),
-    totalRejectionAmount: round(row.totalRejectionAmount),
-    totalWhtVariance: round(row.totalWhtVariance),
-    totalResidual: round(row.totalResidual),
-    totalOutstanding: round(row.totalOutstanding),
-    totalOverSettled: round(row.totalOverSettled),
+    totalSubmitted: row.totalSubmitted,
+    totalPaymentReceived: row.totalPaymentReceived,
+    totalRejectionAmount: row.totalRejectionAmount,
+    totalWhtVariance: row.totalWhtVariance,
+    totalResidual: row.totalResidual,
+    totalOutstanding: row.totalOutstanding,
+    totalOverSettled: row.totalOverSettled,
   })).sort((a, b) => b.totalSubmitted - a.totalSubmitted);
 }
 
