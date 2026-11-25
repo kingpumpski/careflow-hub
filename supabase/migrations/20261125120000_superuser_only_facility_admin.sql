@@ -115,7 +115,6 @@ CREATE POLICY facility_memberships_select_member ON public.facility_memberships
   FOR SELECT TO authenticated
   USING (
     user_id = (select auth.uid())
-    OR security_internal.is_active_facility_member(facility_memberships.facility_id)
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
