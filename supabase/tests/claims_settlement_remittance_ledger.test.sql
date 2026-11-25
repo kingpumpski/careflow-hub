@@ -5,6 +5,7 @@ DECLARE
   v_rpc regprocedure :=
     'public.record_claims_settlement_remittance(uuid,text,date,date,numeric,numeric,numeric,numeric)'::regprocedure;
   v_rpc_definition text;
+  v_view_definition text;
   v_reverse regprocedure := 'public.reverse_claims_settlement_remittance(uuid,text)'::regprocedure;
   v_refresh regprocedure := 'public.refresh_claims_settlement_period_totals(uuid)'::regprocedure;
 BEGIN
@@ -86,6 +87,15 @@ BEGIN
   END IF;
   IF position('settlement_submission_periods' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0 THEN
     RAISE EXCEPTION 'Aggregate claims-settlement periods must be the canonical monthly submission source';
+  END IF;
+  v_view_definition := lower(regexp_replace(
+    pg_get_viewdef('public.claims_outstanding_periods'::regclass),
+    '\\s+',
+    ' ',
+    'g'
+  ));
+  IF position('sum(coalesce(c.claim_amount, 0::numeric)) as submitted_amount' in v_view_definition) = 0 THEN
+    RAISE EXCEPTION 'Submitted gross must include claims later rejected; rejected amounts are reported separately';
   END IF;
   IF position('approved_gross_amount' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0
      OR position('approval_variance' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0 THEN
