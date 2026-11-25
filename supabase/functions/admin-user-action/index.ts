@@ -43,13 +43,14 @@ const resolvePermissionSchema = async (admin: ReturnType<typeof createClient>): 
     : await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,allowed")
       ? "allowed"
       : null;
-  const catalogKey = await probeColumns(admin, "app_permissions", "key,label,category,description")
+  const catalogKey = await probeColumns(admin, "app_permissions", "key,label,description")
     ? "key"
     : await probeColumns(admin, "app_permissions", "permission_key,label,description")
       ? "permission_key"
       : null;
+  const catalogHasCategory = await probeColumns(admin, "app_permissions", "category");
   if (!overrideFlag || !catalogKey) throw new Error("Unsupported permission schema");
-  return { overrideFlag, catalogKey, catalogHasCategory: catalogKey === "key" };
+  return { overrideFlag, catalogKey, catalogHasCategory };
 };
 
 const normalizeOverrides = (rows: Array<Record<string, unknown>>, flag: "granted" | "allowed") =>
