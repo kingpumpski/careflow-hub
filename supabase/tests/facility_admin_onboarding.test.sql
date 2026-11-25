@@ -41,6 +41,18 @@ BEGIN
   IF has_function_privilege('authenticated', 'security_internal.is_active_facility_member(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'The private facility membership probe must not be directly executable by authenticated users';
   END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('user_roles', 'user_permission_overrides')
+      AND (
+        coalesce(qual, '') LIKE '%public.has_role(%'
+        OR coalesce(with_check, '') LIKE '%public.has_role(%'
+      )
+  ) THEN
+    RAISE EXCEPTION 'RLS policies must use private role helpers, not the revoked public has_role RPC';
+  END IF;
   IF NOT has_schema_privilege('authenticated', 'security_internal', 'USAGE') THEN
     RAISE EXCEPTION 'Authenticated callers require schema usage for the private facility helpers';
   END IF;
