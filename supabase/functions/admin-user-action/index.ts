@@ -17,6 +17,63 @@ const corsHeaders = (req: Request) => {
 const json = (req: Request, body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(req), "Content-Type": "application/json" } });
 const isUuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const cleanText = (value: unknown, max = 200) => typeof value === "string" ? value.trim().slice(0, max) : "";
+type PermissionSchema = {
+  overrideFlag: "granted" | "allowed";
+  catalogKey: "key" | "permission_key";
+  catalogHasCategory: boolean;
+};
+
+const isMissingColumnError = (error: { code?: string; message?: string } | null) =>
+  !!error && (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    (/column/i.test(error.message ?? "") && /(does not exist|not found|schema cache)/i.test(error.message ?? ""))
+  );
+
+type PermissionProbeClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      limit: (count: number) => Promise<{ error: { code?: string; message?: string } | null }>;
+    };
+  };
+};
+
+const probeColumns = async <T,>(admin: T, table: string, columns: string) => {
+  const client = admin as unknown as PermissionProbeClient;
+  const { error } = await client.from(table).select(columns).limit(0);
+  if (!error) return true;
+  if (isMissingColumnError(error)) return false;
+  throw error;
+};
+
+const resolvePermissionSchema = async <T,>(admin: T): Promise<PermissionSchema> => {
+  const overrideFlag = await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,granted")
+    ? "granted"
+    : await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,allowed")
+      ? "allowed"
+      : null;
+  const catalogKey = await probeColumns(admin, "app_permissions", "key,label,description")
+    ? "key"
+    : await probeColumns(admin, "app_permissions", "permission_key,label,description")
+      ? "permission_key"
+      : null;
+  const catalogHasCategory = await probeColumns(admin, "app_permissions", "category");
+  if (!overrideFlag || !catalogKey) throw new Error("Unsupported permission schema");
+  return { overrideFlag, catalogKey, catalogHasCategory };
+};
+
+const normalizeOverrides = (rows: unknown[], flag: "granted" | "allowed") =>
+  rows.map((entry) => {
+    const { [flag]: value, ...row } = entry as Record<string, unknown>;
+    return { ...row, granted: value === true };
+  });
+
+const normalizePermissionCatalog = (rows: unknown[], key: "key" | "permission_key") =>
+  rows.map((entry) => {
+    const { [key]: value, ...row } = entry as Record<string, unknown>;
+    return { ...row, key: value, category: row.category ?? "General" };
+  });
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
@@ -66,15 +123,24 @@ Deno.serve(async (req) => {
         users.push(...batch.map((u) => ({ id: u.id, email: u.email ?? null, full_name: cleanText(u.user_metadata?.full_name, 160) || null, email_confirmed_at: u.email_confirmed_at ?? null, created_at: u.created_at, last_sign_in_at: u.last_sign_in_at ?? null })));
         if (batch.length < 1000) break;
       }
+      const permissionSchema = await resolvePermissionSchema(admin);
+      const overrideColumns = `user_id,permission_key,${permissionSchema.overrideFlag}`;
+      const catalogColumns = [permissionSchema.catalogKey, "label", ...(permissionSchema.catalogHasCategory ? ["category"] : []), "description"].join(",");
       const [{ data: profiles, error: profilesError }, { data: roleRows, error: roleRowsError }, { data: overrides, error: overridesError }, { data: catalog, error: catalogError }] = await Promise.all([
         admin.from("profiles").select("id, full_name, email"),
         admin.from("user_roles").select("id, user_id, role"),
-        admin.from("user_permission_overrides").select("user_id, permission_key, granted"),
-        admin.from("app_permissions").select("key, label, category, description").order("category").order("label"),
+        admin.from("user_permission_overrides").select(overrideColumns),
+        admin.from("app_permissions").select(catalogColumns).order(permissionSchema.catalogHasCategory ? "category" : "label").order("label"),
       ]);
       if (profilesError || roleRowsError || overridesError || catalogError) throw profilesError || roleRowsError || overridesError || catalogError;
       await audit("list_users");
-      return json(req, { users, profiles: profiles ?? [], roles: roleRows ?? [], overrides: overrides ?? [], permissions: catalog ?? [] });
+      return json(req, {
+        users,
+        profiles: profiles ?? [],
+        roles: roleRows ?? [],
+        overrides: normalizeOverrides(overrides ?? [], permissionSchema.overrideFlag),
+        permissions: normalizePermissionCatalog(catalog ?? [], permissionSchema.catalogKey),
+      });
     }
 
     if (action === "create_user") {
@@ -118,9 +184,10 @@ Deno.serve(async (req) => {
       if (!Array.isArray(rawOverrides) || rawOverrides.length > MAX_PERMISSION_KEYS) return json(req, { error: "Invalid permission overrides" }, 400);
       const overrides = rawOverrides.filter((item): item is { permission_key: string; granted: boolean } => !!item && typeof item === "object" && typeof (item as Record<string, unknown>).permission_key === "string" && typeof (item as Record<string, unknown>).granted === "boolean").map((item) => ({ user_id: targetUserId, permission_key: item.permission_key.trim(), granted: item.granted }));
       if (overrides.some((item) => !item.permission_key || item.permission_key.length > 100)) return json(req, { error: "Invalid permission key" }, 400);
-      const { data: validPermissions, error: permissionError } = await admin.from("app_permissions").select("key");
+      const permissionSchema = await resolvePermissionSchema(admin);
+      const { data: validPermissions, error: permissionError } = await admin.from("app_permissions").select(permissionSchema.catalogKey);
       if (permissionError) throw permissionError;
-      const validKeys = new Set((validPermissions ?? []).map((p: { key: string }) => p.key));
+      const validKeys = new Set((validPermissions ?? []).map((p: Record<string, unknown>) => String(p[permissionSchema.catalogKey])));
       if (overrides.some((item) => !validKeys.has(item.permission_key))) return json(req, { error: "Unknown permission" }, 400);
       const { data: targetRole, error: targetRoleError } = await admin.from("user_roles").select("id, role").eq("user_id", targetUserId).maybeSingle();
       if (targetRoleError) throw targetRoleError;
@@ -135,7 +202,11 @@ Deno.serve(async (req) => {
       const { error: deleteError } = await admin.from("user_permission_overrides").delete().eq("user_id", targetUserId);
       if (deleteError) throw deleteError;
       if (overrides.length) {
-        const { error: overrideError } = await admin.from("user_permission_overrides").insert(overrides);
+        const overrideRows = overrides.map(({ granted, ...row }) => ({
+          ...row,
+          [permissionSchema.overrideFlag]: granted,
+        }));
+        const { error: overrideError } = await admin.from("user_permission_overrides").insert(overrideRows);
         if (overrideError) throw overrideError;
       }
       await audit("update_access", targetUserId, { role, override_count: overrides.length });

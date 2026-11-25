@@ -409,3 +409,30 @@ The tool reads only repository files and the historical snapshot. It makes **no 
 
 No production DDL, data changes, migration-ledger repair, Auth changes, or Edge Function deployments are authorized by this work. A successful disposable replay is necessary but not sufficient. Production migration work remains blocked until the project owner confirms the target project, a complete encrypted backup is verified, a replacement-project restore rehearsal passes, and an evidence-backed mapping reconciles the actual live schema and migration ledger to the source.
 
+
+
+## Read-only production compatibility refresh — 2026-11-25
+
+The latest read-only inspection of production project `jajfdgknctzqypdtvmxo` confirms that the permission schema has a legacy shape which differs from the canonical schema used by the current source migrations:
+
+| Object | Production shape | Canonical source shape |
+|---|---|---|
+| `app_permissions` | `permission_key`, `label`, `description` | `key`, `label`, `category`, `description` |
+| `role_permissions` | `role`, `permission_key` (row means grant) | `role`, `permission_key`, `granted` |
+| `user_permission_overrides` | `permission_key`, `allowed` | `permission_key`, `granted` |
+
+The live public permission RPC reads `app_permissions.permission_key` and the override flag `allowed`. The private permission helper also uses the legacy override column. The current source versions of the scoped-settlement seed and permission repair migrations assume the canonical columns. Replaying those migrations unchanged against this production schema would fail or produce an incomplete permission contract.
+
+The following relations and RPCs are still absent from production (verified by `to_regclass` / `to_regprocedure`):
+- `public.settlement_exceptions`
+- `public.settlement_exception_audit_events`
+- `public.record_settlement_exception(uuid,text,text,text,text)`
+- `public.transition_settlement_exception_atomic(uuid,text,text)`
+- `public.claim_cases`
+- `public.claim_case_events`
+
+The existing `public.claims_settlement_periods` relation is present. The permission catalogue and scoped settlement permission seed need to be reconciled before the settlement exception RPCs can authorize claims officers safely.
+
+A source-only compatibility change is being prepared to make the RBAC migrations select the deployed column names at migration time, supporting both the canonical `key/granted` layout and the legacy `permission_key/allowed` layout. This is not a production migration execution and does not prove that the full migration chain can be applied. The live ledger still has 74 entries while the current repository tree has 141 migration SQL files, including the previously documented duplicate version groups and historical source drift.
+
+**Release boundary remains unchanged:** no production DDL, permission seed, function replacement, migration-ledger repair, or data mutation was performed. The production project identity and complete migration crosswalk remain unresolved. Do not run `supabase db push --linked` or apply the missing table migrations until the ledger and source sequence have been reconciled and tested against a disposable/restored copy.

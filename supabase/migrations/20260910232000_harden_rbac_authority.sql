@@ -2,45 +2,8 @@
 -- superuser/admin are authoritative system roles and cannot be reduced by permission overrides.
 
 create or replace function public.current_user_has_permission(p_permission_key text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select
-    exists (
-      select 1
-      from public.user_roles ur
-      where ur.user_id = (select auth.uid())
-        and ur.role in ('superuser'::public.app_role, 'admin'::public.app_role)
-    )
-    or (
-      exists (
-        select 1
-        from public.user_roles ur
-        join public.role_permissions rp
-          on rp.role = ur.role::text
-         and rp.permission_key = p_permission_key
-         and rp.granted = true
-        where ur.user_id = (select auth.uid())
-      )
-      and not exists (
-        select 1
-        from public.user_permission_overrides uo
-        where uo.user_id = (select auth.uid())
-          and uo.permission_key = p_permission_key
-          and uo.granted = false
-      )
-    )
-    or exists (
-      select 1
-      from public.user_permission_overrides uo
-      where uo.user_id = (select auth.uid())
-        and uo.permission_key = p_permission_key
-        and uo.granted = true
-    );
-$$;
+returns boolean language sql stable security definer set search_path = ''
+as $$ select security_internal.current_user_has_permission(p_permission_key); $$;
 
 revoke all on function public.current_user_has_permission(text) from public;
 grant execute on function public.current_user_has_permission(text) to authenticated;
