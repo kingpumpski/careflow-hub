@@ -161,3 +161,15 @@ On main commit `d3d27d790273359a119f08777501c786e620f807`, the disposable Postgr
 The Claims Settlement WHT input retains its existing label and presentation; its value is supplied from the facility-approved setting rather than treated as an independently entered period rate. The calculation and persistence path, not the screen layout, is the intended change.
 
 **Production boundary:** none of these migrations or Edge Function source changes have been deployed to the live Supabase project. No production database schema/data/ledger or Auth changes were made. The disposable replay does not resolve the authoritative production migration crosswalk or replace backup/restored-copy verification. Production rollout remains a separate approved operation.
+
+
+## Settlement exception calculation correction — 2026-11-25
+
+The settlement exception detector uses the insurer-stated approved gross amount as an independent source value. It evaluates two separate checks:
+
+- **Approval/rejection variance** = submitted gross − insurer-reported approved gross − confirmed rejected gross. This is recorded as the existing `rejection_variance` exception type.
+- **Approved-but-unpaid balance** = insurer-reported approved gross − actual WHT − net cash received. This is recorded as `payment_variance`.
+
+The checks are not combined. A period with an approval variance and an unpaid approved balance can raise both exceptions. The detector does not infer approved gross from submitted less rejected, or from cash plus WHT. Legacy advice rows with no captured approved gross remain marked as incomplete and do not receive fabricated approval/payment variance calculations.
+
+Online and offline exception detection now pass the same approved-gross input. The existing database exception type constraints already permit both exception types, so this correction does not require a schema migration. Regression tests cover separate variance detection and the legacy unknown-approved case.
