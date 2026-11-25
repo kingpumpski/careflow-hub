@@ -30,14 +30,23 @@ const isMissingColumnError = (error: { code?: string; message?: string } | null)
     (/column/i.test(error.message ?? "") && /(does not exist|not found|schema cache)/i.test(error.message ?? ""))
   );
 
-const probeColumns = async (admin: any, table: string, columns: string) => {
-  const { error } = await admin.from(table).select(columns).limit(0);
+type PermissionProbeClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      limit: (count: number) => Promise<{ error: { code?: string; message?: string } | null }>;
+    };
+  };
+};
+
+const probeColumns = async <T,>(admin: T, table: string, columns: string) => {
+  const client = admin as unknown as PermissionProbeClient;
+  const { error } = await client.from(table).select(columns).limit(0);
   if (!error) return true;
   if (isMissingColumnError(error)) return false;
   throw error;
 };
 
-const resolvePermissionSchema = async (admin: any): Promise<PermissionSchema> => {
+const resolvePermissionSchema = async <T,>(admin: T): Promise<PermissionSchema> => {
   const overrideFlag = await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,granted")
     ? "granted"
     : await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,allowed")
