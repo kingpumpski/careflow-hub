@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { Database, Download, Loader2, RefreshCw, RotateCcw, ShieldCheck, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,17 +10,18 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { BACKUP_INTERVALS, BACKUP_RETENTION_OPTIONS, formatBytes } from "@/lib/backupSchedule";
 
-type BackupSettings = { enabled: boolean; interval_hours: number; retention_count: number; last_run_at: string | null; next_run_at: string | null };
-type BackupRun = {
-  id: string; created_at: string; completed_at: string | null; status: string; trigger_type: string;
-  file_path: string | null; file_bytes: number | null; sha256: string | null; table_counts: Record<string, number>; error_message: string | null;
-};
+type BackupSettings = Database["public"]["Tables"]["backup_settings"]["Row"];
+type BackupRun = Database["public"]["Tables"]["backup_runs"]["Row"];
 
-const db = supabase as any;
+function totalTableRecords(value: Json): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  return Object.values(value).reduce((total, count) => total + (typeof count === "number" && Number.isFinite(count) ? count : 0), 0);
+}
 
 export default function BackupCenter() {
   const { userRole } = useAuth() as { userRole?: string | null };
@@ -31,8 +33,8 @@ export default function BackupCenter() {
   const load = useCallback(async () => {
     setLoading(true);
     const [{ data: s }, { data: r }] = await Promise.all([
-      db.from("backup_settings").select("*").eq("id", 1).maybeSingle(),
-      db.from("backup_runs").select("*").order("created_at", { ascending: false }).limit(50),
+      supabase.from("backup_settings").select("*").eq("id", 1).maybeSingle(),
+      supabase.from("backup_runs").select("*").order("created_at", { ascending: false }).limit(50),
     ]);
     setSettings(s ?? null);
     setRuns(r ?? []);
@@ -51,7 +53,12 @@ export default function BackupCenter() {
     const { data, error } = await supabase.functions.invoke("system-backup", { body: { action, backup_id } });
     if (error || !data?.ok) {
       let msg = data?.error ?? error?.message ?? "Request failed";
-      try { msg = (await (error as any)?.context?.json?.())?.error ?? msg; } catch { /* keep msg */ }
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const payload = await error.context.json() as { error?: string };
+          msg = payload.error ?? msg;
+        } catch { /* keep msg */ }
+      }
       throw new Error(msg);
     }
     return data;
@@ -146,7 +153,7 @@ export default function BackupCenter() {
       <div className="space-y-3">
         <h4 className="font-medium text-sm">Backup history</h4>
         {runs.length === 0 ? <p className="text-sm text-muted-foreground">No backups yet.</p> : runs.map((run) => {
-          const total = Object.values(run.table_counts ?? {}).reduce((a, b) => a + b, 0);
+          const total = totalTableRecords(run.table_counts);
           return (
             <div key={run.id} className="rounded-lg border border-border p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
