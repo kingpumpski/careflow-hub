@@ -88,7 +88,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       const { data, error } = await query;
       if (error) { if (isMissingSchemaError(error)) { if (options?.missingSchemaBehavior === "error") throw new MissingSchemaError(table); return []; } throw error; }
       return data;
-    }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: 1, refetchOnWindowFocus: false,
+    }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: (failureCount, error) => !(error instanceof MissingSchemaError) && !isMissingSchemaError(error) && failureCount < 1, refetchOnWindowFocus: false,
   });
 }
 
