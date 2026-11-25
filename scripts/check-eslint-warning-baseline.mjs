@@ -33,7 +33,7 @@ const regressions = [...actual.entries()]
 const baselineTotal = Object.values(baselineCounts).reduce((sum, count) => sum + count, 0);
 const currentTotal = [...actual.values()].reduce((sum, count) => sum + count, 0);
 
-if (errors > 0 || regressions.length > 0) {
+if (errors.length > 0 || regressions.length > 0) {
   console.error(`ESLint baseline failed: ${errors.length} errors, ${regressions.length} warning regressions.`);\n  for (const item of errors) {\n    console.error(`  ${item.file}:${item.line}:${item.column} [${item.rule}]: ${item.message}`);\n  }
   for (const item of regressions) {
     console.error(`  ${item.signature[0]} [${item.signature[1]}] baseline=${item.baseline}, current=${item.current}: ${item.signature[2]}`);
