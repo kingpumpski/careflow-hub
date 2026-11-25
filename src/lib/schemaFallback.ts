@@ -8,6 +8,17 @@
 
 const MISSING_RELATION_CODES = new Set(["42P01", "42883", "PGRST202", "PGRST205"]);
 
+export class MissingSchemaError extends Error {
+  readonly code = "CARE_FLOW_SCHEMA_UNAVAILABLE";
+  readonly table: string;
+
+  constructor(table: string) {
+    super(`The ${table} data source is not available in the connected database yet. Contact the system administrator to complete the database release; no records have been assumed or created.`);
+    this.name = "MissingSchemaError";
+    this.table = table;
+  }
+}
+
 export function isMissingSchemaError(error: unknown): boolean {
   if (!error) return false;
   const candidate = error as { code?: string; message?: string; details?: string; status?: number };
