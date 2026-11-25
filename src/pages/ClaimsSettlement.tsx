@@ -100,7 +100,7 @@ export default function ClaimsSettlement() {
     if (!validAdviceAmounts) {
       toast({ title: "Invalid payment advice figures", description: "Approved gross, rejection, actual WHT and net cash must be non-negative numbers.", variant: "destructive" }); return;
     }
-    if ((payment > 0 || actual > 0) && !form.receiptDate) {
+    if ((toMinorUnits(payment, currencyCode) > 0n || toMinorUnits(actual, currencyCode) > 0n) && !form.receiptDate) {
       toast({ title: "Actual receipt date required", description: "Enter the date this remittance was actually received or the withholding was applied.", variant: "destructive" }); return;
     }
     setBusy(true);
