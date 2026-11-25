@@ -20,3 +20,7 @@ verify_jwt = true
 # operations server-side. Never disable JWT verification for this function.
 [functions.backup-control]
 verify_jwt = true
+
+# Called by the managed scheduler (shared secret) and by admins (JWT checked in code).
+[functions.system-backup]
+verify_jwt = false

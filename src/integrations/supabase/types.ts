@@ -47,6 +47,84 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          file_bytes: number | null
+          file_path: string | null
+          format_version: string | null
+          id: string
+          requested_by: string | null
+          sha256: string | null
+          status: string
+          table_counts: Json
+          trigger_type: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_bytes?: number | null
+          file_path?: string | null
+          format_version?: string | null
+          id?: string
+          requested_by?: string | null
+          sha256?: string | null
+          status?: string
+          table_counts?: Json
+          trigger_type?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_bytes?: number | null
+          file_path?: string | null
+          format_version?: string | null
+          id?: string
+          requested_by?: string | null
+          sha256?: string | null
+          status?: string
+          table_counts?: Json
+          trigger_type?: string
+        }
+        Relationships: []
+      }
+      backup_settings: {
+        Row: {
+          enabled: boolean
+          id: number
+          interval_hours: number
+          last_run_at: string | null
+          next_run_at: string | null
+          retention_count: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          id?: number
+          interval_hours?: number
+          last_run_at?: string | null
+          next_run_at?: string | null
+          retention_count?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          id?: number
+          interval_hours?: number
+          last_run_at?: string | null
+          next_run_at?: string | null
+          retention_count?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           body: string

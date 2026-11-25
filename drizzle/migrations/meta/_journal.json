@@ -36,6 +36,13 @@
       "when": 1795611393181,
       "tag": "0004_restrict_logo_listing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795612730916,
+      "tag": "0005_scheduled_system_backups",
+      "breakpoints": true
     }
   ]
 }
