@@ -23,7 +23,9 @@ type SettlementPeriodSource = {
   payment_advice_date?: string | null;
   withholding_tax_variance?: number | null;
   payment_received?: number | null;
-  rejection_amount?: number | null;\n  approved_gross_amount?: number | string | null;
+  rejection_amount?: number | null;
+  approved_gross_amount?: number | string | null;
+  approved_gross_amount?: number | string | null;
 };
 
 export async function syncOfflineSettlementExceptions(periods: SettlementPeriodSource[], asOf = new Date()): Promise<number> {
@@ -47,7 +49,8 @@ export async function syncOfflineSettlementExceptions(periods: SettlementPeriodS
       paymentAdviceDate: period.payment_advice_date ?? null,
       withholdingTaxVariance: period.withholding_tax_variance ?? null,
       paymentReceived: period.payment_received == null ? null : Number(period.payment_received),
-      rejectionAmount: period.rejection_amount == null ? null : Number(period.rejection_amount),\n      approvedGrossAmount: period.approved_gross_amount == null ? null : Number(period.approved_gross_amount),
+      rejectionAmount: period.rejection_amount == null ? null : Number(period.rejection_amount),
+      approvedGrossAmount: period.approved_gross_amount == null ? null : Number(period.approved_gross_amount),
     }, asOf);
 
     for (const candidate of detected) {
