@@ -90,7 +90,7 @@ BEGIN
   END IF;
   v_view_definition := lower(regexp_replace(
     pg_get_viewdef('public.claims_outstanding_periods'::regclass),
-    '\\s+',
+    '\s+',
     ' ',
     'g'
   ));
