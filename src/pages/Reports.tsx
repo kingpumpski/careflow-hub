@@ -17,6 +17,7 @@ export default function Reports() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("all");
 
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -59,30 +60,31 @@ export default function Reports() {
       const netClaim = submitted - rejected;
       const outstanding = netClaim - paid - tax;
       return { company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
-    }).filter(r => r.submitted > 0 || r.paid > 0 || r.rejected > 0);
-  }, [claims, insurers, payments, withholdingTax, activePeriod, selectedYear, selectedMonth]);
+    }).filter(r => r.submitted > 0 || r.paid > 0 || r.rejected > 0)
+      .filter((row: any) => selectedCompanyId === "all" || (insurers || []).some((ins: any) => ins.company_name === row.company && ins.id === selectedCompanyId));
+  }, [claims, insurers, payments, withholdingTax, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   // Ledger-based reports
   const incomeData = useMemo(() => {
-    const filteredLedger = filterByPeriod(ledger || [], "claim_year", "claim_month");
+    const filteredLedger = filterByPeriod((ledger || []).filter((entry: any) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const revenue = filteredLedger.filter((e: any) => e.account_credit === "Claims Revenue").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj - whtExp };
-  }, [ledger, activePeriod, selectedYear, selectedMonth]);
+  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   const taxLiabilityData = useMemo(() => {
-    const filteredLedger = filterByPeriod(ledger || [], "claim_year", "claim_month");
+    const filteredLedger = filterByPeriod((ledger || []).filter((entry: any) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
-  }, [ledger, activePeriod, selectedYear, selectedMonth]);
+  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   // Aging analysis: per-month outstanding bucketed by days since period end
   const agingData = useMemo(() => {
     const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
     const today = new Date();
-    (insurers || []).forEach((ins: any) => {
+    (insurers || []).filter((ins: any) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins: any) => {
       const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
       // build per-month map
       const map: Record<string, { y: number; m: number; sub: number; rej: number; paid: number; wht: number }> = {};
@@ -113,7 +115,7 @@ export default function Reports() {
       });
     });
     return buckets;
-  }, [claims, insurers, payments, withholdingTax]);
+  }, [claims, insurers, payments, withholdingTax, selectedCompanyId]);
 
   const { sorted: sortedReport, sort, handleSort } = useSort(reportData, "outstanding");
 
@@ -127,9 +129,27 @@ export default function Reports() {
   const handlePrint = (title: string) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const content = document.getElementById("report-content");
-    printWindow.document.write(`<html><head><title>${title}</title><style>body{font-family:Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#1e4078;color:#fff}tfoot td{background:#f0f0f0;font-weight:bold}.text-right{text-align:right}h1{color:#1e4078}h2{color:#333;margin-top:24px}.stat{display:inline-block;margin:8px 16px;text-align:center}.stat-value{font-size:24px;font-weight:bold}.stat-label{color:#666;font-size:12px}@media print{body{-webkit-print-color-adjust:exact}}</style></head><body>${content?.innerHTML || ""}</body></html>`);
+    const source = document.getElementById("report-content");
+    if (!source) return;
+    const printable = source.cloneNode(true) as HTMLElement;
+    printable.querySelectorAll("button").forEach((button) => button.replaceWith(document.createTextNode(button.textContent?.trim() || "")));
+    printable.querySelectorAll("svg").forEach((icon) => icon.remove());
+    printable.querySelectorAll('[data-state="inactive"], [hidden]').forEach((node) => ((node as HTMLElement).style.display = "none"));
+    const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] || char);
+    const logo = companyInfo.logo_url ? `<img class="brand-logo" src="${escapeHtml(companyInfo.logo_url)}" alt="Company logo" />` : "";
+    const companyName = companyInfo.provider_name || "Company information not configured";
+    const contact = [companyInfo.provider_address, companyInfo.provider_phone, companyInfo.provider_email].filter(Boolean).map(escapeHtml).join(" &nbsp; | &nbsp; ");
+    const generatedAt = new Date().toLocaleString();
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
+      @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${escapeHtml(companyInfo.accent_color || "#1E4078")};padding:0 0 14px;margin-bottom:18px}
+      .brand-logo{max-width:92px;max-height:64px;object-fit:contain}.brand-copy{flex:1}.brand-name{font-size:20px;font-weight:700;color:${escapeHtml(companyInfo.accent_color || "#1E4078")};margin:0}.brand-contact{color:#526078;margin-top:4px;font-size:9px}
+      .report-meta{display:flex;justify-content:space-between;gap:12px;margin:14px 0 18px;padding:10px 12px;background:#f2f5fa;border:1px solid #dce3ed;border-radius:6px}
+      h2,h3{color:#1e4078;margin:16px 0 8px}table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:9px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#1e4078!important;color:#fff!important;font-weight:700;text-align:left}th,td{border:1px solid #d7dee8;padding:7px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fc}tfoot td{background:#eaf0f7;font-weight:700}.text-right{text-align:right}.font-bold,.font-semibold{font-weight:700}.text-destructive{color:#b42318}.text-success{color:#087443}.text-warning{color:#946200}.stat-card{border:1px solid #dce3ed;border-radius:6px;padding:12px;margin:8px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.report-footer{border-top:1px solid #d7dee8;padding-top:8px;margin-top:22px;color:#667085;font-size:8px}
+      @media print{body{background:#fff}.no-print{display:none!important}}
+    </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${printable.outerHTML}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
     printWindow.document.close();
+    printWindow.focus();
     printWindow.print();
   };
 
@@ -144,7 +164,8 @@ export default function Reports() {
     exportReportExcel(`${activePeriod} Report`, rows, "Report");
   };
 
-  const periodLabel = activePeriod === "Total" ? "All Time" : `${activePeriod} — ${selectedYear}${activePeriod === "Monthly" ? ` ${monthNames[parseInt(selectedMonth)]}` : ""}`;
+  const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company: any) => company.id === selectedCompanyId)?.company_name || "Selected Company";
+  const periodLabel = `${activePeriod === "Total" ? "All Time" : `${activePeriod} — ${selectedYear}${activePeriod === "Monthly" ? ` ${monthNames[parseInt(selectedMonth)]}` : ""}`} · ${companyLabel}`;
 
   return (
     <div className="space-y-6">
@@ -160,7 +181,8 @@ export default function Reports() {
       <div className="flex items-center gap-2 flex-wrap">
         {periods.map((p) => <Button key={p} variant={p === activePeriod ? "default" : "outline"} size="sm" onClick={() => setActivePeriod(p)}>{p}</Button>)}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2"><Label htmlFor="report-company" className="text-xs">Company:</Label><select id="report-company" className="h-8 min-w-52 rounded-md border border-input bg-background px-2 text-sm" value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}><option value="all">All companies (consolidated)</option>{(insurers || []).map((company: any) => <option key={company.id} value={company.id}>{company.company_name}</option>)}</select></div>
         {activePeriod !== "Total" && <div className="flex items-center gap-2"><Label className="text-xs">Year:</Label><Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-24 h-8" /></div>}
         {(activePeriod === "Monthly" || activePeriod === "Quarterly" || activePeriod === "Bi-Annual") && (
           <div className="flex items-center gap-2"><Label className="text-xs">Month:</Label><select className="h-8 rounded-md border border-input bg-background px-2 text-sm" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>{monthNames.slice(1).map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select></div>
