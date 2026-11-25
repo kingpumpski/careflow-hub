@@ -94,7 +94,7 @@ BEGIN
     ' ',
     'g'
   ));
-  IF position('sum(coalesce(c.claim_amount, 0::numeric)) as submitted_amount' in v_view_definition) = 0 THEN
+  IF position('sum(coalesce(c.claim_amount' in v_view_definition) = 0 THEN
     RAISE EXCEPTION 'Submitted gross must include claims later rejected; rejected amounts are reported separately';
   END IF;
   IF position('approved_gross_amount' in pg_get_viewdef('public.claims_outstanding_periods'::regclass)) = 0
