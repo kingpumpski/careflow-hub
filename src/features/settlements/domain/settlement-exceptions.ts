@@ -1,5 +1,5 @@
 import type { ClaimsSettlementPeriod } from './settlement';
-import { calculateSettlementReconciliation } from './settlement';
+import { calculateExplicitAdviceReconciliation } from './settlement';
 
 export type SettlementExceptionType =
   | 'payment_variance'
@@ -38,7 +38,7 @@ function daysSincePeriodEnd(periodEnd: string, asOf: Date): number {
 }
 
 export function detectSettlementExceptions(
-  period: Pick<ClaimsSettlementPeriod, 'id' | 'facilityId' | 'periodEnd' | 'totalClaimsSubmitted' | 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'actualWithholdingTax' | 'withholdingTaxVariance' | 'paymentAdviceReference' | 'paymentAdviceDate'>,
+  period: Pick<ClaimsSettlementPeriod, 'id' | 'facilityId' | 'periodEnd' | 'totalClaimsSubmitted' | 'settlementStatus' | 'paymentReceived' | 'rejectionAmount' | 'approvedGrossAmount' | 'actualWithholdingTax' | 'withholdingTaxVariance' | 'paymentAdviceReference' | 'paymentAdviceDate'>,
   asOf = new Date(),
 ): Array<Omit<SettlementException, 'id' | 'status' | 'assignedTo' | 'resolutionNote' | 'resolvedAt' | 'resolvedBy'>> {
   const detectedAt = asOf.toISOString();
@@ -54,32 +54,52 @@ export function detectSettlementExceptions(
     return exceptions;
   }
 
-  if (period.paymentReceived === null || period.rejectionAmount === null || period.actualWithholdingTax === null || !period.paymentAdviceReference?.trim() || !period.paymentAdviceDate) {
-    exceptions.push({ facilityId: period.facilityId, settlementPeriodId: period.id, type: 'incomplete_payment_advice', severity: 'critical', title: 'Payment advice is incomplete', description: 'The period is marked as advice received but required confirmed advice fields are missing.', detectedAt });
+  if (period.approvedGrossAmount == null || period.paymentReceived === null || period.rejectionAmount === null || period.actualWithholdingTax === null || !period.paymentAdviceReference?.trim() || !period.paymentAdviceDate) {
+    exceptions.push({ facilityId: period.facilityId, settlementPeriodId: period.id, type: 'incomplete_payment_advice', severity: 'critical', title: 'Payment advice is incomplete', description: 'The period is marked as advice received but approved gross, rejection, actual WHT, net cash, advice reference or advice date is missing.', detectedAt });
   }
 
   if (period.withholdingTaxVariance !== null && Math.abs(period.withholdingTaxVariance) > EPSILON) {
     exceptions.push({ facilityId: period.facilityId, settlementPeriodId: period.id, type: 'withholding_tax_variance', severity: Math.abs(period.withholdingTaxVariance) >= 100 ? 'critical' : 'warning', title: 'WHT variance detected', description: `Confirmed actual WHT differs from provisional WHT by ${period.withholdingTaxVariance.toFixed(2)}.`, detectedAt });
   }
 
-  if (period.paymentReceived !== null && period.rejectionAmount !== null && period.actualWithholdingTax !== null) {
-    const reconciliation = calculateSettlementReconciliation(
-      period.totalClaimsSubmitted,
-      period.rejectionAmount,
-      period.paymentReceived,
-      period.actualWithholdingTax,
-    );
+  // Never infer insurer-approved gross from submitted less rejected or from cash + WHT.
+  // The two reconciliation checks are independent and use the insurer-stated approved value.
+  if (period.approvedGrossAmount != null
+    && period.paymentReceived !== null
+    && period.rejectionAmount !== null
+    && period.actualWithholdingTax !== null) {
+    const reconciliation = calculateExplicitAdviceReconciliation({
+      submittedAmount: period.totalClaimsSubmitted,
+      approvedGrossAmount: period.approvedGrossAmount,
+      rejectedAmount: period.rejectionAmount,
+      actualWithholdingTax: period.actualWithholdingTax,
+      netCashReceived: period.paymentReceived,
+    });
 
-    if (!reconciliation.balanced) {
-      const direction = reconciliation.residual > 0 ? 'under-settlement' : 'over-settlement';
-      const magnitude = Math.abs(reconciliation.residual);
+    if (reconciliation.approvalVariance !== null && Math.abs(reconciliation.approvalVariance) > EPSILON) {
+      const magnitude = Math.abs(reconciliation.approvalVariance);
+      exceptions.push({
+        facilityId: period.facilityId,
+        settlementPeriodId: period.id,
+        type: 'rejection_variance',
+        severity: magnitude >= 100 ? 'critical' : 'warning',
+        title: 'Insurer approval variance detected',
+        description: `Submitted gross minus insurer-reported approved gross and confirmed rejected gross leaves a signed variance of ${reconciliation.approvalVariance.toFixed(2)}.`,
+        detectedAt,
+      });
+    }
+
+    if (reconciliation.approvedUnpaidBalance !== null && Math.abs(reconciliation.approvedUnpaidBalance) > EPSILON) {
+      const balance = reconciliation.approvedUnpaidBalance;
+      const magnitude = Math.abs(balance);
+      const direction = balance > 0 ? 'under-settlement' : 'over-settlement';
       exceptions.push({
         facilityId: period.facilityId,
         settlementPeriodId: period.id,
         type: 'payment_variance',
         severity: magnitude >= 100 ? 'critical' : 'warning',
-        title: `Settlement ${direction} detected`,
-        description: `Confirmed submitted, rejection, payment and actual WHT figures leave a signed residual of ${reconciliation.residual.toFixed(2)}.`,
+        title: `Approved claims ${direction} detected`,
+        description: `Insurer-approved gross minus confirmed actual WHT and net cash received leaves a signed balance of ${balance.toFixed(2)}.`,
         detectedAt,
       });
     }

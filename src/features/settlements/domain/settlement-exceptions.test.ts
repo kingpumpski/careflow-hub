@@ -9,6 +9,7 @@ const base = {
   settlementStatus: 'awaiting_payment' as const,
   paymentReceived: null,
   rejectionAmount: null,
+  approvedGrossAmount: null,
   actualWithholdingTax: null,
   withholdingTaxVariance: null,
   paymentAdviceReference: null,
@@ -32,6 +33,7 @@ describe('settlement exception detection', () => {
       settlementStatus: 'payment_advice_received',
       paymentReceived: 82000,
       rejectionAmount: 12000,
+      approvedGrossAmount: 88000,
       actualWithholdingTax: 6000,
       withholdingTaxVariance: 1000,
       paymentAdviceReference: 'PA-1',
@@ -42,21 +44,61 @@ describe('settlement exception detection', () => {
     expect(exceptions[0].severity).toBe('critical');
   });
 
-  it('flags a payment reconciliation variance even when WHT itself matches', () => {
+  it('flags approval variance separately from the approved-but-unpaid balance', () => {
     const exceptions = detectSettlementExceptions({
       ...base,
       settlementStatus: 'payment_advice_received',
-      paymentReceived: 80000,
+      paymentReceived: 83000,
       rejectionAmount: 10000,
+      approvedGrossAmount: 88000,
       actualWithholdingTax: 5000,
       withholdingTaxVariance: 0,
-      paymentAdviceReference: 'PA-2',
+      paymentAdviceReference: 'PA-APPROVAL',
       paymentAdviceDate: '2026-09-01',
     }, new Date('2026-09-02T12:00:00Z'));
+
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0].type).toBe('rejection_variance');
+    expect(exceptions[0].title).toContain('approval variance');
+    expect(exceptions[0].description).toContain('2000.00');
+  });
+
+  it('calculates approved-but-unpaid from insurer-approved gross, not submitted less rejected', () => {
+    const exceptions = detectSettlementExceptions({
+      ...base,
+      totalClaimsSubmitted: 1000,
+      settlementStatus: 'payment_advice_received',
+      paymentReceived: 850,
+      rejectionAmount: 100,
+      approvedGrossAmount: 900,
+      actualWithholdingTax: 45,
+      withholdingTaxVariance: 0,
+      paymentAdviceReference: 'PA-UNPAID',
+      paymentAdviceDate: '2026-09-01',
+    }, new Date('2026-09-02T12:00:00Z'));
+
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].type).toBe('payment_variance');
-    expect(exceptions[0].severity).toBe('critical');
-    expect(exceptions[0].description).toContain('5000.00');
+    expect(exceptions[0].title).toContain('under-settlement');
+    expect(exceptions[0].description).toContain('5.00');
+    expect(exceptions[0].severity).toBe('warning');
+  });
+
+  it('does not infer insurer-approved gross for legacy advice rows', () => {
+    const exceptions = detectSettlementExceptions({
+      ...base,
+      totalClaimsSubmitted: 1000,
+      settlementStatus: 'payment_advice_received',
+      paymentReceived: 855,
+      rejectionAmount: 100,
+      approvedGrossAmount: null,
+      actualWithholdingTax: 45,
+      withholdingTaxVariance: 0,
+      paymentAdviceReference: 'LEGACY-PA',
+      paymentAdviceDate: '2026-09-01',
+    }, new Date('2026-09-02T12:00:00Z'));
+
+    expect(exceptions.map((item) => item.type)).toEqual(['incomplete_payment_advice']);
   });
 
   it('flags incomplete advice on a confirmed status', () => {
