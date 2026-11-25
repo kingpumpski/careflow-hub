@@ -15,5 +15,8 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: brokeredPreviewStorage(),
     persistSession: true,
     autoRefreshToken: true,
+    // PKCE returns its authorization code in the query string, leaving the
+    // URL fragment exclusively available to React Router.
+    flowType: 'pkce',
   },
 });
