@@ -75,6 +75,12 @@ function AccessDenied({ permission }: { permission: Permission }) {
   return <div className="stat-card py-12 text-center space-y-3"><h1 className="text-lg font-semibold">Access restricted</h1><p className="text-sm text-muted-foreground">Your current role does not have <strong>{permission}</strong> permission for this area.</p><button type="button" className="text-sm text-primary underline-offset-4 hover:underline" onClick={() => { window.location.assign(import.meta.env.BASE_URL); }}>Return to dashboard</button><span className="sr-only">Requested route: {location.pathname}</span></div>;
 }
 
+function SuperuserRoute({ children }: { children: ReactNode }) {
+  const { userRole, roleLoading } = useAuth();
+  if (roleLoading) return <RouteFallback />;
+  return userRole === "superuser" ? <>{children}</> : <AccessDenied permission="settings.manage" />;
+}
+
 function PermissionRoute({ permission, children }: { permission: Permission; children: ReactNode }) {
   const { loading, can } = usePermissions();
   if (loading) return <RouteFallback />;
@@ -91,7 +97,7 @@ function ProtectedRoutes() {
     <Route path="/pre-auth/studio" element={<PermissionRoute permission="preauth.write"><PreAuthorizationStudioRoute /></PermissionRoute>} />
     <Route path="/claims" element={<PermissionRoute permission="claims.read"><Claims /></PermissionRoute>} />
     <Route path="/claims/cases" element={<PermissionRoute permission="claims.read"><ClaimCases /></PermissionRoute>} />
-    <Route path="/facilities" element={<PermissionRoute permission="settings.manage"><FacilityManagement /></PermissionRoute>} />
+    <Route path="/facilities" element={<SuperuserRoute><FacilityManagement /></SuperuserRoute>} />
     <Route path="/claims/diagnosis-assistant" element={<PermissionRoute permission="claims.read"><ClaimDiagnosisAssistant /></PermissionRoute>} />
     <Route path="/claims/settlements" element={<PermissionRoute permission="payments.read"><ClaimsSettlement /></PermissionRoute>} />
     <Route path="/payments" element={<PermissionRoute permission="payments.read"><Payments /></PermissionRoute>} />
