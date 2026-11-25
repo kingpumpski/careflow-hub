@@ -1,0 +1,2 @@
+DROP POLICY IF EXISTS "Anyone can view logos" ON storage.objects;
+CREATE POLICY "Admins list logos" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'logos' AND public.is_admin(auth.uid()));
