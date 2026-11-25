@@ -68,6 +68,7 @@ export default function ClaimCases() {
     orderBy: "created_at",
     filters: facilityId ? { facility_id: facilityId } : undefined,
     enabled: !offline && Boolean(facilityId) && canRead,
+    missingSchemaBehavior: "error",
   });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: !offline && canRead });
   const { data: preauthorizations } = useSupabaseQuery("pre_authorizations", {
@@ -76,10 +77,11 @@ export default function ClaimCases() {
     enabled: !offline && Boolean(facilityId) && canRead && can("preauth.read"),
   });
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const { data: events, isLoading: eventsLoading } = useSupabaseQuery("claim_case_events", {
+  const { data: events, isLoading: eventsLoading, error: eventsError } = useSupabaseQuery("claim_case_events", {
     orderBy: "created_at",
     filters: selectedCaseId ? { claim_case_id: selectedCaseId } : undefined,
     enabled: !offline && Boolean(selectedCaseId) && canRead,
+    missingSchemaBehavior: "error",
   });
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -210,14 +212,14 @@ export default function ClaimCases() {
     </header>
 
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Total cases</p><p className="text-2xl font-bold">{caseRows.length}</p></div>
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Open cases</p><p className="text-2xl font-bold">{caseRows.filter((item) => !["closed", "reconciled"].includes(item.status)).length}</p></div>
-      <div className="stat-card"><p className="text-xs text-muted-foreground">Awaiting insurer response</p><p className="text-2xl font-bold">{caseRows.filter((item) => ["submitted", "acknowledged", "under_review", "queried"].includes(item.status)).length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Total cases</p><p className="text-2xl font-bold">{casesError ? "Unavailable" : caseRows.length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Open cases</p><p className="text-2xl font-bold">{casesError ? "Unavailable" : caseRows.filter((item) => !["closed", "reconciled"].includes(item.status)).length}</p></div>
+      <div className="stat-card"><p className="text-xs text-muted-foreground">Awaiting insurer response</p><p className="text-2xl font-bold">{casesError ? "Unavailable" : caseRows.filter((item) => ["submitted", "acknowledged", "under_review", "queried"].includes(item.status)).length}</p></div>
     </div>
 
     {offline && <div role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm">Individual claim cases require an online connection. Your existing offline monthly claims workflow remains available; no offline claim-case writes are queued yet.</div>}
     {!offline && !facilityId && <div role="alert" className="rounded-lg border p-4 text-sm">An active facility must be selected before individual claims can be viewed or created. Select a facility in <Link className="text-primary underline" to="/pre-auth">Pre-Authorization</Link>, then return here.</div>}
-    {casesError && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{casesError.message}</div>}
+    {casesError && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"><p className="font-semibold">Individual claim-case data is unavailable</p><p>{casesError.message}</p><p className="mt-1 text-muted-foreground">The register and its totals are not being treated as empty or zero. Ask the system administrator to verify the claim-case database release and access policies.</p></div>}
 
     {showCreate && canWrite && !offline && <section className="stat-card space-y-4">
       <div className="flex items-center gap-2"><FilePlus2 className="h-5 w-5" /><h2 className="font-semibold">Register a new claim case</h2></div>
@@ -237,12 +239,12 @@ export default function ClaimCases() {
 
     <section className="stat-card space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold">Claim register</h2><p className="text-xs text-muted-foreground">Facility-scoped individual claims</p></div><div className="flex flex-wrap gap-2"><Input aria-label="Search claim cases" placeholder="Search reference, patient or insurer" value={search} onChange={(event) => setSearch(event.target.value)} className="sm:w-64" /><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-md border bg-background px-3 py-2 text-sm"><option value="all">All statuses</option>{CLAIM_STATUSES.map((status) => <option key={status} value={status}>{titleCase(status)}</option>)}</select></div></div>
-      {isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading claim cases…</p> : !filteredCases.length ? <div className="rounded-md border p-8 text-center text-sm text-muted-foreground"><Activity className="mx-auto mb-2 h-6 w-6 opacity-60" />No individual claim cases match this view.</div> : <div className="space-y-3">{filteredCases.map((item) => <article key={item.id} className="rounded-lg border p-4 space-y-3">
+      {casesError ? <p className="py-8 text-center text-sm text-muted-foreground">Claim-case records cannot be displayed until the data source is available.</p> : isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading claim cases…</p> : !filteredCases.length ? <div className="rounded-md border p-8 text-center text-sm text-muted-foreground"><Activity className="mx-auto mb-2 h-6 w-6 opacity-60" />No individual claim cases match this view.</div> : <div className="space-y-3">{filteredCases.map((item) => <article key={item.id} className="rounded-lg border p-4 space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{item.claim_number}</span><Badge variant={item.status === "rejected" ? "destructive" : item.status === "paid" || item.status === "closed" ? "secondary" : "outline"}>{titleCase(item.status)}</Badge></div><p className="text-sm">{item.patient_name}{item.member_number ? <span className="text-muted-foreground"> · {item.member_number}</span> : null}</p><p className="text-xs text-muted-foreground">{String(insurerById.get(item.insurance_company_id) ?? "Insurer unavailable")} · Service {item.date_of_service}{item.procedure_name ? ` · ${item.procedure_name}` : ""}</p><p className="text-sm font-medium">{money(item.submitted_amount, item.currency)} submitted{item.approved_amount != null ? ` · ${money(item.approved_amount, item.currency)} approved` : ""}{item.paid_amount > 0 ? ` · ${money(item.paid_amount, item.currency)} paid` : ""}</p>{item.denial_reason && <p className="text-xs text-destructive">Denial: {item.denial_reason}</p>}</div>
           <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setSelectedCaseId((current) => current === item.id ? null : item.id)}><History className="mr-1 h-4 w-4" />{selectedCaseId === item.id ? "Hide history" : "History"}</Button>{canWrite && getAvailableClaimTransitions(item.status).map((target) => <Button key={target} size="sm" variant={target === "rejected" || target === "closed" ? "outline" : "default"} disabled={transitioningId === item.id} onClick={() => void transitionCase(item, target)}>{transitioningId === item.id ? "Saving…" : titleCase(target)}</Button>)}</div>
         </div>
-        {selectedCaseId === item.id && <div className="border-t pt-3 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Lifecycle history</div>{eventsLoading ? <p className="text-xs text-muted-foreground">Loading history…</p> : !(events ?? []).length ? <p className="text-xs text-muted-foreground">No history events found.</p> : eventRows.map((entry) => <div key={entry.id} className="flex flex-col gap-1 border-l-2 pl-3 py-1"><p className="text-sm font-medium">{entry.from_status ? `${titleCase(entry.from_status)} → ${titleCase(entry.to_status)}` : titleCase(entry.to_status)}</p><p className="text-sm text-muted-foreground">{entry.note}</p><p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()} · {entry.actor_id}</p></div>)}</div>}
+        {selectedCaseId === item.id && <div className="border-t pt-3 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Lifecycle history</div>{eventsError ? <p role="alert" className="text-xs text-destructive">Lifecycle history is unavailable: {eventsError.message}</p> : eventsLoading ? <p className="text-xs text-muted-foreground">Loading history…</p> : !(events ?? []).length ? <p className="text-xs text-muted-foreground">No history events found.</p> : eventRows.map((entry) => <div key={entry.id} className="flex flex-col gap-1 border-l-2 pl-3 py-1"><p className="text-sm font-medium">{entry.from_status ? `${titleCase(entry.from_status)} → ${titleCase(entry.to_status)}` : titleCase(entry.to_status)}</p><p className="text-sm text-muted-foreground">{entry.note}</p><p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()} · {entry.actor_id}</p></div>)}</div>}
       </article>)}</div>}
       {!canWrite && <p className="text-xs text-muted-foreground">Read-only access. Claims write permission is required to register or transition claim cases.</p>}
     </section>
