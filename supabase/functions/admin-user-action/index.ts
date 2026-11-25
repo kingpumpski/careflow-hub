@@ -30,14 +30,14 @@ const isMissingColumnError = (error: { code?: string; message?: string } | null)
     (/column/i.test(error.message ?? "") && /(does not exist|not found|schema cache)/i.test(error.message ?? ""))
   );
 
-const probeColumns = async (admin: ReturnType<typeof createClient>, table: string, columns: string) => {
+const probeColumns = async (admin: any, table: string, columns: string) => {
   const { error } = await admin.from(table).select(columns).limit(0);
   if (!error) return true;
   if (isMissingColumnError(error)) return false;
   throw error;
 };
 
-const resolvePermissionSchema = async (admin: ReturnType<typeof createClient>): Promise<PermissionSchema> => {
+const resolvePermissionSchema = async (admin: any): Promise<PermissionSchema> => {
   const overrideFlag = await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,granted")
     ? "granted"
     : await probeColumns(admin, "user_permission_overrides", "user_id,permission_key,allowed")
@@ -53,11 +53,17 @@ const resolvePermissionSchema = async (admin: ReturnType<typeof createClient>): 
   return { overrideFlag, catalogKey, catalogHasCategory };
 };
 
-const normalizeOverrides = (rows: Array<Record<string, unknown>>, flag: "granted" | "allowed") =>
-  rows.map(({ [flag]: value, ...row }) => ({ ...row, granted: value === true }));
+const normalizeOverrides = (rows: unknown[], flag: "granted" | "allowed") =>
+  rows.map((entry) => {
+    const { [flag]: value, ...row } = entry as Record<string, unknown>;
+    return { ...row, granted: value === true };
+  });
 
-const normalizePermissionCatalog = (rows: Array<Record<string, unknown>>, key: "key" | "permission_key") =>
-  rows.map(({ [key]: value, ...row }) => ({ ...row, key: value, category: row.category ?? "General" }));
+const normalizePermissionCatalog = (rows: unknown[], key: "key" | "permission_key") =>
+  rows.map((entry) => {
+    const { [key]: value, ...row } = entry as Record<string, unknown>;
+    return { ...row, key: value, category: row.category ?? "General" };
+  });
 
 
 Deno.serve(async (req) => {
@@ -123,8 +129,8 @@ Deno.serve(async (req) => {
         users,
         profiles: profiles ?? [],
         roles: roleRows ?? [],
-        overrides: normalizeOverrides((overrides ?? []) as Array<Record<string, unknown>>, permissionSchema.overrideFlag),
-        permissions: normalizePermissionCatalog((catalog ?? []) as Array<Record<string, unknown>>, permissionSchema.catalogKey),
+        overrides: normalizeOverrides(overrides ?? [], permissionSchema.overrideFlag),
+        permissions: normalizePermissionCatalog(catalog ?? [], permissionSchema.catalogKey),
       });
     }
 
