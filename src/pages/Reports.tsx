@@ -23,6 +23,8 @@ export default function Reports() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
+  const { data: outstandingPeriods } = useSupabaseQuery("claims_outstanding_periods");
+  const { data: receiptMonths } = useSupabaseQuery("claims_settlement_receipt_months");
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useSupabaseQuery("system_settings");
 
@@ -33,36 +35,56 @@ export default function Reports() {
     const month = parseInt(selectedMonth);
     let filtered = items;
     if (activePeriod === "Monthly") {
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 === month) : (i[yearKey] === year && i[monthKey] === month));
+      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 === month) : (Number(i[yearKey]) === year && Number(i[monthKey]) === month));
     } else if (activePeriod === "Quarterly") {
       const qStart = Math.floor((month - 1) / 3) * 3 + 1;
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= qStart && new Date(i[dateKey]).getMonth() + 1 < qStart + 3) : (i[yearKey] === year && i[monthKey] >= qStart && i[monthKey] < qStart + 3));
+      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= qStart && new Date(i[dateKey]).getMonth() + 1 < qStart + 3) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= qStart && Number(i[monthKey]) < qStart + 3));
     } else if (activePeriod === "Annual") {
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year) : (i[yearKey] === year));
+      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year) : (Number(i[yearKey]) === year));
     } else if (activePeriod === "Bi-Annual") {
       const half = month <= 6 ? [1, 6] : [7, 12];
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= half[0] && new Date(i[dateKey]).getMonth() + 1 <= half[1]) : (i[yearKey] === year && i[monthKey] >= half[0] && i[monthKey] <= half[1]));
+      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= half[0] && new Date(i[dateKey]).getMonth() + 1 <= half[1]) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= half[0] && Number(i[monthKey]) <= half[1]));
     }
     return filtered;
   };
 
   const reportData = useMemo(() => {
+    const periodRows = filterByPeriod(outstandingPeriods || [], "period_year", "period_month");
     return (insurers || []).map((ins: any) => {
+      const authoritative = periodRows.filter((period) => period.insurance_company_id === ins.id);
       const insClaims = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status !== "rejected"), "claim_year", "claim_month");
       const insRejected = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected"), "claim_year", "claim_month");
       const insPayments = filterByPeriod((payments || []).filter((p: any) => p.insurance_company_id === ins.id), "claim_year", "claim_month");
       const insTax = filterByPeriod((withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id), "year", "month");
+      const actualTaxRows = insTax.filter((taxRow: any) => taxRow.is_actual === true);
+      const taxRows = actualTaxRows.length ? actualTaxRows : insTax.filter((taxRow: any) => taxRow.is_actual !== true);
 
-      const submitted = insClaims.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
-      const rejected = insRejected.reduce((s: number, c: any) => s + Number(c.claim_amount || 0), 0);
-      const paid = insPayments.reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-      const tax = insTax.reduce((s: number, t: any) => s + Number(t.tax_amount || 0), 0);
-      const netClaim = submitted - rejected;
-      const outstanding = netClaim - paid - tax;
+      // The settlement-period view is authoritative: it prefers aggregate claim
+      // submissions, approved gross, matched payments and actual WHT, and uses
+      // provisional WHT only while actual advice is unavailable. Raw tables are
+      // retained as a compatibility fallback when the view is not yet deployed.
+      const submitted = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
+        : insClaims.reduce((sum: number, claim: any) => sum + Number(claim.claim_amount || 0), 0);
+      const rejected = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.rejected_amount || 0), 0)
+        : insRejected.reduce((sum: number, claim: any) => sum + Number(claim.claim_amount || 0), 0);
+      const paid = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.paid_amount || 0), 0)
+        : insPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
+      const tax = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
+        : taxRows.reduce((sum: number, taxRow: any) => sum + Number(taxRow.tax_amount || 0), 0);
+      const netClaim = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
+        : submitted - rejected;
+      const outstanding = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
+        : netClaim - paid - tax;
       return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
-    }).filter(r => r.submitted > 0 || r.paid > 0 || r.rejected > 0)
+    }).filter((row) => row.submitted > 0 || row.paid > 0 || row.rejected > 0 || row.netClaim > 0 || row.outstanding > 0)
       .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
-  }, [claims, insurers, payments, withholdingTax, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
   // Ledger-based reports
   const incomeData = useMemo(() => {
@@ -80,42 +102,36 @@ export default function Reports() {
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
   }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
 
-  // Aging analysis: per-month outstanding bucketed by days since period end
+  // Aging uses the same authoritative outstanding-period view as the balance
+  // report, so approved gross and actual-vs-provisional WHT stay consistent.
   const agingData = useMemo(() => {
     const buckets = { b30: 0, b60: 0, b90: 0, b120: 0, b120plus: 0 };
     const today = new Date();
-    (insurers || []).filter((ins) => selectedCompanyId === "all" || ins.id === selectedCompanyId).forEach((ins) => {
-      const insClaims = (claims || []).filter((c: any) => c.insurance_company_id === ins.id);
-      // build per-month map
-      const map: Record<string, { y: number; m: number; sub: number; rej: number; paid: number; wht: number }> = {};
-      insClaims.forEach((c: any) => {
-        const k = `${c.claim_year}-${c.claim_month}`;
-        if (!map[k]) map[k] = { y: c.claim_year, m: c.claim_month, sub: 0, rej: 0, paid: 0, wht: 0 };
-        if (c.status === "rejected") map[k].rej += Number(c.claim_amount || 0);
-        else map[k].sub += Number(c.claim_amount || 0);
-      });
-      (payments || []).filter((p: any) => p.insurance_company_id === ins.id).forEach((p: any) => {
-        const k = `${p.claim_year}-${p.claim_month}`;
-        if (map[k]) map[k].paid += Number(p.amount_paid || 0);
-      });
-      (withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id).forEach((t: any) => {
-        const k = `${t.year}-${t.month}`;
-        if (map[k]) map[k].wht += Number(t.tax_amount || 0);
-      });
-      Object.values(map).forEach((row) => {
-        const out = (row.sub - row.rej) - row.paid - row.wht;
-        if (out <= 0 || !row.y || !row.m) return;
-        const periodEnd = new Date(row.y, row.m, 0);
-        const days = Math.max(0, Math.floor((today.getTime() - periodEnd.getTime()) / 86400000));
-        if (days <= 30) buckets.b30 += out;
-        else if (days <= 60) buckets.b60 += out;
-        else if (days <= 90) buckets.b90 += out;
-        else if (days <= 120) buckets.b120 += out;
-        else buckets.b120plus += out;
-      });
+    const periodRows = (outstandingPeriods || []).filter((period) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
+    periodRows.forEach((period) => {
+      const outstanding = Number(period.outstanding_amount || 0);
+      const year = Number(period.period_year);
+      const month = Number(period.period_month);
+      if (outstanding <= 0 || !year || month < 1 || month > 12) return;
+      const periodEnd = new Date(year, month, 0);
+      const days = Math.max(0, Math.floor((today.getTime() - periodEnd.getTime()) / 86400000));
+      if (days <= 30) buckets.b30 += outstanding;
+      else if (days <= 60) buckets.b60 += outstanding;
+      else if (days <= 90) buckets.b90 += outstanding;
+      else if (days <= 120) buckets.b120 += outstanding;
+      else buckets.b120plus += outstanding;
     });
     return buckets;
-  }, [claims, insurers, payments, withholdingTax, selectedCompanyId]);
+  }, [outstandingPeriods, selectedCompanyId]);
+
+  const receiptMonthData = useMemo(
+    () => filterByPeriod(
+      (receiptMonths || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId),
+      "receipt_year",
+      "receipt_month_number",
+    ),
+    [receiptMonths, selectedCompanyId, activePeriod, selectedYear, selectedMonth],
+  );
 
   const { sorted: sortedReport, sort, handleSort } = useSort(reportData, "outstanding");
 
@@ -132,6 +148,7 @@ export default function Reports() {
     const source = document.getElementById("report-content");
     if (!source) return;
     const printable = source.cloneNode(true) as HTMLElement;
+    printable.querySelectorAll('[role="tablist"], [role="tab"]').forEach((tab) => tab.remove());
     printable.querySelectorAll("button").forEach((button) => button.replaceWith(document.createTextNode(button.textContent?.trim() || "")));
     printable.querySelectorAll("svg").forEach((icon) => icon.remove());
     printable.querySelectorAll('[data-state="inactive"], [hidden]').forEach((node) => ((node as HTMLElement).style.display = "none"));
@@ -140,6 +157,7 @@ export default function Reports() {
     const companyName = companyInfo.provider_name || "Company information not configured";
     const contact = [companyInfo.provider_address, companyInfo.provider_phone, companyInfo.provider_email].filter(Boolean).map(escapeHtml).join(" &nbsp; | &nbsp; ");
     const generatedAt = new Date().toLocaleString();
+const receiptTable = receiptMonthData.length ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Cash and actual withholding tax are grouped by the month the facility received the remittance, independently of the original claims month.</p><table><thead><tr><th>Insurance Company</th><th>Receipt Month</th><th>Net Cash Received</th><th>Actual WHT</th><th>Remittances</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins: any) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>GH¢ ${Number(entry.actual_withholding_tax || 0).toLocaleString()}</td><td>${Number(entry.remittance_count || 0)}</td></tr>`).join("")}</tbody></table></section>` : "";
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${escapeHtml(companyInfo.accent_color || "#1E4078")};padding:0 0 14px;margin-bottom:18px}
@@ -147,7 +165,7 @@ export default function Reports() {
       .report-meta{display:flex;justify-content:space-between;gap:12px;margin:14px 0 18px;padding:10px 12px;background:#f2f5fa;border:1px solid #dce3ed;border-radius:6px}
       h2,h3{color:#1e4078;margin:16px 0 8px}table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:9px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#1e4078!important;color:#fff!important;font-weight:700;text-align:left}th,td{border:1px solid #d7dee8;padding:7px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fc}tfoot td{background:#eaf0f7;font-weight:700}.text-right{text-align:right}.font-bold,.font-semibold{font-weight:700}.text-destructive{color:#b42318}.text-success{color:#087443}.text-warning{color:#946200}.stat-card{border:1px solid #dce3ed;border-radius:6px;padding:12px;margin:8px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.report-footer{border-top:1px solid #d7dee8;padding-top:8px;margin-top:22px;color:#667085;font-size:8px}
       @media print{body{background:#fff}.no-print{display:none!important}}
-    </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${printable.outerHTML}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
+    </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${printable.outerHTML}${receiptTable}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
