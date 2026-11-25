@@ -196,9 +196,9 @@ npm run lint
 npx tsc --noEmit --pretty false
 npm test
 npm run build
-npm run build && cp dist/index.html dist/404.html && npm run verify:pages
+npm run build && npm run verify:pages
 ```
 
-The final command verifies the GitHub Pages fallback in addition to the normal build. Database
+The final command verifies the GitHub Pages hash router and its legacy-link compatibility bridge. Database
 migrations should be applied only against the intended CareFlow Hub Supabase project; never point
 the deployment workflow at an unrelated project.
