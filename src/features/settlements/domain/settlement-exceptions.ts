@@ -1,4 +1,4 @@
-import type { ClaimsSettlementPeriod } from './settlement';
+import type { ClaimsSettlementPeriod, SettlementStatus } from './settlement';
 import { calculateExplicitAdviceReconciliation } from './settlement';
 
 export type SettlementExceptionType =
@@ -8,6 +8,21 @@ export type SettlementExceptionType =
   | 'missing_payment_advice'
   | 'incomplete_payment_advice'
   | 'overdue_settlement';
+
+export type SettlementExceptionPeriodSource = {
+  id?: string;
+  facility_id?: string;
+  period_end?: string | null;
+  total_claims_submitted?: number | string | null;
+  settlement_status?: SettlementStatus;
+  payment_received?: number | string | null;
+  rejection_amount?: number | string | null;
+  approved_gross_amount?: number | string | null;
+  actual_withholding_tax?: number | string | null;
+  withholding_tax_variance?: number | string | null;
+  payment_advice_reference?: string | null;
+  payment_advice_date?: string | null;
+};
 
 export type SettlementExceptionSeverity = 'info' | 'warning' | 'critical';
 export type SettlementExceptionStatus = 'open' | 'under_review' | 'resolved' | 'waived';
