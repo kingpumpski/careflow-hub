@@ -17,7 +17,7 @@ BEGIN
      'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Admin"}'::jsonb, now(), now()),
     (v_member_id, 'authenticated', 'authenticated', 'facility-test-member@example.invalid',
      'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Test Member"}'::jsonb, now(), now()),
-    (v_facility_admin_id, 'authenticated', 'authenticated', 'facility-test-admin@example.invalid',
+    (v_facility_admin_id, 'authenticated', 'authenticated', 'facility-test-admin-2@example.invalid',
      'test-only-password-hash', now(), '{}'::jsonb, '{"full_name":"Facility Administrator"}'::jsonb, now(), now())
   ON CONFLICT (id) DO NOTHING;
 
