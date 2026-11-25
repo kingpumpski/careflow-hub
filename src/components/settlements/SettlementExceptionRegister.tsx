@@ -99,7 +99,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
             rejectionAmount: period.rejection_amount == null ? null : Number(period.rejection_amount),
             approvedGrossAmount: period.approved_gross_amount == null ? null : Number(period.approved_gross_amount),
             actualWithholdingTax: period.actual_withholding_tax == null ? null : Number(period.actual_withholding_tax),
-            withholdingTaxVariance: period.withholding_tax_variance ?? null,
+            withholdingTaxVariance: period.withholding_tax_variance == null ? null : Number(period.withholding_tax_variance),
             paymentAdviceReference: period.payment_advice_reference ?? null,
             paymentAdviceDate: period.payment_advice_date ?? null,
           });
