@@ -25,7 +25,6 @@ type SettlementPeriodSource = {
   payment_received?: number | null;
   rejection_amount?: number | null;
   approved_gross_amount?: number | string | null;
-  approved_gross_amount?: number | string | null;
 };
 
 export async function syncOfflineSettlementExceptions(periods: SettlementPeriodSource[], asOf = new Date()): Promise<number> {
