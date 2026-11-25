@@ -95,6 +95,27 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION security_internal.is_active_facility_member(uuid) FROM PUBLIC, anon, authenticated;
 
+-- Older RBAC policies still referenced public.has_role even though its
+-- client EXECUTE grant was intentionally revoked. Rebind those policies to
+-- the private SECURITY DEFINER role helper so RLS checks remain functional
+-- without reopening the public has_role RPC.
+DROP POLICY IF EXISTS "Superusers manage roles" ON public.user_roles;
+CREATE POLICY "Superusers manage roles" ON public.user_roles
+  FOR ALL TO authenticated
+  USING (security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role]))
+  WITH CHECK (security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role]));
+
+DROP POLICY IF EXISTS "Administrators read permission overrides" ON public.user_permission_overrides;
+CREATE POLICY "Administrators read permission overrides" ON public.user_permission_overrides
+  FOR SELECT TO authenticated
+  USING (security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role, 'admin'::public.app_role]));
+
+DROP POLICY IF EXISTS "Administrators manage permission overrides" ON public.user_permission_overrides;
+CREATE POLICY "Administrators manage permission overrides" ON public.user_permission_overrides
+  FOR ALL TO authenticated
+  USING (security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role, 'admin'::public.app_role]))
+  WITH CHECK (security_internal.current_user_has_any_role(ARRAY['superuser'::public.app_role, 'admin'::public.app_role]));
+
 -- Facility discovery remains available to system administrators for operational
 -- workflows such as pre-authorization. Membership visibility and all mutations
 -- remain superuser-only; ordinary users retain their own facility scope.
