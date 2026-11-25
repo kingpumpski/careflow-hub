@@ -95,14 +95,15 @@ the server-side AI layer.
 
 ## 6. Business rules
 
-- **Outstanding** = (Submitted − Rejected) − Payments − Withholding Tax
-- **Rejection Rate** = Rejected ÷ Gross Submitted × 100
-- **Collection Rate** = Payments ÷ Gross Submitted × 100
-- **Recovery Rate** = Payments ÷ Net Submitted × 100
-- **Average Settlement Period** = mean days between `submitted_at` and `paid_at`
-- Claims and Pre-Authorization are strictly decoupled: the claims side handles aggregate totals only
-  and never stores individual patient data.
-- The general ledger uses double-entry postings in `ledger_entries`.
+- **Approval variance** = submitted gross − insurer-reported approved gross − confirmed rejected amount. The insurer-reported approved gross is captured explicitly; it is never inferred from the other values.
+- **Approved-but-unpaid balance** = insurer-reported approved gross − actual WHT − net cash received, aggregated across the originating cycle's remittance events. A non-zero result remains visible for investigation.
+- **Provisional WHT** = submitted gross × the facility-approved configured rate. It remains an estimate and is not added to actual WHT.
+- **Actual WHT** and **net cash received** are transcribed independently from insurer advice/remittance records. Receipt-month reporting uses the actual receipt date; the originating claims month remains unchanged.
+- **Rejection Rate** = confirmed rejected amount ÷ gross submitted × 100.
+- **Collection Rate** is reported against the explicitly selected claims-cycle basis; it must not mix advice approval and cash receipt measures.
+- **Average Settlement Period** = mean days between the originating submission date and the actual receipt date for the relevant remittance.
+- Monthly claims are entered as aggregate totals by facility + insurer + claims month/year. The individual claim-case lifecycle is a separate workflow and is not required to reconstruct or post the monthly aggregate submission.
+- Claims and Pre-Authorization remain separate operational workflows. The general ledger uses double-entry postings in `ledger_entries`.
 
 ---
 
