@@ -45,7 +45,7 @@ if (!assetNames.some((name) => name.endsWith(".js"))) {
 
 // Execute the published legacy bridge against a representative old clean URL.
 // It must preserve the route and query in the URL fragment at the project base.
-const inlineScript = legacyFallback.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+const inlineScript = legacyFallback.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!inlineScript) throw new Error("Legacy 404 compatibility script is missing.");
 let redirectedTo = "";
 const fakeWindow = {
