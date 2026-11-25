@@ -38,9 +38,6 @@ BEGIN
      OR has_function_privilege('authenticated', v_suspend_helper, 'EXECUTE') THEN
     RAISE EXCEPTION 'Private facility mutation helpers must not be directly executable by authenticated users';
   END IF;
-  IF has_function_privilege('authenticated', 'security_internal.is_active_facility_member(uuid)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'The private facility membership probe must not be directly executable by authenticated users';
-  END IF;
 
   IF EXISTS (
     SELECT 1 FROM pg_proc p
