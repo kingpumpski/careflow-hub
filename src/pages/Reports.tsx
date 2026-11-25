@@ -75,13 +75,27 @@ export default function Reports() {
       const tax = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
         : taxRows.reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
+      const provisionalTax = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.provisional_withholding_tax_amount || 0), 0)
+        : insTax.filter((taxRow) => taxRow.is_actual !== true).reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
+      const actualTax = authoritative.length
+        ? authoritative.reduce((sum, period) => sum + Number(period.actual_withholding_tax_amount || 0), 0)
+        : actualTaxRows.reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
+      const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
+      const approvedGross = approvedGrossRows.length
+        ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
+        : null;
+      const approvalVarianceRows = authoritative.filter((period) => period.approval_variance != null);
+      const approvalVariance = approvalVarianceRows.length
+        ? approvalVarianceRows.reduce((sum, period) => sum + Number(period.approval_variance || 0), 0)
+        : null;
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
         : submitted - rejected;
       const outstanding = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
         : netClaim - paid - tax;
-      return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, outstanding, color: ins.color };
+      return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, provisionalTax, actualTax, approvedGross, approvalVariance, outstanding, color: ins.color };
     }).filter((row) => row.submitted > 0 || row.paid > 0 || row.rejected > 0 || row.netClaim > 0 || row.outstanding > 0)
       .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
   }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
@@ -157,6 +171,7 @@ export default function Reports() {
     const companyName = companyInfo.provider_name || "Company information not configured";
     const contact = [companyInfo.provider_address, companyInfo.provider_phone, companyInfo.provider_email].filter(Boolean).map(escapeHtml).join(" &nbsp; | &nbsp; ");
     const generatedAt = new Date().toLocaleString();
+    const reconciliationTable = sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Approved gross and approval variance are shown when insurer payment advice is available. The WHT applied to outstanding balances is actual WHT when confirmed, otherwise the provisional estimate.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
 const receiptTable = receiptMonthData.length ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Cash and actual withholding tax are grouped by the month the facility received the remittance, independently of the original claims month.</p><table><thead><tr><th>Insurance Company</th><th>Receipt Month</th><th>Net Cash Received</th><th>Actual WHT</th><th>Remittances</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>GH¢ ${Number(entry.actual_withholding_tax || 0).toLocaleString()}</td><td>${Number(entry.remittance_count || 0)}</td></tr>`).join("")}</tbody></table></section>` : "";
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -165,21 +180,21 @@ const receiptTable = receiptMonthData.length ? `<section class="receipt-summary"
       .report-meta{display:flex;justify-content:space-between;gap:12px;margin:14px 0 18px;padding:10px 12px;background:#f2f5fa;border:1px solid #dce3ed;border-radius:6px}
       h2,h3{color:#1e4078;margin:16px 0 8px}table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:9px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#1e4078!important;color:#fff!important;font-weight:700;text-align:left}th,td{border:1px solid #d7dee8;padding:7px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fc}tfoot td{background:#eaf0f7;font-weight:700}.text-right{text-align:right}.font-bold,.font-semibold{font-weight:700}.text-destructive{color:#b42318}.text-success{color:#087443}.text-warning{color:#946200}.stat-card{border:1px solid #dce3ed;border-radius:6px;padding:12px;margin:8px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.report-footer{border-top:1px solid #d7dee8;padding-top:8px;margin-top:22px;color:#667085;font-size:8px}
       @media print{body{background:#fff}.no-print{display:none!important}}
-    </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${printable.outerHTML}${receiptTable}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
+    </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${printable.outerHTML}${reconciliationTable}${receiptTable}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
   };
 
   const handleExportPDF = () => {
-    const data = sortedReport.map(r => [r.company, `GH¢ ${r.submitted.toLocaleString()}`, `GH¢ ${r.rejected.toLocaleString()}`, `GH¢ ${r.netClaim.toLocaleString()}`, `GH¢ ${r.paid.toLocaleString()}`, `GH¢ ${r.tax.toLocaleString()}`, `GH¢ ${r.outstanding.toLocaleString()}`]);
-    data.push(["Grand Total", `GH¢ ${grandSubmitted.toLocaleString()}`, `GH¢ ${grandRejected.toLocaleString()}`, `GH¢ ${grandNet.toLocaleString()}`, `GH¢ ${grandPaid.toLocaleString()}`, `GH¢ ${grandTax.toLocaleString()}`, `GH¢ ${grandOutstanding.toLocaleString()}`]);
-    exportReportPDF(`${activePeriod} ${activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : "Tax Liability"} Report`, data, ["Company", "Submitted", "Rejected", "Net Claim", "Paid", "WHT", "Outstanding"], companyInfo);
+    const data = sortedReport.map(r => [r.company, r.submitted, r.rejected, r.approvedGross ?? "—", r.approvalVariance ?? "—", r.paid, r.provisionalTax, r.actualTax, r.tax, r.outstanding]);
+    data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
+    exportReportPDF(`${activePeriod} ${activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : "Tax Liability"} Report · ${companyLabel}`, data, ["Company", "Submitted", "Rejected", "Approved Gross", "Approval Variance", "Paid", "Provisional WHT", "Actual WHT", "WHT Applied", "Outstanding"], companyInfo);
   };
 
   const handleExportExcel = () => {
-    const rows = sortedReport.map(r => ({ "Insurance Company": r.company, "Submitted": r.submitted, "Rejected": r.rejected, "Net Claim": r.netClaim, "Paid": r.paid, "WHT": r.tax, "Outstanding": r.outstanding }));
-    exportReportExcel(`${activePeriod} Report`, rows, "Report");
+    const rows = sortedReport.map(r => ({ "Insurance Company": r.company, "Submitted": r.submitted, "Rejected": r.rejected, "Net Claim": r.netClaim, "Approved Gross": r.approvedGross, "Approval Variance": r.approvalVariance, "Paid": r.paid, "Provisional WHT": r.provisionalTax, "Actual WHT": r.actualTax, "WHT Applied": r.tax, "Outstanding": r.outstanding }));
+    exportReportExcel(`${activePeriod} Report - ${companyLabel}`, rows, "Report");
   };
 
   const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company) => company.id === selectedCompanyId)?.company_name || "Selected Company";
