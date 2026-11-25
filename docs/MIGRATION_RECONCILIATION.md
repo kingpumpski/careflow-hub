@@ -344,3 +344,36 @@ The separate CI workflow was still pending at the time of this entry; it must be
 No production database migration, schema change, data insert/update, migration-ledger repair, Auth mutation, or Edge Function deployment was performed. The production project `jajfdgknctzqypdtvmxo` remains subject to the prior read-only inventory: 74 ledger rows, no facility or membership records, and no claims settlement periods at the last count. The source changes and passing disposable tests are not evidence that those changes have been applied to production.
 
 Before any production migration rollout, retain the verified backup, recover the authoritative deployed migration bundle/crosswalk, and test against a restored copy of the production backup. The three duplicate source version groups remain documented technical debt and must not be blindly renamed in production.
+
+
+
+## Live production compatibility audit — 2026-11-25 (read-only)
+
+The connected Supabase project `jajfdgknctzqypdtvmxo` reports `ACTIVE_HEALTHY`, PostgreSQL 17.11, region `eu-west-1`, and project name **claims tracker**. The name does not match the repository product name; the owner must explicitly confirm project identity before a production release.
+
+A fresh migration inventory returned 74 ledger rows. This is not a clean source-to-ledger match: the live ledger contains generated/imported names and version identities that differ from the current source filenames. The earlier 117-file source inventory and duplicate-version groups therefore remain unresolved.
+
+### Live schema/function drift
+
+Read-only inspection of live PostgreSQL function definitions found:
+
+- `public.current_user_has_permission(text)` reads `user_permission_overrides.allowed`, joins `role_permissions` without requiring `granted = true`, and uses the older `app_permissions.permission_key` contract.
+- `public.get_my_permissions()` also reads the older `app_permissions.permission_key` and `user_permission_overrides.allowed` contract.
+- Current main-branch Edge Function source instead uses `user_permission_overrides.granted` and `app_permissions.key`. The deployed `admin-user-action` Edge Function is ACTIVE at version 4, but its retrieved source still uses the older `allowed` / `permission_key` columns. Do not deploy the main-branch function alone against the currently observed live schema.
+- The live `role_permissions` table has RLS enabled and no policy. This is deny-by-default for direct table access and may be intentional because the catalogue is read through privileged helpers; do not add a broad policy simply to silence the advisor.
+- The Security Advisor reports five authenticated-callable SECURITY DEFINER functions. They deny anon execution and have an empty `search_path`; the warnings require function-by-function authorization review, not blanket revocation of the RPCs required by the app.
+- The live public-table inventory contains `claims_settlement_periods`, `facilities`, and `facility_memberships`, but does not contain `claims_settlement_remittances` or `monthly_claim_submissions`. The new aggregate-submission and remittance-ledger implementation is therefore not present in the observed production schema.
+- The Security Advisor also reports leaked-password protection disabled. This is an Auth project setting and must be reviewed by an authorized project owner.
+
+### Required coordinated release
+
+Issue [#80](https://github.com/kingpumpski/careflow-hub/issues/80) tracks the permission/schema/Edge Function compatibility work. Resolve it only after:
+
+1. The owner confirms that `claims tracker` is the intended CareFlow Hub production project.
+2. A full backup has completed and its encrypted package has passed read-back checksum verification.
+3. A restore rehearsal has passed on a separate project.
+4. The 74 live migration records are mapped to the source SQL and actual schema effects.
+5. The permission contract, monthly submission tables, remittance ledger, and RPC signatures have been tested on the restored copy.
+6. The schema changes and matching Edge Function are deployed together under an approved release plan.
+
+This audit was read-only. No production schema, table data, migration ledger, Auth users/settings, Edge Functions, or secrets were changed. The GitHub source changes do not establish that production has received those changes.
