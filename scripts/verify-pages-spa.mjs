@@ -1,19 +1,29 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const distDir = resolve(process.cwd(), "dist");
 const indexPath = resolve(distDir, "index.html");
-const fallbackPath = resolve(distDir, "404.html");
+const legacyFallbackPath = resolve(distDir, "404.html");
 
-const [indexHtml, fallbackHtml] = await Promise.all([
+const [indexHtml, legacyFallback, assetNames] = await Promise.all([
   readFile(indexPath, "utf8"),
-  readFile(fallbackPath, "utf8"),
+  readFile(legacyFallbackPath, "utf8"),
+  readdir(resolve(distDir, "assets")),
 ]);
 
-if (!indexHtml.trim()) throw new Error("dist/index.html is empty.");
-if (!fallbackHtml.trim()) throw new Error("dist/404.html is empty.");
-if (indexHtml !== fallbackHtml) {
-  throw new Error("GitHub Pages SPA fallback drifted: dist/404.html must match dist/index.html.");
+if (!indexHtml.includes('<div id="root"></div>')) {
+  throw new Error("Built application entry point is missing the React root.");
 }
-
-console.log("GitHub Pages SPA fallback verified: dist/404.html matches dist/index.html.");
+if (!legacyFallback.includes('base + "#" + route')) {
+  throw new Error("Legacy deep-link compatibility page must redirect to a hash route.");
+}
+if (legacyFallback.includes("cf_route")) {
+  throw new Error("Obsolete cf_route query-string routing must not be published.");
+}
+const jsBundles = assetNames.filter((name) => name.endsWith(".js"));
+if (!jsBundles.length) throw new Error("No JavaScript bundles were emitted.");
+const bundleContents = await Promise.all(jsBundles.map((name) => readFile(resolve(distDir, "assets", name), "utf8")));
+if (!bundleContents.some((content) => content.includes("HashRouter"))) {
+  throw new Error("Built application does not contain the expected HashRouter runtime.");
+}
+console.log("GitHub Pages hash routing verified: app routes stay in the URL fragment; legacy paths redirect to #/ routes.");
