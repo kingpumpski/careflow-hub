@@ -58,7 +58,7 @@ BEGIN
 
   INSERT INTO public.facility_memberships (facility_id, user_id, role, status)
   VALUES (v_facility_id, v_user_id, 'owner', 'active')
-  ON CONFLICT (facility_id, user_id)
+  ON CONFLICT ON CONSTRAINT facility_membership_unique
   DO UPDATE SET role = 'owner', status = 'active', updated_at = now();
 
   INSERT INTO public.audit_logs (table_name, record_id, action, old_data, new_data, changed_by)
@@ -147,7 +147,7 @@ BEGIN
 
   INSERT INTO public.facility_memberships (facility_id, user_id, role, status)
   VALUES (p_facility_id, v_target_user_id, p_membership_role, 'active')
-  ON CONFLICT (facility_id, user_id)
+  ON CONFLICT ON CONSTRAINT facility_membership_unique
   DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()
   RETURNING id INTO v_membership_id;
 
