@@ -26,6 +26,17 @@
 - [x] PR #84 merge commit `19474435e286c5a1f1fbb5703c8f29e7dfb0dfad` passes the main CI, quality, dependency audit and disposable migration-replay workflows.
 - [x] GitHub Pages deployment and post-deploy smoke test succeed for the PR #84 merge commit; the published site is `https://kingpumpski.github.io/careflow-hub/`.
 - [ ] Apply the PR #84 Supabase migrations to production only after the required encrypted backup/restore evidence, production migration-ledger reconciliation and protected `production-database` approval are complete. The current production project ledger has 74 entries and its latest applied migration is `20260921160938`; the new report-letterhead and superuser-facility RPCs are not yet present in production.
+
+### Read-only production verification after PR #84 (2026-11-25)
+
+The connected Supabase project `jajfdgknctzqypdtvmxo` is `ACTIVE_HEALTHY`, but the production schema has not received the PR #84 migrations:
+
+- The production migration ledger still contains 74 entries; latest applied version: `20260921160938`.
+- `public.get_report_letterhead_settings()`, `public.create_facility_with_owner(...)` and `public.add_facility_member_by_email(...)` are absent.
+- `public.facilities` and `public.facility_memberships` currently contain zero rows.
+- The existing letterhead settings contain an accent colour and style, but no provider/company name, address, phone, email or logo URL. After the RPC migration is applied, those identity fields must still be configured in Settings before the printout can display complete company details.
+
+These are read-only observations. No production schema, migration ledger, settings, facility or membership data was changed.
 - [x] Schema changes are represented by versioned files under `supabase/migrations/`.
 - [x] RLS policies are enabled for application tables and reviewed for the affected role boundary.
 - [x] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
