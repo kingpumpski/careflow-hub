@@ -241,7 +241,7 @@ const receiptTable = receiptMonthData.length ? `<section class="receipt-summary"
   };
 
   const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company) => company.id === selectedCompanyId)?.company_name || "Selected Company";
-  const periodLabel = `${activePeriod === "Total" ? "All Time" : `${activePeriod} — ${selectedYear}${activePeriod === "Monthly" ? ` ${monthNames[parseInt(selectedMonth)]}` : ""}`} · ${companyLabel}`;
+  const periodLabel = `${activeReport === "aging" ? "All-Time Aging" : activePeriod === "Total" ? "All Time" : `${activePeriod} — ${selectedYear}${activePeriod === "Monthly" ? ` ${monthNames[parseInt(selectedMonth)]}` : ""}`} · ${companyLabel}`;
 
   return (
     <div className="space-y-6">
