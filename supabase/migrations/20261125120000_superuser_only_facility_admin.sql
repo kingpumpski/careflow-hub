@@ -96,8 +96,9 @@ $function$;
 REVOKE ALL ON FUNCTION security_internal.is_active_facility_member(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION security_internal.is_active_facility_member(uuid) TO authenticated;
 
--- Global facility and membership administration visibility is superuser-only.
--- Membership-based access for ordinary users remains available.
+-- Facility discovery remains available to system administrators for operational
+-- workflows such as pre-authorization. Membership visibility and all mutations
+-- remain superuser-only; ordinary users retain their own facility scope.
 DROP POLICY IF EXISTS facilities_select_member ON public.facilities;
 CREATE POLICY facilities_select_member ON public.facilities
   FOR SELECT TO authenticated
@@ -105,7 +106,7 @@ CREATE POLICY facilities_select_member ON public.facilities
     security_internal.is_active_facility_member(facilities.id)
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
-      WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
+      WHERE ur.user_id = (select auth.uid()) AND ur.role IN ('superuser', 'admin')
     )
   );
 
