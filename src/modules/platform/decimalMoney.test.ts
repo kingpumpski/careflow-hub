@@ -4,6 +4,7 @@ import {
   compareMoney,
   fromMinorUnits,
   multiplyMoney,
+  percentageOfMoney,
   subtractMoney,
   toMinorUnits,
 } from "./decimalMoney";
@@ -33,6 +34,12 @@ describe("decimal-safe financial arithmetic", () => {
   it("multiplies by exact decimal factors for tax and allocation calculations", () => {
     expect(multiplyMoney("900.00", "0.025", "GHS")).toBe("22.50");
     expect(multiplyMoney("100.00", "0.3333", "GHS")).toBe("33.33");
+  });
+
+  it("calculates tax percentages from exact submitted and approved amounts", () => {
+    expect(percentageOfMoney("1000.00", "7.5", "GHS")).toBe("75.00");
+    expect(percentageOfMoney("900.00", "2.5", "GHS")).toBe("22.50");
+    expect(percentageOfMoney("123456789012345.67", "5", "GHS")).toBe("6172839450617.28");
   });
 
   it("compares normalized monetary values", () => {
