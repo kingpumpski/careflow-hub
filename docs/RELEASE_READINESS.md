@@ -20,6 +20,9 @@
 
 ## Database gates
 
+- [ ] PR #84: branded financial report print output, per-insurer report selection, and print-only removal of interactive sort controls are merged and validated.
+- [ ] PR #84: Facilities & Access is restricted to superusers in navigation, direct routes, RPCs, and database policies.
+- [ ] PR #84: least-privilege report-letterhead RPC and facility administration security tests pass on a disposable database.
 - [x] Schema changes are represented by versioned files under `supabase/migrations/`.
 - [x] RLS policies are enabled for application tables and reviewed for the affected role boundary.
 - [x] New privileged operations are protected by authenticated Edge Functions and explicit role checks.
