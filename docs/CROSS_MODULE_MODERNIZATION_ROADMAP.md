@@ -10,8 +10,8 @@ This is a staged programme. A capability is not considered complete because a sc
 
 | Area | Existing foundation | Remaining work |
 |---|---|---|
-| Financial reporting | PR #84 adds branded print output, insurer selection, print-only removal of interactive sort icons and restricted letterhead settings access | Merge only after full CI and disposable PostgreSQL tests; verify configured company identity values in the target environment |
-| Facility administration | PR #84 moves Facilities & Access into Administration and restricts route, navigation, RPC and membership-roster access to superusers | Complete database replay, review and controlled release; do not infer production deployment from source changes |
+| Financial reporting | PR #84 is merged; the branded print layout, insurer selection and print-only sort-icon removal are deployed to GitHub Pages | Production letterhead settings RPC is still pending the protected Supabase migration workflow; confirm company identity values after migration |
+| Facility administration | PR #84 is merged; navigation and route are superuser-only, and the database security migration passes disposable PostgreSQL tests | Production RPC/RLS enforcement is not active until the protected Supabase migration workflow applies the migration |
 | Claims | Canonical lifecycle catalogue and separate monthly aggregate claims model | Enforce individual claim-case transitions through transactional server-side RPCs; reconcile the separate claim-case implementation before merge |
 | Settlement and WHT | Authoritative claim-period and receipt-month reporting views; actual and provisional WHT are distinguished | Complete exception lifecycle, partial/multiple remittance allocation, reversals, and end-to-end month-to-month reconciliation tests |
 | Platform configuration | Country, currency, locale and time-zone defaults are centralized | Complete organization-level configuration and eliminate country/currency assumptions from remaining domain services |
