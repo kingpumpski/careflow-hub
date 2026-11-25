@@ -45,6 +45,10 @@ jobs:
 
       - name: Migration version integrity
         run: npm run verify:migrations
+      - name: Read-only migration reconciliation audit
+        run: npm run audit:migrations
+      - name: Migration audit unit tests
+        run: npm run test:migration-audit
 
       - name: Typecheck
         run: npx tsc --noEmit
