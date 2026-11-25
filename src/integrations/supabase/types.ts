@@ -963,10 +963,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_report_letterhead_settings: {
-        Args: Record<PropertyKey, never>
-        Returns: { key: string; value: string | null }[]
-      }
       can_write: { Args: { _uid: string }; Returns: boolean }
       has_role: {
         Args: {
