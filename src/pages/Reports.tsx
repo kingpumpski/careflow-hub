@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Download, Printer, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +28,15 @@ export default function Reports() {
   const { data: outstandingPeriods } = useSupabaseQuery("claims_outstanding_periods");
   const { data: receiptMonths } = useSupabaseQuery("claims_settlement_receipt_months");
   const { data: ledger } = useSupabaseQuery("ledger_entries");
-  const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: settings } = useQuery({
+    queryKey: ["report-letterhead-settings"],
+    queryFn: async () => {
+      const rpc = supabase.rpc.bind(supabase) as unknown as (functionName: "get_report_letterhead_settings") => Promise<{ data: Array<{ key: string; value: string | null }> | null; error: unknown }>;
+      const { data, error } = await rpc("get_report_letterhead_settings");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
 
