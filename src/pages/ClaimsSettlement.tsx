@@ -36,8 +36,8 @@ export default function ClaimsSettlement() {
   const facilityId = getStoredFacilityId();
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: settlementEnabled });
   const { data: facilities } = useSupabaseQuery("facilities", { enabled: settlementEnabled });
-  const { data: periods, isLoading } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled });
-  const { data: remittances } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled });
+  const { data: periods, isLoading, error: periodsError } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled, missingSchemaBehavior: "error" });
+  const { data: remittances, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled, missingSchemaBehavior: "error" });
   const insertPeriod = useSupabaseInsert("claims_settlement_periods");
   const updatePeriod = useSupabaseUpdate("claims_settlement_periods");
   const [form, setForm] = useState(emptyForm);
@@ -178,6 +178,7 @@ export default function ClaimsSettlement() {
 
   return <div className="space-y-6">
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><h1 className="page-title">Claims Settlement Tracking</h1><p className="page-description">Record period-level totals from the external claims platform and reconcile confirmed payment advice. Monthly periods must cover a complete calendar month to feed the monthly claims summary; quarterly/custom periods remain in the settlement report. Detailed claims and advice documents remain outside CareFlow.</p></div><Badge variant="secondary">EXTERNAL SOURCE OF TRUTH</Badge></div>
+    {(periodsError || remittancesError) && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive space-y-1"><p className="font-semibold">Settlement data is not fully available</p>{periodsError && <p>{periodsError instanceof Error ? periodsError.message : "The settlement-period data source is unavailable."}</p>}{remittancesError && <p>{remittancesError instanceof Error ? remittancesError.message : "The remittance-history data source is unavailable."}</p>}<p className="text-muted-foreground">Existing settlement data has not been treated as zero or as an empty register. Recording and reconciliation may be unavailable until the database release is completed.</p></div>}
     <SettlementManagementReport periods={periods || []} />
     {canWriteSettlements ? <section className="stat-card space-y-4"><div className="flex items-center gap-2"><PlusCircle className="h-5 w-5" /><h2 className="font-semibold">New settlement period</h2></div><div className="grid gap-4 md:grid-cols-3">
       <div><Label>Insurance company</Label><select className="mt-1 h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm" value={form.insurerId} onChange={(e) => update("insurerId", e.target.value)}><option value="">Select insurer…</option>{(insurers || []).map((row: any) => <option key={row.id} value={row.id}>{row.company_name}</option>)}</select></div>
