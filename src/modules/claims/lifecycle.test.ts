@@ -25,6 +25,40 @@ describe("claim lifecycle", () => {
     expect(getAvailableClaimTransitions("closed")).toEqual([]);
   });
 
+  it("matches the approved-in-source transition matrix for every status pair", () => {
+    const expected: Record<(typeof CLAIM_STATUSES)[number], readonly (typeof CLAIM_STATUSES)[number][]> = {
+      draft: ["verified"],
+      verified: ["submitted", "draft"],
+      submitted: ["acknowledged", "under_review", "queried", "rejected"],
+      acknowledged: ["under_review", "queried", "rejected"],
+      under_review: ["queried", "approved", "partially_approved", "rejected"],
+      queried: ["verified", "submitted", "under_review", "rejected"],
+      approved: ["partially_paid", "paid", "reconciled"],
+      partially_approved: ["partially_paid", "paid", "appealed", "reconciled"],
+      rejected: ["appealed", "closed", "submitted"],
+      appealed: ["approved", "partially_approved", "rejected", "closed"],
+      partially_paid: ["paid", "reconciled"],
+      paid: ["reconciled", "closed"],
+      reconciled: ["closed"],
+      closed: [],
+    };
+
+    for (const from of CLAIM_STATUSES) {
+      expect(getAvailableClaimTransitions(from)).toEqual(expected[from]);
+      for (const to of CLAIM_STATUSES) {
+        expect(canTransitionClaim(from, to)).toBe(expected[from].includes(to));
+      }
+    }
+  });
+
+  it("keeps terminal closure and reconciliation states from reopening", () => {
+    for (const terminal of ["reconciled", "closed"] as const) {
+      expect(getAvailableClaimTransitions(terminal)).not.toContain("draft");
+      expect(getAvailableClaimTransitions(terminal)).not.toContain("submitted");
+    }
+    expect(getAvailableClaimTransitions("closed")).toEqual([]);
+  });
+
   it("throws on an invalid transition", () => {
     expect(() => assertClaimTransition("draft", "paid")).toThrow(
       "Invalid claim lifecycle transition: draft -> paid",
