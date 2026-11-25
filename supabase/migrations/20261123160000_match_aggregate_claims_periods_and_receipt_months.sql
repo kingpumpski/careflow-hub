@@ -14,13 +14,10 @@ WITH claim_transaction_periods AS (
     c.insurance_company_id,
     c.claim_year AS period_year,
     c.claim_month AS period_month,
-    sum(
-      CASE
-        WHEN lower(COALESCE(c.status, ''::text)) <> 'rejected'::text
-          THEN COALESCE(c.claim_amount, 0::numeric)
-        ELSE 0::numeric
-      END
-    ) AS submitted_amount,
+    -- Submitted gross includes every claim that was submitted, including
+    -- amounts later rejected. Rejections are reported separately, not removed
+    -- from the original submission denominator.
+    sum(COALESCE(c.claim_amount, 0::numeric)) AS submitted_amount,
     sum(
       CASE
         WHEN lower(COALESCE(c.status, ''::text)) = 'rejected'::text
