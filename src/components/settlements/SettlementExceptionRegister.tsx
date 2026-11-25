@@ -21,6 +21,7 @@ type SettlementPeriodInput = {
   settlement_status?: string;
   payment_received?: number | null;
   rejection_amount?: number | null;
+  approved_gross_amount?: number | string | null;
   actual_withholding_tax?: number | null;
   withholding_tax_variance?: number | null;
   payment_advice_reference?: string | null;
@@ -108,8 +109,9 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
             periodEnd: period.period_end,
             totalClaimsSubmitted: Number(period.total_claims_submitted ?? 0),
             settlementStatus: period.settlement_status as "awaiting_payment" | "payment_advice_received" | "reconciled",
-            paymentReceived: period.payment_received ?? null,
-            rejectionAmount: period.rejection_amount ?? null,
+            paymentReceived: period.payment_received == null ? null : Number(period.payment_received),
+            rejectionAmount: period.rejection_amount == null ? null : Number(period.rejection_amount),
+            approvedGrossAmount: period.approved_gross_amount == null ? null : Number(period.approved_gross_amount),
             actualWithholdingTax: period.actual_withholding_tax == null ? null : Number(period.actual_withholding_tax),
             withholdingTaxVariance: period.withholding_tax_variance ?? null,
             paymentAdviceReference: period.payment_advice_reference ?? null,
