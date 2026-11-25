@@ -35,10 +35,13 @@ export const BACKUP_TABLES = [
   "audit_logs",
 ] as const;
 
+// Browser access is limited to the deployed GitHub Pages origin. Scheduled
+// requests are server-to-server and do not require a browser CORS allowance.
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://kingpumpski.github.io",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
   "Cache-Control": "no-store",
 };
 const json = (body: unknown, status = 200) =>
