@@ -77,18 +77,32 @@ GRANT EXECUTE ON FUNCTION public.create_facility_with_owner(text, text, text, te
 GRANT EXECUTE ON FUNCTION public.add_facility_member_by_email(uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.deactivate_facility_member(uuid, text) TO authenticated;
 
+-- SECURITY DEFINER membership probe avoids recursive RLS evaluation when
+-- the facility-membership policy checks a row in the same table.
+CREATE OR REPLACE FUNCTION security_internal.is_active_facility_member(p_facility_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.facility_memberships fm
+    WHERE fm.facility_id = p_facility_id
+      AND fm.user_id = (SELECT auth.uid())
+      AND fm.status = 'active'
+  );
+$function$;
+REVOKE ALL ON FUNCTION security_internal.is_active_facility_member(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.is_active_facility_member(uuid) TO authenticated;
+
 -- Global facility and membership administration visibility is superuser-only.
 -- Membership-based access for ordinary users remains available.
 DROP POLICY IF EXISTS facilities_select_member ON public.facilities;
 CREATE POLICY facilities_select_member ON public.facilities
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.facility_memberships fm
-      WHERE fm.facility_id = facilities.id
-        AND fm.user_id = (select auth.uid())
-        AND fm.status = 'active'
-    )
+    security_internal.is_active_facility_member(facilities.id)
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
@@ -100,12 +114,7 @@ CREATE POLICY facility_memberships_select_member ON public.facility_memberships
   FOR SELECT TO authenticated
   USING (
     user_id = (select auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM public.facility_memberships own_membership
-      WHERE own_membership.facility_id = facility_memberships.facility_id
-        AND own_membership.user_id = (select auth.uid())
-        AND own_membership.status = 'active'
-    )
+    OR security_internal.is_active_facility_member(facility_memberships.facility_id)
     OR EXISTS (
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = (select auth.uid()) AND ur.role = 'superuser'
