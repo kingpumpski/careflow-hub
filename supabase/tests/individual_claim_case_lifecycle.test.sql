@@ -4,6 +4,14 @@ DO $test$
 DECLARE
   v_create_signature text := 'public.create_individual_claim_case(uuid,uuid,text,date,numeric,text,text,text,text,uuid,date,date,text)';
   v_transition_signature text := 'public.transition_individual_claim_case(uuid,text,text,numeric,numeric,text)';
+  v_from text;
+  v_to text;
+  v_expected text[];
+  v_statuses text[] := ARRAY[
+    'draft','verified','submitted','acknowledged','under_review','queried',
+    'approved','partially_approved','rejected','appealed','partially_paid',
+    'paid','reconciled','closed'
+  ];
 BEGIN
   IF to_regclass('public.claim_cases') IS NULL OR to_regclass('public.claim_case_events') IS NULL THEN
     RAISE EXCEPTION 'Individual claim case tables are missing';
@@ -103,5 +111,34 @@ BEGIN
      OR security_internal.claim_case_transition_allowed('closed', 'draft') THEN
     RAISE EXCEPTION 'Claim lifecycle transition matrix failed its contract checks';
   END IF;
+
+  -- Compare every source/target pair against the canonical transition matrix.
+  -- This protects the database RPC from drifting away from the Claims UI.
+  FOR v_from, v_expected IN
+      SELECT matrix.from_status, matrix.allowed_targets
+      FROM (VALUES
+        ('draft', ARRAY['verified']::text[]),
+        ('verified', ARRAY['submitted','draft']::text[]),
+        ('submitted', ARRAY['acknowledged','under_review','queried','rejected']::text[]),
+        ('acknowledged', ARRAY['under_review','queried','rejected']::text[]),
+        ('under_review', ARRAY['queried','approved','partially_approved','rejected']::text[]),
+        ('queried', ARRAY['verified','submitted','under_review','rejected']::text[]),
+        ('approved', ARRAY['partially_paid','paid','reconciled']::text[]),
+        ('partially_approved', ARRAY['partially_paid','paid','appealed','reconciled']::text[]),
+        ('rejected', ARRAY['appealed','closed','submitted']::text[]),
+        ('appealed', ARRAY['approved','partially_approved','rejected','closed']::text[]),
+        ('partially_paid', ARRAY['paid','reconciled']::text[]),
+        ('paid', ARRAY['reconciled','closed']::text[]),
+        ('reconciled', ARRAY['closed']::text[]),
+        ('closed', ARRAY[]::text[])
+      ) AS matrix(from_status, allowed_targets)
+    LOOP
+      FOREACH v_to IN ARRAY v_statuses LOOP
+        IF security_internal.claim_case_transition_allowed(v_from, v_to)
+           IS DISTINCT FROM (v_to = ANY(v_expected)) THEN
+          RAISE EXCEPTION 'Database claim transition matrix mismatch: % -> %', v_from, v_to;
+        END IF;
+      END LOOP;
+  END LOOP;
 END;
 $test$;
