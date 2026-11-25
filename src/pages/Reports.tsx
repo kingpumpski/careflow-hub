@@ -193,14 +193,51 @@ const receiptTable = receiptMonthData.length ? `<section class="receipt-summary"
   };
 
   const handleExportPDF = () => {
-    const data = sortedReport.map(r => [r.company, r.submitted, r.rejected, r.approvedGross ?? "—", r.approvalVariance ?? "—", r.paid, r.provisionalTax, r.actualTax, r.tax, r.outstanding]);
-    data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
-    exportReportPDF(`${activePeriod} ${activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : "Tax Liability"} Report · ${companyLabel}`, data, ["Company", "Submitted", "Rejected", "Approved Gross", "Approval Variance", "Paid", "Provisional WHT", "Actual WHT", "WHT Applied", "Outstanding"], companyInfo);
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
+    const title = `${periodLabel} — ${reportName}`;
+    let data: (string | number)[][] = [];
+    let columns: string[] = [];
+    if (activeReport === "income") {
+      columns = ["Income Statement Line", "Amount (GHS)"];
+      data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Withholding Tax Expense", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
+    } else if (activeReport === "receivables") {
+      columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)", "Collected"];
+      const receivables = sortedReport.filter((row) => row.outstanding > 0);
+      data = receivables.map((row) => [row.company, row.netClaim, row.paid, row.tax, row.outstanding, row.netClaim > 0 ? `${(((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)}%` : "—"]);
+      data.push(["Grand Total", grandNet, grandPaid, grandTax, grandOutstanding, grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"]);
+    } else if (activeReport === "tax") {
+      columns = ["Company / Summary", "Claims Base / Amount (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)"];
+      data = [["WHT Payable", taxLiabilityData.whtPayable, "", "", ""], ["WHT Reversals", taxLiabilityData.whtReversals, "", "", ""], ["Net Tax Liability", taxLiabilityData.netLiability, "", "", ""], ...sortedReport.filter((row) => row.tax > 0).map((row) => [row.company, row.netClaim, row.provisionalTax, row.actualTax, row.tax])];
+    } else if (activeReport === "aging") {
+      columns = ["Aging Bucket", "Outstanding (GHS)"];
+      data = [["0–30 days", agingData.b30], ["31–60 days", agingData.b60], ["61–90 days", agingData.b90], ["91–120 days", agingData.b120], ["120+ days", agingData.b120plus]];
+      data.push(["Total Outstanding", Object.values(agingData).reduce((sum, value) => sum + value, 0)]);
+    } else {
+      columns = ["Company", "Submitted (GHS)", "Rejected (GHS)", "Approved Gross (GHS)", "Approval Variance (GHS)", "Paid (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)"];
+      data = sortedReport.map(row => [row.company, row.submitted, row.rejected, row.approvedGross ?? "—", row.approvalVariance ?? "—", row.paid, row.provisionalTax, row.actualTax, row.tax, row.outstanding]);
+      data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
+    }
+    exportReportPDF(title, data, columns, companyInfo);
   };
 
   const handleExportExcel = () => {
-    const rows = sortedReport.map(r => ({ "Insurance Company": r.company, "Submitted": r.submitted, "Rejected": r.rejected, "Net Claim": r.netClaim, "Approved Gross": r.approvedGross, "Approval Variance": r.approvalVariance, "Paid": r.paid, "Provisional WHT": r.provisionalTax, "Actual WHT": r.actualTax, "WHT Applied": r.tax, "Outstanding": r.outstanding }));
-    exportReportExcel(`${activePeriod} Report - ${companyLabel}`, rows, "Report");
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
+    let rows: Record<string, string | number | null>[] = [];
+    if (activeReport === "income") {
+      rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Withholding Tax Expense", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
+    } else if (activeReport === "receivables") {
+      rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Applied": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
+      rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Applied": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
+    } else if (activeReport === "tax") {
+      rows = [{ "Tax Summary": "WHT Payable", "Amount": taxLiabilityData.whtPayable }, { "Tax Summary": "WHT Reversals", "Amount": taxLiabilityData.whtReversals }, { "Tax Summary": "Net Tax Liability", "Amount": taxLiabilityData.netLiability }, ...sortedReport.filter((row) => row.tax > 0).map((row) => ({ "Tax Summary": row.company, "Claims Base": row.netClaim, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Applied": row.tax }))];
+    } else if (activeReport === "aging") {
+      rows = [{ "Aging Bucket": "0–30 days", "Outstanding": agingData.b30 }, { "Aging Bucket": "31–60 days", "Outstanding": agingData.b60 }, { "Aging Bucket": "61–90 days", "Outstanding": agingData.b90 }, { "Aging Bucket": "91–120 days", "Outstanding": agingData.b120 }, { "Aging Bucket": "120+ days", "Outstanding": agingData.b120plus }];
+      rows.push({ "Aging Bucket": "Total Outstanding", "Outstanding": Object.values(agingData).reduce((sum, value) => sum + value, 0) });
+    } else {
+      rows = sortedReport.map(row => ({ "Insurance Company": row.company, "Submitted": row.submitted, "Rejected": row.rejected, "Net Claim": row.netClaim, "Approved Gross": row.approvedGross, "Approval Variance": row.approvalVariance, "Paid": row.paid, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Applied": row.tax, "Outstanding": row.outstanding }));
+      rows.push({ "Insurance Company": "Grand Total", "Submitted": grandSubmitted, "Rejected": grandRejected, "Net Claim": grandNet, "Approved Gross": null, "Approval Variance": null, "Paid": grandPaid, "Provisional WHT": sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), "Actual WHT": sortedReport.reduce((sum, row) => sum + row.actualTax, 0), "WHT Applied": grandTax, "Outstanding": grandOutstanding });
+    }
+    exportReportExcel(`${periodLabel} - ${reportName}`, rows, "Report");
   };
 
   const companyLabel = selectedCompanyId === "all" ? "All Companies" : (insurers || []).find((company) => company.id === selectedCompanyId)?.company_name || "Selected Company";
