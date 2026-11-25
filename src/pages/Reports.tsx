@@ -138,13 +138,10 @@ export default function Reports() {
     return buckets;
   }, [outstandingPeriods, selectedCompanyId]);
 
-  const receiptMonthData = useMemo(
-    () => filterByPeriod(
-      (receiptMonths || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId),
-      "receipt_year",
-      "receipt_month_number",
-    ),
-    [receiptMonths, selectedCompanyId, activePeriod, selectedYear, selectedMonth],
+  const receiptMonthData = filterByPeriod(
+    (receiptMonths || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId),
+    "receipt_year",
+    "receipt_month_number",
   );
 
   const { sorted: sortedReport, sort, handleSort } = useSort(reportData, "outstanding");
