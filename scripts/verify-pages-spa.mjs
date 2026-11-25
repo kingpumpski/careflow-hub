@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 const distDir = resolve(process.cwd(), "dist");
 const indexPath = resolve(distDir, "index.html");
 const legacyFallbackPath = resolve(distDir, "404.html");
+const appSourcePath = resolve(process.cwd(), "src/App.tsx");
 
-const [indexHtml, legacyFallback, assetNames] = await Promise.all([
+const [indexHtml, legacyFallback, appSource, assetNames] = await Promise.all([
   readFile(indexPath, "utf8"),
   readFile(legacyFallbackPath, "utf8"),
   readdir(resolve(distDir, "assets")),
