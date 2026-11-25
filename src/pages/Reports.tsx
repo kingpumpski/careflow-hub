@@ -31,9 +31,9 @@ export default function Reports() {
   const { data: settings } = useQuery({
     queryKey: ["report-letterhead-settings"],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
+      const { data, error } = await supabase.from("system_settings").select("key, value");
       if (error) throw error;
-      return data || [];
+      return (data || []) as { key: string; value: string | null }[];
     },
   });
 

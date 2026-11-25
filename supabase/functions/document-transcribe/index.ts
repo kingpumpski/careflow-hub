@@ -40,14 +40,14 @@ function validateDataUrlSize(dataUrl: string): void {
 }
 
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
-  const loadingTask = getDocument({ data: bytes, disableWorker: true, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 });
+  const loadingTask = getDocument(({ data: bytes, disableWorker: true, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 }) as any);
   const pdf = await loadingTask.promise;
   const pages: string[] = [];
   try {
     for (let pageNumber = 1; pageNumber <= pdf.numPages && pages.join("\n").length < 100_000; pageNumber++) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      const text = content.items.map((item: { str?: string }) => item.str ?? "").join(" ").trim();
+      const text = content.items.map((item) => ("str" in item ? item.str : "")).join(" ").trim();
       if (text) pages.push(`PAGE ${pageNumber}\n${text}`);
     }
   } finally {
