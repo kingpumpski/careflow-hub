@@ -184,6 +184,11 @@ BEGIN
     RAISE EXCEPTION 'A viewer must not be able to grant facility ownership';
   END IF;
 
+  SELECT count(*) INTO v_visible_memberships FROM public.facility_memberships;
+  IF v_visible_memberships <> 1 THEN
+    RAISE EXCEPTION 'A facility member may see only their own membership record, not the facility access roster';
+  END IF;
+
   -- Restore actor identity for audit assertions in the next block.
   PERFORM set_config('request.jwt.claim.sub', v_superuser_id::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_superuser_id, 'role', 'authenticated')::text, true);
