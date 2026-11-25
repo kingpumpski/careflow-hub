@@ -7,26 +7,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { syncOfflineSettlementExceptions } from "@/modules/offline/settlement-exception-sync";
 import { listOfflineSettlementExceptions, updateOfflineSettlementExceptionStatus } from "@/modules/offline/settlement-exception-repository";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
-import { detectSettlementExceptions, type SettlementException, type SettlementExceptionStatus } from "@/features/settlements/domain/settlement-exceptions";
+import { detectSettlementExceptions, type SettlementException, type SettlementExceptionPeriodSource, type SettlementExceptionStatus } from "@/features/settlements/domain/settlement-exceptions";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { useQueryClient } from "@tanstack/react-query";
 import { hasSettlementExceptionReadAccess, hasSettlementExceptionWriteAccess } from "@/features/settlements/domain/settlement-exception-permissions";
 
-type SettlementPeriodInput = {
-  id?: string;
-  facility_id?: string;
-  period_end?: string;
-  total_claims_submitted?: number | string | null;
-  settlement_status?: string;
-  payment_received?: number | null;
-  rejection_amount?: number | null;
-  approved_gross_amount?: number | string | null;
-  actual_withholding_tax?: number | null;
-  withholding_tax_variance?: number | null;
-  payment_advice_reference?: string | null;
-  payment_advice_date?: string | null;
-};
 
 type SettlementExceptionRow = {
   id: string;
@@ -71,7 +57,7 @@ const callSettlementRpc = (
     parameters: Record<string, unknown>,
   ) => Promise<{ error: { message: string } | null }>)(name, args);
 
-export default function SettlementExceptionRegister({ periods }: { periods: SettlementPeriodInput[] }) {
+export default function SettlementExceptionRegister({ periods }: { periods: SettlementExceptionPeriodSource[] }) {
   const { user } = useAuth();
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
@@ -96,7 +82,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
         return;
       }
       if (offline) {
-        await syncOfflineSettlementExceptions(periods as any);
+        await syncOfflineSettlementExceptions(periods, new Date(), user?.id ?? null);
         setOfflineExceptions(await listOfflineSettlementExceptions());
       } else if (!canWrite) {
         await queryClient.invalidateQueries({ queryKey: ["settlement_exceptions"] });
@@ -113,7 +99,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
             rejectionAmount: period.rejection_amount == null ? null : Number(period.rejection_amount),
             approvedGrossAmount: period.approved_gross_amount == null ? null : Number(period.approved_gross_amount),
             actualWithholdingTax: period.actual_withholding_tax == null ? null : Number(period.actual_withholding_tax),
-            withholdingTaxVariance: period.withholding_tax_variance ?? null,
+            withholdingTaxVariance: period.withholding_tax_variance == null ? null : Number(period.withholding_tax_variance),
             paymentAdviceReference: period.payment_advice_reference ?? null,
             paymentAdviceDate: period.payment_advice_date ?? null,
           });
@@ -135,7 +121,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     } finally {
       setIsLoading(false);
     }
-  }, [offline, periods, canRead, canWrite, queryClient]);
+  }, [offline, periods, canRead, canWrite, queryClient, user?.id]);
 
   useEffect(() => {
     void refresh();

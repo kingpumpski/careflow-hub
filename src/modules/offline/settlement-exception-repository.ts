@@ -18,12 +18,31 @@ export async function listOfflineSettlementExceptions(facilityId = getStoredFaci
   return facilityId ? rows.filter((row) => row.facilityId === facilityId) : [];
 }
 
-export async function createOfflineSettlementException(exception: Omit<SettlementException, "id">): Promise<SettlementException> {
+export function buildCreatedSettlementExceptionAuditEvent(
+  exception: Omit<SettlementException, "id">,
+  exceptionId: string,
+  actorId: string | null,
+  auditId: string,
+): SettlementExceptionAuditEvent {
+  return {
+    id: auditId,
+    facilityId: exception.facilityId,
+    exceptionId,
+    eventType: "created",
+    actorId,
+    occurredAt: exception.detectedAt,
+    before: null,
+    after: exception.status,
+    note: null,
+  };
+}
+
+export async function createOfflineSettlementException(exception: Omit<SettlementException, "id">, actorId: string | null = null): Promise<SettlementException> {
   const facilityId = getStoredFacilityId();
   if (!facilityId || facilityId !== exception.facilityId) throw new Error("Facility context does not match the settlement exception.");
   const id = crypto.randomUUID();
   const record: SettlementException = { ...exception, id };
-  const audit: SettlementExceptionAuditEvent = { id: crypto.randomUUID(), facilityId: exception.facilityId, exceptionId: id, eventType: "created", actorId: null, occurredAt: exception.detectedAt, before: null, after: exception.status, note: null };
+  const audit = buildCreatedSettlementExceptionAuditEvent(exception, id, actorId, crypto.randomUUID());
   return runOfflineTransaction("readwrite", (store, resolve, reject) => {
     const save = store.put({ ...record, entity: "settlement_exceptions", storageKey: `settlement_exceptions:${id}`, updatedAt: new Date().toISOString() });
     save.onerror = () => reject(save.error ?? new Error("Unable to save settlement exception."));

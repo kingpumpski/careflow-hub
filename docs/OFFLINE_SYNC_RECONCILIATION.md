@@ -27,3 +27,8 @@ Connectivity is not authorization. Supabase RLS and the authenticated session re
 ## Excel boundary
 
 Excel remains a backup, migration, and controlled import/export mechanism. It is not used as the live synchronization database.
+
+
+## Offline settlement exception audit identity
+
+Offline settlement exception creation records the authenticated user's ID in the local immutable `created` audit event. Status transitions continue to record the actor and required note. If no authenticated identity is available, the actor is explicitly null rather than guessed. The shared settlement-period input contract is used by both online and offline detection, and the offline path skips incomplete period rows rather than coercing missing dates or statuses.
