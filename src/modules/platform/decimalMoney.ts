@@ -112,3 +112,17 @@ export function compareMoney(
   const rightMinor = toMinorUnits(right, currencyCode);
   return leftMinor < rightMinor ? -1 : leftMinor > rightMinor ? 1 : 0;
 }
+
+/** Calculates a percentage of a currency amount without binary floating-point arithmetic. */
+export function percentageOfMoney(
+  amount: DecimalAmount,
+  percentage: DecimalAmount,
+  currencyCode: string,
+): string {
+  const amountMinor = toMinorUnits(amount, currencyCode);
+  const parsedPercentage = parseDecimal(percentage);
+  return fromMinorUnits(
+    roundDivision(amountMinor * parsedPercentage.numerator, parsedPercentage.denominator * 100n),
+    currencyCode,
+  );
+}
