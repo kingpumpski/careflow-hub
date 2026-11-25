@@ -121,7 +121,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     } finally {
       setIsLoading(false);
     }
-  }, [offline, periods, canRead, canWrite, queryClient]);
+  }, [offline, periods, canRead, canWrite, queryClient, user?.id]);
 
   useEffect(() => {
     void refresh();
