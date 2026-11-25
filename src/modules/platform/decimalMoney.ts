@@ -8,7 +8,7 @@
 
 export type DecimalAmount = string | number;
 
-const DECIMAL_PATTERN = /^([+-]?)(\\d+)(?:\\.(\\d+))?$/;
+const DECIMAL_PATTERN = /^([+-]?)(\d+)(?:\.(\d+))?$/;
 
 function currencyScale(currencyCode: string): number {
   try {
