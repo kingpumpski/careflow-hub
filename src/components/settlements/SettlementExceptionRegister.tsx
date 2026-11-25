@@ -11,6 +11,7 @@ import { detectSettlementExceptions, type SettlementException, type SettlementEx
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { useQueryClient } from "@tanstack/react-query";
+import { hasSettlementExceptionReadAccess, hasSettlementExceptionWriteAccess } from "@/features/settlements/domain/settlement-exception-permissions";
 
 type SettlementPeriodInput = {
   id?: string;
@@ -74,8 +75,8 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
   const offline = getCareFlowDataMode() === "offline";
-  const canRead = !permissionsLoading && can("payments.read");
-  const canWrite = canRead && can("payments.write");
+  const canRead = !permissionsLoading && hasSettlementExceptionReadAccess(can);
+  const canWrite = canRead && hasSettlementExceptionWriteAccess(can);
   const [offlineExceptions, setOfflineExceptions] = useState<SettlementException[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
     setError(null);
     try {
       if (!canRead) {
-        setError("You need payments.read permission to view settlement exceptions.");
+        setError("You need payments.read or claims.settlement.read permission to view settlement exceptions.");
         return;
       }
       if (offline) {
@@ -147,7 +148,7 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
 
   const changeStatus = async (id: string, status: SettlementExceptionStatus) => {
     if (!user?.id) { setError("Sign in again before changing a settlement exception."); return; }
-    if (!canWrite) { setError("You need payments.read and payments.write permissions to update settlement exceptions."); return; }
+    if (!canWrite) { setError("You need payments.write or claims.settlement.write permission to update settlement exceptions."); return; }
     const note = window.prompt(status === "under_review" ? "Enter the review note:" : "Enter the resolution/waiver note:");
     if (!note?.trim()) return;
     setBusyId(id);

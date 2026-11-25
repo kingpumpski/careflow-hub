@@ -11,6 +11,7 @@ describe("online settlement exception migration contract", () => {
   it("requires an authenticated user with payment-write permission and facility access", () => {
     expect(migration).toContain("auth.uid() IS NULL");
     expect(migration).toContain("security_internal.current_user_has_permission('payments.write')");
+    expect(migration).toContain("security_internal.current_user_has_permission('claims.settlement.write')");
     expect(migration).toContain("security_internal.user_has_facility_access(v_facility_id)");
     expect(migration).toContain("security_internal.user_has_facility_access(v_exception.facility_id)");
   });

@@ -75,8 +75,10 @@ BEGIN
   END IF;
 
   IF position('security_internal.current_user_has_permission' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
+     OR position('claims.settlement.write' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
      OR position('security_internal.user_has_facility_access' in pg_get_functiondef(v_record_helper::regprocedure)) = 0
      OR position('security_internal.current_user_has_permission' in pg_get_functiondef(v_transition_helper::regprocedure)) = 0
+     OR position('claims.settlement.write' in pg_get_functiondef(v_transition_helper::regprocedure)) = 0
      OR position('security_internal.user_has_facility_access' in pg_get_functiondef(v_transition_helper::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'Private settlement helpers must enforce payment permission and facility membership';
   END IF;
