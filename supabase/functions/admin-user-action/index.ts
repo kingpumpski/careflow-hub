@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "").split(",").map((v) => v.trim()).filter(Boolean);
 const VALID_ROLES = new Set(["superuser", "admin", "claims_officer", "accounts_officer", "data_entry_officer", "auditor", "viewer"]);
 const MAX_PERMISSION_KEYS = 100;
-const isAllowedOrigin = (origin: string | null) => !origin || allowedOrigins.includes(origin) || /^https?:\/\/localhost:\d+$/.test(origin) || /^https:\/\/[-a-z0-9]+\.app\.github\.dev$/.test(origin);
+const isAllowedOrigin = (origin: string | null) => !origin || allowedOrigins.includes(origin) || origin === "https://kingpumpski.github.io" || origin === "http://kingpumpski.github.io" || /^https?:\/\/localhost:\d+$/.test(origin) || /^https:\/\/[-a-z0-9]+\.app\.github\.dev$/.test(origin);
 const corsHeaders = (req: Request) => {
   const origin = req.headers.get("Origin");
   return {
