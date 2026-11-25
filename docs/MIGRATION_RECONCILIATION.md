@@ -409,21 +409,3 @@ The tool reads only repository files and the historical snapshot. It makes **no 
 
 No production DDL, data changes, migration-ledger repair, Auth changes, or Edge Function deployments are authorized by this work. A successful disposable replay is necessary but not sufficient. Production migration work remains blocked until the project owner confirms the target project, a complete encrypted backup is verified, a replacement-project restore rehearsal passes, and an evidence-backed mapping reconciles the actual live schema and migration ledger to the source.
 
-
-
-## Read-only financial view inspection — 2026-11-25
-
-The production `public.claims_outstanding_periods` view was inspected directly. Its current definition uses `public.claims`, `public.payments`, and `public.withholding_tax` only. It does not read `public.claims_settlement_periods` as the aggregate insurer-month source.
-
-Additional missing production objects/columns confirmed by catalog queries:
-- `public.claims_settlement_remittances`
-- `public.claims_settlement_receipt_months`
-- `public.record_claims_settlement_remittance(uuid,text,date,date,numeric,numeric,numeric,numeric)`
-- `claims_settlement_periods.approved_gross_amount`
-- `claims_settlement_periods.actual_receipt_date`
-
-The source migrations `20261123153000_add_claims_settlement_remittance_ledger.sql` and `20261123160000_match_aggregate_claims_periods_and_receipt_months.sql` provide the intended schema and view changes, but those migrations are absent from the production ledger. The live view therefore cannot yet provide the aggregate-period submitted/rejected figures, explicit insurer-approved gross, approval variance, or actual receipt-month reporting described by the application.
-
-A separate source correction ensures the legacy individual-claim fallback keeps rejected claims in submitted gross and reports their rejected amount separately. This follows the financial rule that a claim rejected after submission remains part of the original submitted gross. The aggregate settlement-period register remains the preferred source whenever a period row exists.
-
-No production view, table, column, RPC, or migration-ledger entry was modified. These findings require the same migration-ledger reconciliation and controlled release as the other missing settlement objects.
