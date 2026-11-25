@@ -66,16 +66,18 @@ export default function Reports() {
       const insPayments = filterByPeriod((payments || []).filter((p: any) => p.insurance_company_id === ins.id), "claim_year", "claim_month");
       const insTax = filterByPeriod((withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id), "year", "month");
       const actualTaxRows = insTax.filter((taxRow) => taxRow.is_actual === true);
-      const taxByPeriod = new Map<string, { actual: number; provisional: number }>();
+      const taxByPeriod = new Map<string, { actual: number; provisional: number; actualCount: number }>();
       insTax.forEach((taxRow) => {
         const key = `${Number(taxRow.year)}-${Number(taxRow.month)}`;
-        const periodTax = taxByPeriod.get(key) || { actual: 0, provisional: 0 };
-        if (taxRow.is_actual === true) periodTax.actual += Number(taxRow.tax_amount || 0);
-        else periodTax.provisional += Number(taxRow.tax_amount || 0);
+        const periodTax = taxByPeriod.get(key) || { actual: 0, provisional: 0, actualCount: 0 };
+        if (taxRow.is_actual === true) {
+          periodTax.actual += Number(taxRow.tax_amount || 0);
+          periodTax.actualCount += 1;
+        } else periodTax.provisional += Number(taxRow.tax_amount || 0);
         taxByPeriod.set(key, periodTax);
       });
       const fallbackTaxApplied = Array.from(taxByPeriod.values()).reduce(
-        (sum, periodTax) => sum + (periodTax.actual > 0 ? periodTax.actual : periodTax.provisional),
+        (sum, periodTax) => sum + (periodTax.actualCount > 0 ? periodTax.actual : periodTax.provisional),
         0,
       );
 
@@ -102,11 +104,11 @@ export default function Reports() {
         ? authoritative.reduce((sum, period) => sum + Number(period.actual_withholding_tax_amount || 0), 0)
         : actualTaxRows.reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
       const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
-      const approvedGross = approvedGrossRows.length
+      const approvedGross = authoritative.length > 0 && approvedGrossRows.length === authoritative.length
         ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
         : null;
       const approvalVarianceRows = authoritative.filter((period) => period.approval_variance != null);
-      const approvalVariance = approvalVarianceRows.length
+      const approvalVariance = authoritative.length > 0 && approvalVarianceRows.length === authoritative.length
         ? approvalVarianceRows.reduce((sum, period) => sum + Number(period.approval_variance || 0), 0)
         : null;
       const netClaim = authoritative.length
