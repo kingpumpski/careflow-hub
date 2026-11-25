@@ -35,15 +35,15 @@ export default function Reports() {
     const month = parseInt(selectedMonth);
     let filtered = items;
     if (activePeriod === "Monthly") {
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 === month) : (Number(i[yearKey]) === year && Number(i[monthKey]) === month));
+      filtered = items.filter((i) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 === month) : (Number(i[yearKey]) === year && Number(i[monthKey]) === month));
     } else if (activePeriod === "Quarterly") {
       const qStart = Math.floor((month - 1) / 3) * 3 + 1;
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= qStart && new Date(i[dateKey]).getMonth() + 1 < qStart + 3) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= qStart && Number(i[monthKey]) < qStart + 3));
+      filtered = items.filter((i) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= qStart && new Date(i[dateKey]).getMonth() + 1 < qStart + 3) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= qStart && Number(i[monthKey]) < qStart + 3));
     } else if (activePeriod === "Annual") {
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year) : (Number(i[yearKey]) === year));
+      filtered = items.filter((i) => dateKey ? (new Date(i[dateKey]).getFullYear() === year) : (Number(i[yearKey]) === year));
     } else if (activePeriod === "Bi-Annual") {
       const half = month <= 6 ? [1, 6] : [7, 12];
-      filtered = items.filter((i: any) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= half[0] && new Date(i[dateKey]).getMonth() + 1 <= half[1]) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= half[0] && Number(i[monthKey]) <= half[1]));
+      filtered = items.filter((i) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= half[0] && new Date(i[dateKey]).getMonth() + 1 <= half[1]) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= half[0] && Number(i[monthKey]) <= half[1]));
     }
     return filtered;
   };
@@ -56,8 +56,8 @@ export default function Reports() {
       const insRejected = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected"), "claim_year", "claim_month");
       const insPayments = filterByPeriod((payments || []).filter((p: any) => p.insurance_company_id === ins.id), "claim_year", "claim_month");
       const insTax = filterByPeriod((withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id), "year", "month");
-      const actualTaxRows = insTax.filter((taxRow: any) => taxRow.is_actual === true);
-      const taxRows = actualTaxRows.length ? actualTaxRows : insTax.filter((taxRow: any) => taxRow.is_actual !== true);
+      const actualTaxRows = insTax.filter((taxRow) => taxRow.is_actual === true);
+      const taxRows = actualTaxRows.length ? actualTaxRows : insTax.filter((taxRow) => taxRow.is_actual !== true);
 
       // The settlement-period view is authoritative: it prefers aggregate claim
       // submissions, approved gross, matched payments and actual WHT, and uses
@@ -65,16 +65,16 @@ export default function Reports() {
       // retained as a compatibility fallback when the view is not yet deployed.
       const submitted = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
-        : insClaims.reduce((sum: number, claim: any) => sum + Number(claim.claim_amount || 0), 0);
+        : insClaims.reduce((sum, claim) => sum + Number(claim.claim_amount || 0), 0);
       const rejected = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.rejected_amount || 0), 0)
-        : insRejected.reduce((sum: number, claim: any) => sum + Number(claim.claim_amount || 0), 0);
+        : insRejected.reduce((sum, claim) => sum + Number(claim.claim_amount || 0), 0);
       const paid = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.paid_amount || 0), 0)
-        : insPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
+        : insPayments.reduce((sum, payment) => sum + Number(payment.amount_paid || 0), 0);
       const tax = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
-        : taxRows.reduce((sum: number, taxRow: any) => sum + Number(taxRow.tax_amount || 0), 0);
+        : taxRows.reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
         : submitted - rejected;
