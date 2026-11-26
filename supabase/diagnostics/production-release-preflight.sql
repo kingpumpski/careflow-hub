@@ -158,6 +158,18 @@ preauth_public_wrapper_security AS (
    AND pg_get_function_identity_arguments(p.oid) =
        'p_preauth_id uuid, p_snapshot jsonb, p_total_cost numeric, p_recipient_manifest jsonb, p_attachment_manifest jsonb, p_subject text, p_message_body text, p_idempotency_key text'
 ),
+permission_schema_contract AS (
+  SELECT
+    'permission schema compatibility: public.app_permissions, role_permissions, user_permission_overrides' AS check_name,
+    'supported legacy or canonical column contract'::text AS expected,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='app_permissions' AND column_name IN ('key','permission_key'))
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='role_permissions' AND column_name='permission_key')
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='user_permission_overrides' AND column_name IN ('granted','allowed'))
+        THEN 'supported legacy or canonical column contract'
+      ELSE 'unsupported permission schema'
+    END AS observed
+),
 ledger_check AS (
   SELECT
     'migration ledger: supabase_migrations.schema_migrations' AS check_name,
@@ -185,6 +197,7 @@ FROM (
   UNION ALL SELECT * FROM preauth_finalizer_contract
   UNION ALL SELECT * FROM preauth_finalizer_status_contract
   UNION ALL SELECT * FROM preauth_public_wrapper_security
+  UNION ALL SELECT * FROM permission_schema_contract
   UNION ALL SELECT * FROM ledger_check
 ) checks
 ORDER BY
