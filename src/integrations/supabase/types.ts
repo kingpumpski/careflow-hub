@@ -1045,7 +1045,7 @@ export type Database = {
         Args: never
         Returns: {
           key: string
-          value: string
+          value: string | null
         }[]
       }
       can_write: { Args: { _uid: string }; Returns: boolean }
