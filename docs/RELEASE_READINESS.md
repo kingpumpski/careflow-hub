@@ -411,3 +411,66 @@ The disposable migration workflow runs all source SQL and SQL contract tests aft
 
 No production database writes, migrations, ledger repairs, Auth mutations, or Edge Function deployments were performed by this update.
 
+
+
+## Consolidated implementation and production preflight — 2026-11-26
+
+This section supersedes earlier PR and production-status statements above where they conflict.
+
+### Repository changes merged
+
+- PR #120 — corrected permission compatibility diagnostics and release preflight contracts; merge commit `4f83ed39dada046770ae10ac7e0dc8616cf014d4`.
+- PR #121 — documented the exact Pre-Authorization finalizer source regression and production catalog mismatch; merge commit `4825d8a7fa231100b6ce749d3e6a9f25130d0141`.
+- PR #122 — added a forward-only prepared-handoff correction and fixed its SQL regression test; merge commit `451eeca1930853ab00ee1d2fde9a507a6ec452e1`.
+
+PR #122 passed all four required workflows on exact head `67a787c84559a7c2ec484bad7a53f4b16f83de71`:
+- CI run `45837726695` — passed.
+- CareFlow Quality Gate run `45837726720` — passed.
+- Dependency Security Audit run `45837726728` — passed.
+- Disposable PostgreSQL migration replay and SQL contract tests run `45837726780` — passed.
+
+The disposable replay temporarily normalizes the three documented duplicate migration prefixes only inside its ephemeral test job. It does not modify repository migration history or the hosted database.
+
+### Pre-Authorization finalizer correction
+
+The new migration `20261126150000_restore_prepared_preauthorization_handoff_contract.sql` restores `public.preauthorization_submissions` as the canonical prepared email-handoff register, enforces a prepared-only status, and replaces the legacy queue write. The regression test now rejects both `public.preauth_submissions` (legacy insurer execution queue) and `public.pre_auth_submissions` (misspelled relation) in the finalizer.
+
+The RPC records an immutable document revision and email package for officer review. It does not send email, claim delivery, submit to an insurer, or record insurer approval. It also avoids changing the parent request to an insurer-submitted state.
+
+**Important:** the migration is merged into the repository but has not been applied to production. The live production preflight therefore still reports the old finalizer body until a separately authorized deployment is completed.
+
+### Read-only production preflight — 2026-11-26
+
+A fresh execution of `supabase/diagnostics/production-release-preflight.sql` against project `jajfdgknctzqypdtvmxo` returned:
+
+- **20 BLOCKED**
+- **2 REVIEW**
+- **15 PASS**
+
+The principal blockers remain:
+- Settlement exception tables and lifecycle RPCs are absent.
+- Remittance ledger and receipt-month view are absent.
+- Claim-case tables and lifecycle RPCs are absent.
+- `claims_settlement_periods.approved_gross_amount` and `actual_receipt_date` are absent.
+- `preauthorization_submissions` is absent and the live finalizer still references the misspelled relation and legacy queue status.
+- `claims_officer` still lacks `claims.settlement.read` and `claims.settlement.write`.
+
+The permission schema itself is compatible with the deployed legacy column layout; that is not the blocker. The accounts-officer `payments.read/write` grants are present.
+
+`facilities` and `facility_memberships` both exist but each contains zero rows. Facility onboarding therefore remains a required owner-controlled operational step before facility-scoped workflows can be exercised.
+
+### Settlement and claim-case migration ledger cross-check
+
+A read-only filter of the live migration ledger for settlement/claim-case names returned only:
+- `20260908234726 / add_actual_withholding_tax_settlement_state`
+- `20260909064811 / claims_settlement_period_model`
+- `20260909135839 / index_claims_settlement_period_foreign_keys`
+
+The newer repository migrations for settlement exceptions, remittance events/reversals, receipt-month reporting, scoped settlement permissions and individual claim cases are not represented by those ledger rows. This is direct evidence that the current newer feature schema is not deployed in the observed production catalog; do not infer application state from Git merge status.
+
+### Release restrictions remain
+
+- Issue #31 remains open: no verified encrypted full-system backup and no separate-project restore rehearsal.
+- The complete semantic migration crosswalk remains unresolved.
+- No production DDL, data changes, migration-ledger repairs, permission grants, Auth changes or Edge Function deployments were made.
+- Do not run `supabase db push --linked` or apply the new migrations until the backup/restore and source-history gates are complete.
