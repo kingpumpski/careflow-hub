@@ -348,7 +348,7 @@ export default function Reports() {
           "Company / Summary": row.company,
           "WHT Basis": row.taxBasisLabel,
           "Tax Base (GHS)": row.taxBasisAmount,
-          "WHT Rate": row.taxRate == null ? "—" : Number((row.taxRate * 100).toFixed(2)),
+          "WHT Rate": row.taxRate == null ? "—" : `${(row.taxRate * 100).toFixed(2)}%`,
           "Provisional WHT (GHS)": row.provisionalTax,
           "Actual WHT (GHS)": row.actualTax,
           "WHT Applied (GHS)": row.tax,
