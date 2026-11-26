@@ -13,10 +13,11 @@ export default function NotificationsPopover() {
   // Connectivity can change while AuthContext is still holding its synthetic
   // offline user. Never send that non-UUID identity to the Postgres UUID filter.
   const canQueryRemoteNotifications = canPersistRemoteUserNotification(user?.id, offline);
+  const shouldLoadNotifications = offline || canQueryRemoteNotifications;
   const { data: notifications } = useSupabaseQuery("notifications", {
     select: "id,title,message,read,created_at,user_id",
     filters: canQueryRemoteNotifications && user ? { user_id: user.id } : undefined,
-    enabled: canQueryRemoteNotifications,
+    enabled: shouldLoadNotifications,
     limit: 10,
   });
   const updateMutation = useSupabaseUpdate("notifications");
