@@ -42,19 +42,8 @@ relation_checks AS (
   SELECT
     'relation: public.' || r.relation_name AS check_name,
     'present'::text AS expected,
-    COALESCE((
-      SELECT CASE c.relkind
-        WHEN 'r' THEN 'table'
-        WHEN 'v' THEN 'view'
-        WHEN 'm' THEN 'materialized view'
-        WHEN 'p' THEN 'partitioned table'
-        ELSE c.relkind::text
-      END
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public' AND c.relname = r.relation_name
-      LIMIT 1
-    ), 'missing') AS observed
+    CASE WHEN to_regclass('public.' || quote_ident(r.relation_name)) IS NOT NULL
+      THEN 'present' ELSE 'missing' END AS observed
   FROM required_relations r
 ),
 column_checks AS (
@@ -107,7 +96,7 @@ SELECT
   observed,
   CASE
     WHEN observed = expected THEN 'PASS'
-    WHEN observed LIKE 'present%' AND expected LIKE 'present%' THEN 'REVIEW'
+    WHEN observed LIKE 'present (signature%' OR observed LIKE 'present (rows%' THEN 'REVIEW'
     ELSE 'BLOCKED'
   END AS status
 FROM (
