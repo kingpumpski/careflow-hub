@@ -146,7 +146,12 @@ BEGIN
     SELECT * INTO v_version
     FROM public.preauthorization_versions
     WHERE id=v_existing.version_id AND preauth_id=p_preauth_id;
-    IF NOT FOUND OR coalesce(v_version.fingerprint,'') <> v_hash THEN
+    IF NOT FOUND OR coalesce(v_version.fingerprint,'') <> v_hash
+       OR v_existing.recipient_manifest IS DISTINCT FROM p_recipient_manifest
+       OR coalesce(v_existing.subject,'') IS DISTINCT FROM coalesce(p_subject,'')
+       OR coalesce(v_existing.message_body,'') IS DISTINCT FROM coalesce(p_message_body,'')
+       OR (jsonb_array_length(coalesce(p_attachment_manifest,'[]'::jsonb)) > 0
+           AND v_existing.attachment_manifest IS DISTINCT FROM p_attachment_manifest) THEN
       RAISE EXCEPTION 'IDEMPOTENCY_PAYLOAD_MISMATCH' USING errcode='22023';
     END IF;
 
