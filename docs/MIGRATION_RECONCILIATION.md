@@ -516,3 +516,34 @@ This confirms current production function contracts differ from the checked-in d
 5. Do not rename source migrations, edit the live migration ledger, or apply production DDL based on this source-only inspection.
 
 No production schema, data, migration ledger, Auth settings, or Edge Functions were changed during this review.
+
+
+## Product-scope clarification — 2026-11-26
+
+The project owner clarified that the Pre-Authorization module is a **document-preparation and generation tool**, not the primary source or system of record for insurer authorization submission.
+
+The authoritative product boundary is already described in `docs/PREAUTHORIZATION_STUDIO.md` and is reinforced by migrations `20260907170000_preauthorization_scope.sql`, `20260908104000_disable_legacy_preauth_submission_execution.sql`, and `20260908113000_preauth_rpc_boundary_hardening.sql`:
+
+- Capture and validate the request information and itemised charges.
+- Create immutable document revisions and generate the PDF.
+- Prepare the accompanying email package and open the officer's email client.
+- Record that the package is **prepared** and handed to the officer; do not claim the email was sent or delivered.
+- Insurer submission execution, insurer responses, approval/decline, authorization numbers, validity, follow-up and delivery reconciliation are outside this module.
+
+### Correction to the duplicate-version review
+
+The initial unscoped `WHERE id = id` in `20260907140000_preauth_versions_workflow_hardening.sql` is a source-history defect that must be understood in the replay sequence, but it is **not evidence that the production system currently executes that legacy insurer-submission RPC**:
+
+1. `20260907140500_preauth_version_audit_trigger.sql` replaces the function with a scoped `WHERE p.id = p_preauth_id` update.
+2. `20260907154000_preauth_submission_lifecycle.sql` later recreates the same legacy RPC with facility authorization and the scoped update.
+3. `20260908104000_disable_legacy_preauth_submission_execution.sql` drops the legacy submit/process/complete/fail RPCs and revokes authenticated write access to the legacy `preauth_submissions` table.
+4. `20260908113000_preauth_rpc_boundary_hardening.sql` repeats removal of those legacy execution RPCs and hardens the supported document/email-handoff RPC boundary.
+5. `20260907170000_preauthorization_scope.sql` explicitly constrains the document/email handoff record to status `prepared` and removes insurer-delivery response fields.
+
+The production catalog query that returned no public `submit_preauthorization` function is consistent with the intended boundary, not by itself a missing-feature defect. The separate document registry mismatch remains a migration-reconciliation issue and must be resolved using the actual production catalog and historical applied SQL.
+
+### Interpretation for future implementation
+
+Do not treat `preauth_submissions`, `submit_preauthorization`, insurer response tables, or payer integration adapters as mandatory core functionality. The supported handoff record is an internal record of document/email preparation. Internal review/approval of a prepared request, if retained by the facility workflow, must be clearly distinguished from insurer authorization approval. Do not silently map a local status such as `Approved` to an insurer decision.
+
+This scope clarification changes the product requirements and prioritisation; it does not authorize deleting historical tables or editing deployed migrations. Any UI terminology or workflow refactor must preserve the current user experience unless a separately reviewed implementation is approved.
