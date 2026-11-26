@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateClaimGrossTotals, calculateWithholdingRateBasis } from "./claimsReportCalculations";
+import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "./claimsReportCalculations";
 
 describe("claim report gross totals", () => {
   it("keeps rejected claims inside submitted gross and subtracts them once for net claims", () => {
@@ -75,5 +75,14 @@ describe("withholding rate basis", () => {
       hasProvisionalApplied: false,
       hasTaxData: false,
     })).toEqual({ taxBasisLabel: "—", taxBasisAmount: null, taxRate: null });
+  });
+});
+
+describe("applied withholding tax by claims month", () => {
+  it("uses actual WHT instead of adding provisional WHT in the same month", () => {
+    expect(calculateAppliedWithholdingTax([
+      { actual: 22.5, provisional: 50, actualCount: 1 },
+      { actual: 0, provisional: 10, actualCount: 0 },
+    ])).toBe(32.5);
   });
 });
