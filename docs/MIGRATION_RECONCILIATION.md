@@ -562,3 +562,37 @@ A focused read-only production inspection of the document-finalisation path foun
 **Impact:** the production finalisation RPC references a relation that is absent from the live catalog. This is a strong static indication that the finalisation transaction can fail when it reaches that insert. No user-facing RPC was invoked to test this, and no production writes were attempted. The missing source migration ledger row and live function body mismatch are evidence of production/source drift; do not assume simply applying the source migration is safe until the complete migration crosswalk, backup and restore gates are satisfied.
 
 **Scope:** this is a defect in the internal document-freeze/email-handoff record path, not a requirement to implement insurer-side submission. The fix must keep the module document-first, use the canonical handoff/idempotency records, and never re-enable external insurer queue processing.
+
+
+
+## Permission-schema compatibility correction — 2026-11-26
+
+This section supersedes the earlier interpretation in the 2026-11-25 compatibility refresh that described the live `permission_key/allowed` permission schema as necessarily incompatible with current source.
+
+A fresh read-only inspection of the live production catalog confirmed:
+
+- `public.app_permissions` exposes `permission_key` (not `key`).
+- `public.user_permission_overrides` exposes `permission_key` and `allowed` (not `granted`).
+- `public.role_permissions` exposes `role` and `permission_key`; a row represents a role grant and there is no `granted` column.
+
+The current source migration `20260910090000_system_administrator_global_access.sql` explicitly probes for both catalog key variants (`key` or `permission_key`) and both override flag variants (`granted` or `allowed`). It also checks for `role_permissions.granted`; where that column is absent, it treats the existing role-permission row as a grant. Therefore, the live legacy shape is an intentionally supported compatibility variant for that migration, not by itself proof of a failed migration or a required production schema alteration.
+
+The deployed `admin-user-action` Edge Function was checked directly on 2026-11-26:
+- Status: `ACTIVE`
+- Version: **5**
+- JWT verification: enabled
+- Its deployed source probes both legacy and canonical permission column variants, and normalizes the response to the UI contract.
+
+This supersedes the older note that referred to deployed version 4 and the earlier assumption that the deployed function necessarily queried only canonical columns. Do not deploy or alter this function solely to rename the permission columns.
+
+The compatibility review still needs to verify effective permission behavior in a restored copy: role-derived grants, explicit per-user allow/deny overrides, superuser/admin global access, and facility boundaries. In particular, the no-`granted` role table semantics should be tested against the exact live function definitions and intended role matrix. This is a semantic verification item, not a reason to add a broad RLS policy or change production grants.
+
+The independent release blockers remain:
+- the 74-row production migration ledger versus the current source migration set and unresolved duplicate version groups;
+- missing settlement exception, remittance-ledger, receipt-month view and claim-case schema/RPCs;
+- missing settlement permission catalogue entries;
+- missing `approved_gross_amount` and `actual_receipt_date` columns on `claims_settlement_periods`;
+- the Pre-Authorization finalizer drift documented above;
+- the backup/restore release gate.
+
+No production DDL, data, migration-ledger, Auth, Edge Function or permission configuration changes were made during this correction.
