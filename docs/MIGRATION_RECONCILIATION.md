@@ -596,3 +596,19 @@ The independent release blockers remain:
 - the backup/restore release gate.
 
 No production DDL, data, migration-ledger, Auth, Edge Function or permission configuration changes were made during this correction.
+
+
+
+### Settlement permission rollout gap — 2026-11-26
+
+The production permission compatibility finding must be separated from the missing scoped settlement role grants:
+
+- The legacy permission **column shape** is supported by the current migration and deployed `admin-user-action` v5 (see correction above).
+- Production currently has `payments.read` and `payments.write` in the permission catalogue and grants them to `accounts_officer`, `admin`, and `superuser`.
+- Production does **not** have `claims.settlement.read` or `claims.settlement.write` in the permission catalogue or `role_permissions`.
+- The production `claims_officer` role has `claims.read` and `claims.write`, but no `payments.read/write` and no scoped settlement permissions. Therefore a claims officer is denied the settlement register and payment-advice actions by the current UI permission checks, while accounts officers retain access through their existing payment permissions.
+- The source migration `20261123140000_claims_settlement_scoped_permissions.sql` seeds `claims.settlement.read/write` for `claims_officer` (and admin/superuser), preserving the intended least-privilege boundary: claims officers do not gain general `payments.write` or `ledger.write`.
+
+The production preflight now checks the intended role grants explicitly. Both claims-officer settlement permission checks return BLOCKED; the two accounts-officer payment permission checks return PASS. The missing scoped grants are a real operational permission rollout blocker for the claims department, not a column-name compatibility problem.
+
+Do not patch the live role-permission rows manually. The permission seed migration must be included in the reviewed forward release after backup/restore and migration-ledger reconciliation, then verified with representative claims-officer and accounts-officer identities in the restored copy.
