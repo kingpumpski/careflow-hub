@@ -79,6 +79,11 @@ export default function Reports() {
       const authoritative = periodRows.filter((period) => period.insurance_company_id === ins.id);
       const insurerClaims = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id), "claim_year", "claim_month");
       const fallbackClaimTotals = calculateClaimGrossTotals(insurerClaims);
+      const submittedGrossByPeriod = new Map<string, number>();
+      insurerClaims.forEach((claim: any) => {
+        const key = `${Number(claim.claim_year)}-${Number(claim.claim_month)}`;
+        submittedGrossByPeriod.set(key, (submittedGrossByPeriod.get(key) || 0) + Number(claim.claim_amount || 0));
+      });
       const insPayments = filterByPeriod((payments || []).filter((p: any) => p.insurance_company_id === ins.id), "claim_year", "claim_month");
       const insTax = filterByPeriod((withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id), "year", "month");
       const actualTaxRows = insTax.filter((taxRow) => taxRow.is_actual === true);
@@ -136,19 +141,34 @@ export default function Reports() {
       const outstanding = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
         : netClaim - paid - tax;
-      const fallbackTaxPeriods = Array.from(taxByPeriod.values());
+      const fallbackTaxPeriods = Array.from(taxByPeriod.entries());
       const hasActualAdvice = authoritative.length
         ? authoritative.some((period) => period.outstanding_status === "actual")
-        : fallbackTaxPeriods.some((period) => period.actualCount > 0);
+        : fallbackTaxPeriods.some(([, periodTax]) => periodTax.actualCount > 0);
       const hasProvisionalApplied = authoritative.length
         ? authoritative.some((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
-        : fallbackTaxPeriods.some((period) => period.actualCount === 0 && period.provisionalCount > 0);
+        : fallbackTaxPeriods.some(([, periodTax]) => periodTax.actualCount === 0 && periodTax.provisionalCount > 0);
       const hasTaxData = authoritative.length
         ? authoritative.some((period) => Number(period.withholding_tax_entry_count || 0) > 0)
         : fallbackTaxPeriods.length > 0;
+      const actualBasisRows = authoritative.filter((period) => period.outstanding_status === "actual");
+      const actualBasisAvailable = actualBasisRows.length > 0
+        && actualBasisRows.every((period) => period.approved_gross_amount != null);
+      const actualBasisAmount = actualBasisAvailable
+        ? actualBasisRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
+        : null;
+      const provisionalBasisAmount = authoritative.length
+        ? authoritative
+          .filter((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+          .reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
+        : fallbackTaxPeriods.reduce((sum, [key, periodTax]) => (
+          periodTax.actualCount === 0 && periodTax.provisionalCount > 0
+            ? sum + (submittedGrossByPeriod.get(key) || 0)
+            : sum
+        ), 0);
       const taxBasis = calculateWithholdingRateBasis({
-        submittedGross: submitted,
-        approvedGross,
+        actualBasisAmount,
+        provisionalBasisAmount,
         provisionalTax,
         actualTax,
         hasActualAdvice,
