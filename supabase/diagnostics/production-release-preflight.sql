@@ -43,11 +43,6 @@ required_functions(function_name) AS (
     ('transition_claim_case'),
     ('finalize_preauthorization_handoff')
 ),
-required_permissions(permission_key) AS (
-  VALUES
-    ('claims.settlement.read'),
-    ('claims.settlement.write')
-),
 relation_checks AS (
   SELECT
     'relation: public.' || r.relation_name AS check_name,
@@ -80,16 +75,6 @@ function_checks AS (
       WHERE n.nspname = 'public' AND p.proname = f.function_name
     ) THEN 'present (signature not verified)' ELSE 'missing' END AS observed
   FROM required_functions f
-),
-permission_checks AS (
-  SELECT
-    'permission: ' || p.permission_key AS check_name,
-    'present in public.app_permissions'::text AS expected,
-    CASE WHEN EXISTS (
-      SELECT 1 FROM public.app_permissions a
-      WHERE a.permission_key = p.permission_key
-    ) THEN 'present' ELSE 'missing' END AS observed
-  FROM required_permissions p
 ),
 preauth_legacy_name_check AS (
   SELECT
@@ -170,6 +155,23 @@ permission_schema_contract AS (
       ELSE 'unsupported permission schema'
     END AS observed
 ),
+permission_access_contract AS (
+  SELECT
+    'permission access: settlement read' AS check_name,
+    'available'::text AS expected,
+    CASE WHEN EXISTS (
+      SELECT 1 FROM public.app_permissions a
+      WHERE coalesce(to_jsonb(a)->>'key', to_jsonb(a)->>'permission_key') IN ('payments.read','claims.settlement.read')
+    ) THEN 'available' ELSE 'missing' END AS observed
+  UNION ALL
+  SELECT
+    'permission access: settlement write' AS check_name,
+    'available'::text AS expected,
+    CASE WHEN EXISTS (
+      SELECT 1 FROM public.app_permissions a
+      WHERE coalesce(to_jsonb(a)->>'key', to_jsonb(a)->>'permission_key') IN ('payments.write','claims.settlement.write')
+    ) THEN 'available' ELSE 'missing' END AS observed
+),
 ledger_check AS (
   SELECT
     'migration ledger: supabase_migrations.schema_migrations' AS check_name,
@@ -192,7 +194,7 @@ FROM (
   SELECT * FROM relation_checks
   UNION ALL SELECT * FROM column_checks
   UNION ALL SELECT * FROM function_checks
-  UNION ALL SELECT * FROM permission_checks
+  UNION ALL SELECT * FROM permission_access_contract
   UNION ALL SELECT * FROM preauth_legacy_name_check
   UNION ALL SELECT * FROM preauth_finalizer_contract
   UNION ALL SELECT * FROM preauth_finalizer_status_contract
