@@ -11,6 +11,7 @@ import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
+import { calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -76,19 +77,22 @@ export default function Reports() {
     const periodRows = filterByPeriod(outstandingPeriods || [], "period_year", "period_month");
     return (insurers || []).map((ins: any) => {
       const authoritative = periodRows.filter((period) => period.insurance_company_id === ins.id);
-      const insClaims = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status !== "rejected"), "claim_year", "claim_month");
-      const insRejected = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id && c.status === "rejected"), "claim_year", "claim_month");
+      const insurerClaims = filterByPeriod((claims || []).filter((c: any) => c.insurance_company_id === ins.id), "claim_year", "claim_month");
+      const fallbackClaimTotals = calculateClaimGrossTotals(insurerClaims);
       const insPayments = filterByPeriod((payments || []).filter((p: any) => p.insurance_company_id === ins.id), "claim_year", "claim_month");
       const insTax = filterByPeriod((withholdingTax || []).filter((t: any) => t.insurance_company_id === ins.id), "year", "month");
       const actualTaxRows = insTax.filter((taxRow) => taxRow.is_actual === true);
-      const taxByPeriod = new Map<string, { actual: number; provisional: number; actualCount: number }>();
+      const taxByPeriod = new Map<string, { actual: number; provisional: number; actualCount: number; provisionalCount: number }>();
       insTax.forEach((taxRow) => {
         const key = `${Number(taxRow.year)}-${Number(taxRow.month)}`;
-        const periodTax = taxByPeriod.get(key) || { actual: 0, provisional: 0, actualCount: 0 };
+        const periodTax = taxByPeriod.get(key) || { actual: 0, provisional: 0, actualCount: 0, provisionalCount: 0 };
         if (taxRow.is_actual === true) {
           periodTax.actual += Number(taxRow.tax_amount || 0);
           periodTax.actualCount += 1;
-        } else periodTax.provisional += Number(taxRow.tax_amount || 0);
+        } else {
+          periodTax.provisional += Number(taxRow.tax_amount || 0);
+          periodTax.provisionalCount += 1;
+        }
         taxByPeriod.set(key, periodTax);
       });
       const fallbackTaxApplied = Array.from(taxByPeriod.values()).reduce(
@@ -102,10 +106,10 @@ export default function Reports() {
       // retained as a compatibility fallback when the view is not yet deployed.
       const submitted = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
-        : insClaims.reduce((sum, claim) => sum + Number(claim.claim_amount || 0), 0);
+        : fallbackClaimTotals.submittedGross;
       const rejected = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.rejected_amount || 0), 0)
-        : insRejected.reduce((sum, claim) => sum + Number(claim.claim_amount || 0), 0);
+        : fallbackClaimTotals.rejectedGross;
       const paid = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.paid_amount || 0), 0)
         : insPayments.reduce((sum, payment) => sum + Number(payment.amount_paid || 0), 0);
@@ -128,11 +132,30 @@ export default function Reports() {
         : null;
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
-        : submitted - rejected;
+        : fallbackClaimTotals.netClaim;
       const outstanding = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
         : netClaim - paid - tax;
-      return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, provisionalTax, actualTax, approvedGross, approvalVariance, outstanding, color: ins.color };
+      const fallbackTaxPeriods = Array.from(taxByPeriod.values());
+      const hasActualAdvice = authoritative.length
+        ? authoritative.some((period) => period.outstanding_status === "actual")
+        : fallbackTaxPeriods.some((period) => period.actualCount > 0);
+      const hasProvisionalApplied = authoritative.length
+        ? authoritative.some((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+        : fallbackTaxPeriods.some((period) => period.actualCount === 0 && period.provisionalCount > 0);
+      const hasTaxData = authoritative.length
+        ? authoritative.some((period) => Number(period.withholding_tax_entry_count || 0) > 0)
+        : fallbackTaxPeriods.length > 0;
+      const taxBasis = calculateWithholdingRateBasis({
+        submittedGross: submitted,
+        approvedGross,
+        provisionalTax,
+        actualTax,
+        hasActualAdvice,
+        hasProvisionalApplied,
+        hasTaxData,
+      });
+      return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, provisionalTax, actualTax, approvedGross, approvalVariance, outstanding, ...taxBasis, color: ins.color };
     }).filter((row) => row.submitted > 0 || row.paid > 0 || row.rejected > 0 || row.netClaim > 0 || row.outstanding > 0)
       .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
   }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
@@ -250,8 +273,21 @@ export default function Reports() {
       data = receivables.map((row) => [row.company, row.netClaim, row.paid, row.tax, row.outstanding, row.netClaim > 0 ? `${(((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)}%` : "—"]);
       data.push(["Grand Total", grandNet, grandPaid, grandTax, grandOutstanding, grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"]);
     } else if (activeReport === "tax") {
-      columns = ["Company / Summary", "Claims Base / Amount (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)"];
-      data = [["WHT Payable", taxLiabilityData.whtPayable, "", "", ""], ["WHT Reversals", taxLiabilityData.whtReversals, "", "", ""], ["Net Tax Liability", taxLiabilityData.netLiability, "", "", ""], ...sortedReport.filter((row) => row.tax > 0).map((row) => [row.company, row.netClaim, row.provisionalTax, row.actualTax, row.tax])];
+      columns = ["Company / Summary", "WHT Basis", "Tax Base (GHS)", "WHT Rate", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)"];
+      data = [
+        ["WHT Payable", "—", "—", "—", "—", "—", taxLiabilityData.whtPayable],
+        ["WHT Reversals", "—", "—", "—", "—", "—", taxLiabilityData.whtReversals],
+        ["Net Tax Liability", "—", "—", "—", "—", "—", taxLiabilityData.netLiability],
+        ...sortedReport.filter((row) => row.tax > 0).map((row) => [
+          row.company,
+          row.taxBasisLabel,
+          row.taxBasisAmount ?? "—",
+          row.taxRate == null ? "—" : `${(row.taxRate * 100).toFixed(2)}%`,
+          row.provisionalTax,
+          row.actualTax,
+          row.tax,
+        ]),
+      ];
     } else if (activeReport === "aging") {
       columns = ["Aging Bucket", "Outstanding (GHS)"];
       data = [["0–30 days", agingData.b30], ["31–60 days", agingData.b60], ["61–90 days", agingData.b90], ["91–120 days", agingData.b120], ["120+ days", agingData.b120plus]];
@@ -274,7 +310,20 @@ export default function Reports() {
       rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Applied": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
       rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Applied": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
     } else if (activeReport === "tax") {
-      rows = [{ "Tax Summary": "WHT Payable", "Amount": taxLiabilityData.whtPayable }, { "Tax Summary": "WHT Reversals", "Amount": taxLiabilityData.whtReversals }, { "Tax Summary": "Net Tax Liability", "Amount": taxLiabilityData.netLiability }, ...sortedReport.filter((row) => row.tax > 0).map((row) => ({ "Tax Summary": row.company, "Claims Base": row.netClaim, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Applied": row.tax }))];
+      rows = [
+        { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtPayable },
+        { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtReversals },
+        { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.netLiability },
+        ...sortedReport.filter((row) => row.tax > 0).map((row) => ({
+          "Company / Summary": row.company,
+          "WHT Basis": row.taxBasisLabel,
+          "Tax Base (GHS)": row.taxBasisAmount,
+          "WHT Rate": row.taxRate == null ? "—" : Number((row.taxRate * 100).toFixed(2)),
+          "Provisional WHT (GHS)": row.provisionalTax,
+          "Actual WHT (GHS)": row.actualTax,
+          "WHT Applied (GHS)": row.tax,
+        })),
+      ];
     } else if (activeReport === "aging") {
       rows = [{ "Aging Bucket": "0–30 days", "Outstanding": agingData.b30 }, { "Aging Bucket": "31–60 days", "Outstanding": agingData.b60 }, { "Aging Bucket": "61–90 days", "Outstanding": agingData.b90 }, { "Aging Bucket": "91–120 days", "Outstanding": agingData.b120 }, { "Aging Bucket": "120+ days", "Outstanding": agingData.b120plus }];
       rows.push({ "Aging Bucket": "Total Outstanding", "Outstanding": Object.values(agingData).reduce((sum, value) => sum + value, 0) });
@@ -416,20 +465,22 @@ export default function Reports() {
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {taxLiabilityData.netLiability.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Net Tax Liability</p></div>
               </div>
               <table className="data-table">
-                <thead><tr><th>Company</th><th>Claims Base</th><th>WHT Rate</th><th>WHT Amount</th></tr></thead>
+                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>WHT Amount (GHS)</th></tr></thead>
                 <tbody>
-                  {settlementReportUnavailable && <tr><td colSpan={4} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
+                  {settlementReportUnavailable && <tr><td colSpan={5} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
                     <tr key={r.company} className="hover:bg-muted/50 transition-colors">
                       <td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color || "#3b82f6" }} />{r.company}</div></td>
-                      <td>GH¢ {r.netClaim.toLocaleString()}</td>
-                      <td>5%</td>
+                      <td>{r.taxBasisLabel}</td>
+                      <td>{r.taxBasisAmount == null ? "—" : `GH¢ ${r.taxBasisAmount.toLocaleString()}`}</td>
+                      <td>{r.taxRate == null ? "—" : `${(r.taxRate * 100).toFixed(2)}%`}</td>
                       <td className="font-semibold text-warning">GH¢ {r.tax.toLocaleString()}</td>
                     </tr>
                   ))}
+                  {!settlementReportUnavailable && sortedReport.filter(r => r.tax > 0).length === 0 && <tr><td colSpan={5} className="text-center text-muted-foreground py-6">No withholding tax data for the selected period.</td></tr>}
                 </tbody>
                 {sortedReport.filter(r => r.tax > 0).length > 0 && (
-                  <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>GH¢ {grandNet.toLocaleString()}</td><td></td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
+                  <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>—</td><td>—</td><td>—</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
                 )}
               </table>
             </div>
