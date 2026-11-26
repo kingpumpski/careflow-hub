@@ -29,8 +29,8 @@ export default function Reports() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
-  const { data: outstandingPeriods } = useSupabaseQuery("claims_outstanding_periods");
-  const { data: receiptMonths } = useSupabaseQuery("claims_settlement_receipt_months");
+  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
+  const { data: receiptMonths, error: receiptMonthsError } = useSupabaseQuery("claims_settlement_receipt_months", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useQuery({
     queryKey: ["report-letterhead-settings", canManageSettings],
@@ -52,6 +52,7 @@ export default function Reports() {
   });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
+  const settlementReportUnavailable = Boolean(outstandingPeriodsError) && activeReport !== "income";
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
@@ -190,6 +191,7 @@ export default function Reports() {
   const grandOutstanding = reportData.reduce((s, r) => s + r.outstanding, 0);
 
   const handlePrint = (title: string) => {
+    if (settlementReportUnavailable) return;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const source = document.getElementById("report-content");
@@ -230,6 +232,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
   };
 
   const handleExportPDF = () => {
+    if (settlementReportUnavailable) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
@@ -258,6 +261,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
   };
 
   const handleExportExcel = () => {
+    if (settlementReportUnavailable) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
@@ -285,11 +289,14 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial Reports</h1><p className="page-description">Generate comprehensive financial statements and reconciliation reports</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)}><Printer className="w-4 h-4" />Print</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />PDF</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel}><Download className="w-4 h-4" />Excel</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
         </div>
       </div>
+
+      {settlementReportUnavailable && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Claims settlement report data is unavailable. Financial totals are not zero; printing and exports are disabled until the settlement source is restored.</div>}
+      {activeReport === "balance" && receiptMonthsError && !settlementReportUnavailable && <div role="status" className="rounded-md border p-3 text-sm text-muted-foreground">Actual cash and WHT by receipt month are unavailable. The printout will identify this section as unavailable rather than reporting zero receipts.</div>}
 
       <div className="flex items-center gap-2 flex-wrap">
         {periods.map((p) => <Button key={p} variant={p === activePeriod ? "default" : "outline"} size="sm" onClick={() => setActivePeriod(p)}>{p}</Button>)}
@@ -314,10 +321,10 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
         <div id="report-content" className="mt-4">
           <TabsContent value="balance">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {grandSubmitted.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">GH¢ {grandPaid.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Paid</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">GH¢ {grandTax.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-destructive">GH¢ {grandOutstanding.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Outstanding</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">{settlementReportUnavailable ? "—" : `GH¢ ${grandSubmitted.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">{settlementReportUnavailable ? "—" : `GH¢ ${grandPaid.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Paid</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${grandTax.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">WHT</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-destructive">{settlementReportUnavailable ? "—" : `GH¢ ${grandOutstanding.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Outstanding</p></div>
             </div>
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">{periodLabel} — Account Balance Report</h3>
@@ -343,7 +350,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
                       <td className="text-destructive font-semibold">GH¢ {r.outstanding.toLocaleString()}</td>
                     </tr>
                   ))}
-                  {sortedReport.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">No data for selected period</td></tr>}
+                  {sortedReport.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero balance." : "No data for selected period"}</td></tr>}
                 </tbody>
                 {sortedReport.length > 0 && (
                   <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>GH¢ {grandSubmitted.toLocaleString()}</td><td className="text-destructive">GH¢ {grandRejected.toLocaleString()}</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td></tr></tfoot>
