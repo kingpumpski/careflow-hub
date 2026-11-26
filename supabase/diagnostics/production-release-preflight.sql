@@ -155,22 +155,34 @@ permission_schema_contract AS (
       ELSE 'unsupported permission schema'
     END AS observed
 ),
-permission_access_contract AS (
+permission_role_contract AS (
   SELECT
-    'permission access: settlement read' AS check_name,
-    'available'::text AS expected,
-    CASE WHEN EXISTS (
-      SELECT 1 FROM public.app_permissions a
-      WHERE coalesce(to_jsonb(a)->>'key', to_jsonb(a)->>'permission_key') IN ('payments.read','claims.settlement.read')
-    ) THEN 'available' ELSE 'missing' END AS observed
+    'role permission: claims_officer claims.settlement.read' AS check_name,
+    'present in catalogue and role grants'::text AS expected,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='claims_officer' AND rp.permission_key='claims.settlement.read')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='claims.settlement.read')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END AS observed
   UNION ALL
   SELECT
-    'permission access: settlement write' AS check_name,
-    'available'::text AS expected,
-    CASE WHEN EXISTS (
-      SELECT 1 FROM public.app_permissions a
-      WHERE coalesce(to_jsonb(a)->>'key', to_jsonb(a)->>'permission_key') IN ('payments.write','claims.settlement.write')
-    ) THEN 'available' ELSE 'missing' END AS observed
+    'role permission: claims_officer claims.settlement.write',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='claims_officer' AND rp.permission_key='claims.settlement.write')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='claims.settlement.write')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
+  UNION ALL
+  SELECT
+    'role permission: accounts_officer payments.read',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='accounts_officer' AND rp.permission_key='payments.read')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='payments.read')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
+  UNION ALL
+  SELECT
+    'role permission: accounts_officer payments.write',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='accounts_officer' AND rp.permission_key='payments.write')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='payments.write')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
 ),
 ledger_check AS (
   SELECT
@@ -194,7 +206,7 @@ FROM (
   SELECT * FROM relation_checks
   UNION ALL SELECT * FROM column_checks
   UNION ALL SELECT * FROM function_checks
-  UNION ALL SELECT * FROM permission_access_contract
+  UNION ALL SELECT * FROM permission_role_contract
   UNION ALL SELECT * FROM preauth_legacy_name_check
   UNION ALL SELECT * FROM preauth_finalizer_contract
   UNION ALL SELECT * FROM preauth_finalizer_status_contract
