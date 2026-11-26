@@ -126,14 +126,14 @@ preauth_finalizer_status_contract AS (
 preauth_public_wrapper_security AS (
   SELECT
     'pre-authorization public finalizer wrapper security' AS check_name,
-    'SECURITY DEFINER, empty search_path, authenticated execute, anon denied'::text AS expected,
+    'SECURITY INVOKER, empty search_path, authenticated execute, anon denied'::text AS expected,
     CASE
       WHEN p.oid IS NULL THEN 'missing public wrapper'
-      WHEN p.prosecdef
+      WHEN NOT p.prosecdef
        AND coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[]
        AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
        AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
-        THEN 'SECURITY DEFINER, empty search_path, authenticated execute, anon denied'
+        THEN 'SECURITY INVOKER, empty search_path, authenticated execute, anon denied'
       ELSE 'security/grant contract mismatch'
     END AS observed
   FROM (SELECT 1) seed
