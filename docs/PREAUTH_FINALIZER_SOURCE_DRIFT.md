@@ -1,28 +1,36 @@
 # Pre-Authorization finalizer: source and production drift audit
 
-**Status: release-blocking; read-only investigation only.** This record supersedes earlier statements that the current finalizer source consistently targets the canonical prepared-handoff table.
+**Status: source correction merged; production release remains blocked.** This document supersedes the earlier source-tree finding below that described the canonical prepared-handoff relation and test as missing. The historical production observations are retained as read-only evidence and must not be mistaken for the current repository implementation.
 
 ## Approved product contract
 
 The Pre-Authorization Studio prepares an immutable document revision and an email package for an officer to review and send through the facility's normal channel. A successful finalization records preparation/handoff only. It must not imply that an email was sent or delivered, that an insurer received it, or that an insurer approved it. Insurer-side response tracking and the legacy insurer execution queue are out of scope.
 
-The intended prepared-handoff relation is `public.preauthorization_submissions`. Its source migration initially defines a `prepared`-only lifecycle. The separate `public.preauth_submissions` relation is a legacy queue-shaped execution register and must not be reused for the document-preparation workflow. The distinct misspelling `public.pre_auth_submissions` is not a valid relation name.
+The intended prepared-handoff relation is `public.preauthorization_submissions`. The separate `public.preauth_submissions` relation is a legacy queue-shaped execution register and must not be reused for document preparation. The distinct misspelling `public.pre_auth_submissions` is not a valid relation name.
 
-## Verified source-tree finding
+## Current repository implementation
 
-Inspection of the current main branch at merge commit `4f83ed39dada046770ae10ac7e0dc8616cf014d4` found:
+The source correction was merged in PR #122 (merge commit `451eeca1930853ab00ee1d2fde9a507a6ec452e1`):
 
-- `20260907160000_preauthorization_submission_lifecycle.sql` creates `public.preauthorization_submissions`, with a prepared-first lifecycle and recipient/attachment manifests.
-- `20260907170000_preauthorization_scope.sql` constrains that relation to `status = 'prepared'` and removes insurer-delivery/response columns.
-- Later finalizer migrations `20260910170000_restore_preauthorization_finalize_handoff.sql`, `20260910172000_harden_preauth_finalize_duplicate_concurrency.sql`, and `20260910183000_harden_preauthorization_idempotency.sql` instead read/write the legacy `public.preauth_submissions` relation and insert `status = 'queued'`. The final migration also retains a row type for that legacy table.
-- `supabase/tests/preauth_submission_idempotency.test.sql` incorrectly calls `public.preauth_submissions` canonical and only rejects `public.pre_auth_submissions`. It does not enforce the intended `public.preauthorization_submissions` relation or prepared-only status.
-- Consequently, the current source test gives false confidence and does not protect the product boundary.
+- Migration `20261126150000_restore_prepared_preauthorization_handoff_contract.sql` creates/restores `public.preauthorization_submissions` as a prepared-only handoff register.
+- The private finalizer writes the canonical prepared-handoff relation and preserves immutable version, document registry, handoff log and idempotency behavior.
+- It does not use either the legacy queue relation or the misspelled relation, and it does not create insurer submission, delivery or approval states.
+- `supabase/tests/preauth_submission_idempotency.test.sql` requires the canonical relation, rejects both noncanonical relation names, and enforces prepared-only semantics.
+- PR #122 passed CI, CareFlow Quality Gate, Dependency Security Audit and disposable PostgreSQL migration replay/SQL contract tests on its exact head.
 
-These are repository source findings, not proof of which SQL bytes were originally applied to production.
+The exposed wrapper was further hardened in PR #124 (merge commit `31670fff909450af28f7f45099045bc0cc8cec14`):
 
-## Verified production catalog finding (SELECT-only)
+- `public.finalize_preauthorization_handoff(...)` is now `SECURITY INVOKER`, with an empty `search_path`.
+- Authenticated execution is retained; `PUBLIC` and `anon` execution are revoked.
+- The permission-checked private `security_internal.finalize_preauthorization_handoff(...)` remains the privileged implementation. Its ACL revokes `PUBLIC` and `anon`, retaining authenticated execution for the invoker wrapper.
+- SQL contract tests assert wrapper mode, pinned search path and both wrapper/private function grants.
+- PR #124 passed CI, CareFlow Quality Gate, Dependency Security Audit and full disposable PostgreSQL migration replay/SQL contract tests.
 
-A read-only catalog query against the owner-confirmed project `jajfdgknctzqypdtvmxo` returned:
+PR #125 updates the read-only production preflight diagnostic to expect the new SECURITY INVOKER wrapper contract. It is a diagnostic-only follow-up and remains subject to its own checks before merge.
+
+## Historical production catalog finding (SELECT-only; not yet revalidated after source merge)
+
+The read-only production inspection on 2026-11-26 returned:
 
 | Object | Present |
 |---|---:|
@@ -31,27 +39,29 @@ A read-only catalog query against the owner-confirmed project `jajfdgknctzqypdtv
 | `public.pre_auth_submissions` (misspelling) | No |
 | `security_internal.finalize_preauthorization_handoff(...)` | Yes |
 
-The live private finalizer body reads `public.preauth_submissions` for idempotency, but its new-row INSERT targets the nonexistent `public.pre_auth_submissions` and sets `status = 'queued'`. The public wrapper delegates to this private function. Therefore a new finalization attempt is not compatible with the live catalog and, independently, the queue status violates the approved prepared-handoff-only contract.
+The observed live private finalizer body contained an INSERT into the nonexistent `public.pre_auth_submissions` and used legacy queue status semantics. This is static evidence of a production/source mismatch; no user-facing RPC was invoked and no write was attempted.
 
-The same read-only snapshot reconfirmed independent production blockers:
+**The repository correction has not been applied to production.** The live function and catalog must be re-inspected after a verified backup/restore and complete migration crosswalk. Do not assume that merging the source migration changes the hosted database.
 
-- Missing settlement exception tables and RPCs.
-- Missing remittance table/RPC and receipt-month view.
-- Missing claim-case tables and lifecycle RPCs.
+## Independent production blockers
+
+The same read-only production review found:
+
+- Settlement exception tables and lifecycle RPCs are absent.
+- Remittance ledger, receipt-month view and related RPCs are absent.
+- Claim-case tables and lifecycle RPCs are absent.
 - `claims_settlement_periods` lacks `approved_gross_amount` and `actual_receipt_date`.
-- `facilities` and `facility_memberships` both contain zero rows.
-- `claims_officer` lacks `claims.settlement.read` and `claims.settlement.write`; `accounts_officer` retains `payments.read/write`.
+- `claims_officer` lacks `claims.settlement.read` and `claims.settlement.write`.
+- `facilities` and `facility_memberships` exist but both contain zero rows.
+- The live migration ledger and source migration history still require a semantic crosswalk; duplicate timestamp groups must not be resolved by arbitrary renaming.
 
-No production DDL, data, migration-ledger, permission, Auth, or Edge Function changes were made.
+## Required release sequence
 
-## Required correction sequence
+1. Complete and verify the encrypted full-system backup and separate-project restore rehearsal.
+2. Complete the semantic crosswalk between the live migration ledger, historical applied SQL and current source migrations.
+3. On the restored copy, replay and verify the finalizer's complete transaction: permission and facility boundaries, immutable revision, document registry, handoff audit, idempotency, duplicate concurrency, payload mismatch and prepared-only semantics.
+4. Verify settlement, remittance, reversal, receipt-month and claim-case migrations against realistic multi-role and cross-month scenarios.
+5. Re-run the read-only production preflight and reconcile every BLOCKED/REVIEW result.
+6. Only after review and explicit release authorization may a controlled production deployment be considered.
 
-1. Recover and complete the semantic production migration crosswalk. The migration ledger stores names, not SQL bodies; do not infer historical equivalence from filenames.
-2. Complete the already-required encrypted backup and separate-project restore rehearsal. Do not bypass the paused backup work.
-3. Reconcile the finalizer's exact table/column contract against both the production catalog and the intended `preauthorization_submissions` schema.
-4. Prepare a reviewed forward-only correction that writes only a `prepared` record to `public.preauthorization_submissions`, preserves immutable revision and idempotency behavior, and does not call insurer queue/process/complete/fail functions.
-5. Add SQL regression tests that explicitly require `public.preauthorization_submissions`, reject both `public.preauth_submissions` and `public.pre_auth_submissions` in the finalizer, and reject `queued` or other insurer-delivery states.
-6. Test the complete sequence from empty database and against a restored production copy, including facility authorization, duplicate concurrency, idempotent retry, payload mismatch, and prepared-only semantics.
-7. Only after review and explicit release authorization may a production migration be considered.
-
-Do not edit historical migrations, repair the migration ledger, create a replacement table directly in production, deploy the Edge Function, or run `supabase db push --linked` as a shortcut.
+Do not edit historical migrations, repair the live migration ledger, create replacement tables directly in production, deploy Edge Functions independently of their schema contract, or run `supabase db push --linked` as a shortcut.
