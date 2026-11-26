@@ -547,3 +547,18 @@ The production catalog query that returned no public `submit_preauthorization` f
 Do not treat `preauth_submissions`, `submit_preauthorization`, insurer response tables, or payer integration adapters as mandatory core functionality. The supported handoff record is an internal record of document/email preparation. Internal review/approval of a prepared request, if retained by the facility workflow, must be clearly distinguished from insurer authorization approval. Do not silently map a local status such as `Approved` to an insurer decision.
 
 This scope clarification changes the product requirements and prioritisation; it does not authorize deleting historical tables or editing deployed migrations. Any UI terminology or workflow refactor must preserve the current user experience unless a separately reviewed implementation is approved.
+
+
+### Additional live finalisation-RPC mismatch — 2026-11-26
+
+A focused read-only production inspection of the document-finalisation path found a concrete compatibility defect:
+
+- Production has `public.preauth_submissions`, `public.preauth_document_registry`, `public.preauth_handoff_log`, and `public.preauthorization_versions`.
+- Production does **not** have `public.pre_auth_submissions` (the distinct relation name with an underscore after `pre`).
+- The live `security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)` function definition contains `INSERT INTO public.pre_auth_submissions`. Its public wrapper delegates to this function.
+- The repository's `20260910183000_harden_preauthorization_idempotency.sql` source uses the canonical `public.preauth_submissions` relation and includes an explicit regression contract in `supabase/tests/preauth_submission_idempotency.test.sql` that rejects the misspelled relation reference.
+- The live migration ledger query returned the earlier finalisation/hardening entries (`restore_preauthorization_finalize_handoff`, `harden_preauth_finalize_duplicate_concurrency`) but did not return a row named `20260910183000_harden_preauthorization_idempotency`.
+
+**Impact:** the production finalisation RPC references a relation that is absent from the live catalog. This is a strong static indication that the finalisation transaction can fail when it reaches that insert. No user-facing RPC was invoked to test this, and no production writes were attempted. The missing source migration ledger row and live function body mismatch are evidence of production/source drift; do not assume simply applying the source migration is safe until the complete migration crosswalk, backup and restore gates are satisfied.
+
+**Scope:** this is a defect in the internal document-freeze/email-handoff record path, not a requirement to implement insurer-side submission. The fix must keep the module document-first, use the canonical handoff/idempotency records, and never re-enable external insurer queue processing.
