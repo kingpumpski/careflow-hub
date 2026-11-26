@@ -1041,6 +1041,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_report_letterhead_settings: {
+        Args: never
+        Returns: {
+          key: string
+          value: string
+        }[]
+      }
       can_write: { Args: { _uid: string }; Returns: boolean }
       has_role: {
         Args: {
