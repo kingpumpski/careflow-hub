@@ -18,3 +18,10 @@ GRANT EXECUTE ON FUNCTION public.finalize_preauthorization_handoff(uuid,jsonb,nu
 
 COMMENT ON FUNCTION public.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)
 IS 'Invoker-scoped API wrapper. Delegates to the permission-checked private finalizer that records a prepared email handoff only.';
+
+-- The private helper remains SECURITY DEFINER because it performs guarded
+-- cross-table writes. Restrict direct invocation to authenticated callers.
+REVOKE ALL ON FUNCTION security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)
+  TO authenticated;
