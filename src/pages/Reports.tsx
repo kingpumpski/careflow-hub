@@ -29,7 +29,7 @@ export default function Reports() {
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
-  const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
+  const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
   const { data: receiptMonths, error: receiptMonthsError } = useSupabaseQuery("claims_settlement_receipt_months", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
@@ -53,7 +53,13 @@ export default function Reports() {
   });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
-  const settlementReportUnavailable = Boolean(outstandingPeriodsError) && activeReport !== "income";
+  const settlementViewHasSeparatedTaxFields = Boolean(outstandingPeriods?.some((period: any) =>
+    "provisional_withholding_tax_amount" in period || "actual_withholding_tax_amount" in period
+  ));
+  const settlementReportUnavailable = (
+    Boolean(outstandingPeriodsError)
+    || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
+  ) && activeReport !== "income";
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
@@ -118,15 +124,22 @@ export default function Reports() {
       const paid = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.paid_amount || 0), 0)
         : insPayments.reduce((sum, payment) => sum + Number(payment.amount_paid || 0), 0);
-      const tax = authoritative.length
+      const hasSeparatedTaxFields = authoritative.some((period) =>
+        "provisional_withholding_tax_amount" in period || "actual_withholding_tax_amount" in period
+      );
+      // The older production view sums actual and provisional WHT together.
+      // When its separate columns are absent, derive the applied amount from
+      // the raw tax ledger: actual replaces provisional within each claims month.
+      const fallbackTaxPeriods = Array.from(taxByPeriod.values());
+      const tax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
         : fallbackTaxApplied;
-      const provisionalTax = authoritative.length
+      const provisionalTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.provisional_withholding_tax_amount || 0), 0)
-        : insTax.filter((taxRow) => taxRow.is_actual !== true).reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
-      const actualTax = authoritative.length
+        : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.provisional, 0);
+      const actualTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.actual_withholding_tax_amount || 0), 0)
-        : actualTaxRows.reduce((sum, taxRow) => sum + Number(taxRow.tax_amount || 0), 0);
+        : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.actual, 0);
       const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
       const approvedGross = authoritative.length > 0 && approvedGrossRows.length === authoritative.length
         ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
@@ -138,30 +151,30 @@ export default function Reports() {
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
         : fallbackClaimTotals.netClaim;
-      const outstanding = authoritative.length
+      const outstanding = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
-        : netClaim - paid - tax;
-      const fallbackTaxPeriods = Array.from(taxByPeriod.entries());
-      const hasActualAdvice = authoritative.length
+        : Math.max(netClaim - paid - tax, 0);
+      const fallbackTaxPeriodEntries = Array.from(taxByPeriod.entries());
+      const hasActualAdvice = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => period.outstanding_status === "actual")
-        : fallbackTaxPeriods.some(([, periodTax]) => periodTax.actualCount > 0);
-      const hasProvisionalApplied = authoritative.length
+        : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount > 0);
+      const hasProvisionalApplied = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
-        : fallbackTaxPeriods.some(([, periodTax]) => periodTax.actualCount === 0 && periodTax.provisionalCount > 0);
-      const hasTaxData = authoritative.length
+        : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount === 0 && periodTax.provisionalCount > 0);
+      const hasTaxData = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => Number(period.withholding_tax_entry_count || 0) > 0)
-        : fallbackTaxPeriods.length > 0;
+        : fallbackTaxPeriodEntries.length > 0;
       const actualBasisRows = authoritative.filter((period) => period.outstanding_status === "actual");
-      const actualBasisAvailable = actualBasisRows.length > 0
+      const actualBasisAvailable = hasSeparatedTaxFields && actualBasisRows.length > 0
         && actualBasisRows.every((period) => period.approved_gross_amount != null);
       const actualBasisAmount = actualBasisAvailable
         ? actualBasisRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
         : null;
-      const provisionalBasisAmount = authoritative.length
+      const provisionalBasisAmount = authoritative.length && hasSeparatedTaxFields
         ? authoritative
           .filter((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
           .reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
-        : fallbackTaxPeriods.reduce((sum, [key, periodTax]) => (
+        : fallbackTaxPeriodEntries.reduce((sum, [key, periodTax]) => (
           periodTax.actualCount === 0 && periodTax.provisionalCount > 0
             ? sum + (submittedGrossByPeriod.get(key) || 0)
             : sum
