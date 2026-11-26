@@ -17,7 +17,16 @@ required_relations(relation_name) AS (
     ('claims_settlement_periods'),
     ('claims_outstanding_periods'),
     ('facilities'),
-    ('facility_memberships')
+    ('facility_memberships'),
+    -- Document-preparation core; preauth_submissions is an internal idempotency/handoff record,
+    -- not an insurer-side processing queue.
+    ('pre_authorizations'),
+    ('preauth_items'),
+    ('preauthorization_versions'),
+    ('preauth_submissions'),
+    ('preauth_document_registry'),
+    ('preauth_handoff_log'),
+    ('preauth_email_log')
 ),
 required_columns(table_name, column_name) AS (
   VALUES
@@ -31,7 +40,8 @@ required_functions(function_name) AS (
     ('record_claims_settlement_remittance'),
     ('get_report_letterhead_settings'),
     ('create_claim_case'),
-    ('transition_claim_case')
+    ('transition_claim_case'),
+    ('finalize_preauthorization_handoff')
 ),
 required_permissions(permission_key) AS (
   VALUES
@@ -81,6 +91,52 @@ permission_checks AS (
     ) THEN 'present' ELSE 'missing' END AS observed
   FROM required_permissions p
 ),
+preauth_legacy_name_check AS (
+  SELECT
+    'pre-authorization legacy relation: public.pre_auth_submissions' AS check_name,
+    'absent'::text AS expected,
+    CASE WHEN to_regclass('public.pre_auth_submissions') IS NULL
+      THEN 'absent' ELSE 'present (unexpected legacy relation)' END AS observed
+),
+preauth_finalizer_contract AS (
+  SELECT
+    'pre-authorization finalizer relation reference: security_internal.finalize_preauthorization_handoff' AS check_name,
+    'canonical public.preauth_submissions only'::text AS expected,
+    CASE
+      WHEN p.oid IS NULL THEN 'missing private finalizer'
+      WHEN position('public.pre_auth_submissions' in pg_get_functiondef(p.oid)) > 0
+        THEN 'references public.pre_auth_submissions (non-canonical)'
+      WHEN position('public.preauth_submissions' in pg_get_functiondef(p.oid)) > 0
+        THEN 'canonical public.preauth_submissions only'
+      ELSE 'canonical relation reference not found'
+    END AS observed
+  FROM (SELECT 1) seed
+  LEFT JOIN pg_proc p
+    ON p.proname = 'finalize_preauthorization_handoff'
+   AND p.pronamespace = 'security_internal'::regnamespace
+   AND pg_get_function_identity_arguments(p.oid) =
+       'p_preauth_id uuid, p_snapshot jsonb, p_total_cost numeric, p_recipient_manifest jsonb, p_attachment_manifest jsonb, p_subject text, p_message_body text, p_idempotency_key text'
+),
+preauth_public_wrapper_security AS (
+  SELECT
+    'pre-authorization public finalizer wrapper security' AS check_name,
+    'SECURITY DEFINER, empty search_path, authenticated execute, anon denied'::text AS expected,
+    CASE
+      WHEN p.oid IS NULL THEN 'missing public wrapper'
+      WHEN p.prosecdef
+       AND coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[]
+       AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+       AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+        THEN 'SECURITY DEFINER, empty search_path, authenticated execute, anon denied'
+      ELSE 'security/grant contract mismatch'
+    END AS observed
+  FROM (SELECT 1) seed
+  LEFT JOIN pg_proc p
+    ON p.proname = 'finalize_preauthorization_handoff'
+   AND p.pronamespace = 'public'::regnamespace
+   AND pg_get_function_identity_arguments(p.oid) =
+       'p_preauth_id uuid, p_snapshot jsonb, p_total_cost numeric, p_recipient_manifest jsonb, p_attachment_manifest jsonb, p_subject text, p_message_body text, p_idempotency_key text'
+),
 ledger_check AS (
   SELECT
     'migration ledger: supabase_migrations.schema_migrations' AS check_name,
@@ -104,6 +160,9 @@ FROM (
   UNION ALL SELECT * FROM column_checks
   UNION ALL SELECT * FROM function_checks
   UNION ALL SELECT * FROM permission_checks
+  UNION ALL SELECT * FROM preauth_legacy_name_check
+  UNION ALL SELECT * FROM preauth_finalizer_contract
+  UNION ALL SELECT * FROM preauth_public_wrapper_security
   UNION ALL SELECT * FROM ledger_check
 ) checks
 ORDER BY
