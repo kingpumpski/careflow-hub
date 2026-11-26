@@ -17,6 +17,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/modules/security/usePermissions";
 import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
+import { getCareFlowDataMode } from "@/modules/offline/data-mode";
+import { canPersistRemoteUserNotification } from "@/modules/offline/notificationGuard";
 
 const statusStyles: Record<string, string> = {
   Draft: "bg-muted text-muted-foreground border-border", PendingApproval: "bg-warning/10 text-warning border-warning/20", Approved: "bg-success/10 text-success border-success/20", Rejected: "bg-destructive/10 text-destructive border-destructive/20", Completed: "bg-info/10 text-info border-info/20",
@@ -59,7 +61,22 @@ export default function PreAuthorization() {
   const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
   const companyInfo = buildLetterheadConfig(getS);
 
-  const notifyTransition = async (pa: any, newState: string, note?: string) => { try { await insertNotif.mutateAsync({ user_id: user?.id, title: `Pre-Auth ${newState}`, message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`, type: "preauth", read: false }); } catch {} };
+  const notifyTransition = async (pa: any, newState: string, note?: string) => {
+    const offline = getCareFlowDataMode() === "offline";
+    if (!canPersistRemoteUserNotification(user?.id, offline)) return;
+    try {
+      await insertNotif.mutateAsync({
+        user_id: user!.id,
+        title: `Pre-Auth ${newState}`,
+        message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`,
+        type: "preauth",
+        read: false,
+      });
+    } catch (error) {
+      // Notification delivery is secondary to the already-committed workflow transition.
+      console.warn("Unable to save pre-authorization notification", error);
+    }
+  };
   const reloadTimeline = async (id: string) => { const { data: v } = await (supabase.from("preauth_versions") as any).select("*").eq("preauth_id", id).order("version_number", { ascending: false }); setVersions(v || []); const { data: e } = await (supabase.from("preauth_email_log") as any).select("*").eq("preauth_id", id).order("created_at", { ascending: false }); setEmailLog(e || []); };
 
   const handleTransition = async (pa: any, target: string, note?: string) => {
