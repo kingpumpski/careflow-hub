@@ -74,3 +74,17 @@ BEGIN
   END IF;
 END;
 $wrapper_security$;
+
+DO $private_acl$
+DECLARE
+  v_function oid;
+BEGIN
+  v_function := 'security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'::regprocedure;
+  IF has_function_privilege('anon',v_function,'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous role must not execute private Pre-Authorization finalizer';
+  END IF;
+  IF NOT has_function_privilege('authenticated',v_function,'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated role must retain private finalizer execution for the invoker wrapper';
+  END IF;
+END;
+$private_acl$;
