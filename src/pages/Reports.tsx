@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
+import { usePermissions } from "@/modules/security/usePermissions";
+import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -20,6 +22,8 @@ export default function Reports() {
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
+  const { can } = usePermissions();
+  const canManageSettings = can("settings.manage");
 
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -29,12 +33,22 @@ export default function Reports() {
   const { data: receiptMonths } = useSupabaseQuery("claims_settlement_receipt_months");
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useQuery({
-    queryKey: ["report-letterhead-settings"],
+    queryKey: ["report-letterhead-settings", canManageSettings],
     queryFn: async () => {
-      const { data, error } = await supabase.from("system_settings").select("key, value");
-      if (error) throw error;
-      return (data || []) as { key: string; value: string | null }[];
+      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
+      if (!error) return data ?? [];
+
+      // Older production databases do not have the least-privilege report RPC yet.
+      // Preserve the existing letterhead for settings administrators only; never
+      // fall back to broad system_settings reads for ordinary report users.
+      if (!isMissingLetterheadSettingsRpc(error)) throw error;
+      if (!canManageSettings) return [];
+
+      const fallback = await supabase.from("system_settings").select("key, value");
+      if (fallback.error) throw fallback.error;
+      return fallback.data ?? [];
     },
+    retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
   });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
