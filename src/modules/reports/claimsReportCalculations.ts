@@ -17,8 +17,8 @@ export function calculateClaimGrossTotals(claims: readonly ClaimReportInput[]) {
 }
 
 export interface WithholdingRateBasisInput {
-  submittedGross: number;
-  approvedGross: number | null;
+  actualBasisAmount: number | null;
+  provisionalBasisAmount: number;
   provisionalTax: number;
   actualTax: number;
   hasActualAdvice: boolean;
@@ -36,7 +36,7 @@ export function calculateWithholdingRateBasis(input: WithholdingRateBasisInput) 
   }
 
   if (input.hasActualAdvice) {
-    const taxBasisAmount = input.approvedGross;
+    const taxBasisAmount = input.actualBasisAmount;
     return {
       taxBasisLabel: "Approved gross",
       taxBasisAmount,
@@ -46,7 +46,7 @@ export function calculateWithholdingRateBasis(input: WithholdingRateBasisInput) 
     };
   }
 
-  const taxBasisAmount = input.submittedGross;
+  const taxBasisAmount = input.provisionalBasisAmount;
   return {
     taxBasisLabel: "Submitted gross",
     taxBasisAmount,
