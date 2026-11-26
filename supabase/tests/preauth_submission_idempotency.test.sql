@@ -49,3 +49,28 @@ BEGIN
   END IF;
 END;
 $test$;
+
+DO $wrapper_security$
+DECLARE
+  v_function oid;
+  v_is_definer boolean;
+  v_config text[];
+BEGIN
+  v_function := 'public.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'::regprocedure;
+  SELECT prosecdef, proconfig INTO v_is_definer, v_config
+  FROM pg_proc WHERE oid=v_function;
+
+  IF v_is_definer THEN
+    RAISE EXCEPTION 'Public Pre-Authorization finalizer wrapper must be SECURITY INVOKER';
+  END IF;
+  IF NOT coalesce(v_config,ARRAY[]::text[]) @> ARRAY['search_path=""']::text[] THEN
+    RAISE EXCEPTION 'Public Pre-Authorization finalizer wrapper must pin an empty search_path';
+  END IF;
+  IF NOT has_function_privilege('authenticated',v_function,'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated role must retain finalizer wrapper execute';
+  END IF;
+  IF has_function_privilege('anon',v_function,'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous role must not execute finalizer wrapper';
+  END IF;
+END;
+$wrapper_security$;
