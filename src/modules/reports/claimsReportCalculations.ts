@@ -53,3 +53,20 @@ export function calculateWithholdingRateBasis(input: WithholdingRateBasisInput) 
     taxRate: taxBasisAmount > 0 ? input.provisionalTax / taxBasisAmount : null,
   };
 }
+
+export interface WithholdingPeriodAmounts {
+  actual: number;
+  provisional: number;
+  actualCount: number;
+}
+
+/**
+ * Apply actual WHT in a claims month when insurer advice exists; otherwise
+ * apply the provisional estimate. Never add both for the same month.
+ */
+export function calculateAppliedWithholdingTax(periods: readonly WithholdingPeriodAmounts[]): number {
+  return periods.reduce(
+    (sum, period) => sum + (period.actualCount > 0 ? period.actual : period.provisional),
+    0,
+  );
+}
