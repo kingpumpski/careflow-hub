@@ -39,7 +39,7 @@ The Ghana Cedi presentation is the initial deployment default, not a core invari
 
 `draft → verified → submitted → acknowledged → under_review → queried → approved → partially_approved → rejected → appealed → partially_paid → paid → reconciled → closed`
 
-The framework-independent transition catalogue in `src/modules/claims/lifecycle.ts` is the canonical status contract. The individual claim-case implementation in branch `feat/individual-claim-cases-rebased` adds a separate facility-scoped `claim_cases` table, server-side transactional creation/transition RPCs, immutable `claim_case_events`, and a dedicated Claims UI. It is not yet merged or deployed and must not be treated as a production authorization boundary until disposable-database integration tests, migration-history reconciliation, and controlled deployment succeed.
+The framework-independent transition catalogue in `src/modules/claims/lifecycle.ts` is the canonical status contract. The individual claim-case implementation was merged to `main` in PR #72 (merge commit `c8c8967b3ef68571ea2f565243c2542636d33328`) and adds a separate facility-scoped `claim_cases` table, server-side transactional creation/transition RPCs, immutable `claim_case_events`, and a dedicated Claims UI. The implementation is present in the repository, but its production schema is not deployed: the live database still lacks `claim_cases` and `claim_case_events`. It must not be treated as a production authorization boundary until the production migration history is reconciled, backup/restore release gates pass, and the controlled migration deployment is verified.
 
 ## Individual claim cases versus monthly aggregates
 

@@ -43,11 +43,6 @@ required_functions(function_name) AS (
     ('transition_claim_case'),
     ('finalize_preauthorization_handoff')
 ),
-required_permissions(permission_key) AS (
-  VALUES
-    ('claims.settlement.read'),
-    ('claims.settlement.write')
-),
 relation_checks AS (
   SELECT
     'relation: public.' || r.relation_name AS check_name,
@@ -80,16 +75,6 @@ function_checks AS (
       WHERE n.nspname = 'public' AND p.proname = f.function_name
     ) THEN 'present (signature not verified)' ELSE 'missing' END AS observed
   FROM required_functions f
-),
-permission_checks AS (
-  SELECT
-    'permission: ' || p.permission_key AS check_name,
-    'present in public.app_permissions'::text AS expected,
-    CASE WHEN EXISTS (
-      SELECT 1 FROM public.app_permissions a
-      WHERE a.permission_key = p.permission_key
-    ) THEN 'present' ELSE 'missing' END AS observed
-  FROM required_permissions p
 ),
 preauth_legacy_name_check AS (
   SELECT
@@ -158,6 +143,47 @@ preauth_public_wrapper_security AS (
    AND pg_get_function_identity_arguments(p.oid) =
        'p_preauth_id uuid, p_snapshot jsonb, p_total_cost numeric, p_recipient_manifest jsonb, p_attachment_manifest jsonb, p_subject text, p_message_body text, p_idempotency_key text'
 ),
+permission_schema_contract AS (
+  SELECT
+    'permission schema compatibility: public.app_permissions, role_permissions, user_permission_overrides' AS check_name,
+    'supported legacy or canonical column contract'::text AS expected,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='app_permissions' AND column_name IN ('key','permission_key'))
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='role_permissions' AND column_name='permission_key')
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='user_permission_overrides' AND column_name IN ('granted','allowed'))
+        THEN 'supported legacy or canonical column contract'
+      ELSE 'unsupported permission schema'
+    END AS observed
+),
+permission_role_contract AS (
+  SELECT
+    'role permission: claims_officer claims.settlement.read' AS check_name,
+    'present in catalogue and role grants'::text AS expected,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='claims_officer' AND rp.permission_key='claims.settlement.read')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='claims.settlement.read')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END AS observed
+  UNION ALL
+  SELECT
+    'role permission: claims_officer claims.settlement.write',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='claims_officer' AND rp.permission_key='claims.settlement.write')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='claims.settlement.write')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
+  UNION ALL
+  SELECT
+    'role permission: accounts_officer payments.read',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='accounts_officer' AND rp.permission_key='payments.read')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='payments.read')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
+  UNION ALL
+  SELECT
+    'role permission: accounts_officer payments.write',
+    'present in catalogue and role grants'::text,
+    CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role::text='accounts_officer' AND rp.permission_key='payments.write')
+      AND EXISTS (SELECT 1 FROM public.app_permissions ap WHERE coalesce(to_jsonb(ap)->>'key',to_jsonb(ap)->>'permission_key')='payments.write')
+      THEN 'present in catalogue and role grants' ELSE 'missing' END
+),
 ledger_check AS (
   SELECT
     'migration ledger: supabase_migrations.schema_migrations' AS check_name,
@@ -180,11 +206,12 @@ FROM (
   SELECT * FROM relation_checks
   UNION ALL SELECT * FROM column_checks
   UNION ALL SELECT * FROM function_checks
-  UNION ALL SELECT * FROM permission_checks
+  UNION ALL SELECT * FROM permission_role_contract
   UNION ALL SELECT * FROM preauth_legacy_name_check
   UNION ALL SELECT * FROM preauth_finalizer_contract
   UNION ALL SELECT * FROM preauth_finalizer_status_contract
   UNION ALL SELECT * FROM preauth_public_wrapper_security
+  UNION ALL SELECT * FROM permission_schema_contract
   UNION ALL SELECT * FROM ledger_check
 ) checks
 ORDER BY

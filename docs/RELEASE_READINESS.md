@@ -47,8 +47,10 @@ These are read-only observations. No production schema, migration ledger, settin
 - [ ] A rollback/recovery approach is documented for destructive schema changes.
 - [ ] Duplicate migration version prefixes are reconciled against the production migration ledger; see [Migration version reconciliation](MIGRATION_RECONCILIATION.md).
 - [ ] Organization-level tenant schema, active-organization context and cross-tenant RLS tests are implemented (facility scoping alone is not organization tenancy).
-- [ ] Claim lifecycle transitions are enforced by a server-side transactional RPC and Claims UI.
-- [ ] Settlement exception register supports atomic online/offline lifecycle transitions and audit. PR #48 contains the online implementation and passed code CI, but remains draft pending disposable-database integration tests; its migration is not applied.
+- [x] Individual claim-case lifecycle implementation is merged in PR #72: facility-scoped cases, transactional create/transition RPCs, immutable events and Claims UI are in `main`; production deployment remains blocked because `claim_cases` and `claim_case_events` are absent from the live schema.
+- [x] Settlement exception register and atomic online/offline lifecycle implementation are merged in `main`, integrated into Claims Settlement, and covered by SQL contract tests. Production deployment remains blocked because `settlement_exceptions`, `settlement_exception_audit_events` and their RPCs are absent from the live schema.
+
+These checkboxes confirm repository implementation only; they do not mark the production database as migrated or operational.
 
 ## Security gates
 
