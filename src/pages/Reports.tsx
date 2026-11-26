@@ -398,7 +398,7 @@ export default function Reports() {
                       <td>{r.netClaim > 0 ? `${(((r.paid + r.tax) / r.netClaim) * 100).toFixed(1)}%` : "—"}</td>
                     </tr>
                   ))}
-                  {sortedReport.filter(r => r.outstanding > 0).length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">No outstanding receivables</td></tr>}
+                  {sortedReport.filter(r => r.outstanding > 0).length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero receivable balance." : "No outstanding receivables"}</td></tr>}
                 </tbody>
                 {sortedReport.filter(r => r.outstanding > 0).length > 0 && (
                   <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td><td>{grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"}</td></tr></tfoot>
@@ -418,6 +418,7 @@ export default function Reports() {
               <table className="data-table">
                 <thead><tr><th>Company</th><th>Claims Base</th><th>WHT Rate</th><th>WHT Amount</th></tr></thead>
                 <tbody>
+                  {settlementReportUnavailable && <tr><td colSpan={4} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
                     <tr key={r.company} className="hover:bg-muted/50 transition-colors">
                       <td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color || "#3b82f6" }} />{r.company}</div></td>
@@ -438,11 +439,11 @@ export default function Reports() {
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">Claim Aging Report — Outstanding by Bucket</h3>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-success">GH¢ {agingData.b30.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-info">GH¢ {agingData.b60.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b90.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b120.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-destructive">GH¢ {agingData.b120plus.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">120+ days (high risk)</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-success">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b30.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-info">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b60.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b90.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b120.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-destructive">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b120plus.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">120+ days (high risk)</p></div>
               </div>
               <p className="text-sm text-muted-foreground">Buckets are computed from the end of each claim's submission month to today. Aging shows where receivable exposure is concentrated and which insurers need escalation.</p>
             </div>
