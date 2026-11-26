@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
+import { usePermissions } from "@/modules/security/usePermissions";
+import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -20,24 +22,37 @@ export default function Reports() {
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
+  const { can } = usePermissions();
+  const canManageSettings = can("settings.manage");
 
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
-  const { data: outstandingPeriods } = useSupabaseQuery("claims_outstanding_periods");
-  const { data: receiptMonths } = useSupabaseQuery("claims_settlement_receipt_months");
+  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
+  const { data: receiptMonths, error: receiptMonthsError } = useSupabaseQuery("claims_settlement_receipt_months", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useQuery({
-    queryKey: ["report-letterhead-settings"],
+    queryKey: ["report-letterhead-settings", canManageSettings],
     queryFn: async () => {
-      const { data, error } = await supabase.from("system_settings").select("key, value");
-      if (error) throw error;
-      return (data || []) as { key: string; value: string | null }[];
+      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
+      if (!error) return data ?? [];
+
+      // Older production databases do not have the least-privilege report RPC yet.
+      // Preserve the existing letterhead for settings administrators only; never
+      // fall back to broad system_settings reads for ordinary report users.
+      if (!isMissingLetterheadSettingsRpc(error)) throw error;
+      if (!canManageSettings) return [];
+
+      const fallback = await supabase.from("system_settings").select("key, value");
+      if (fallback.error) throw fallback.error;
+      return fallback.data ?? [];
     },
+    retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
   });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
+  const settlementReportUnavailable = Boolean(outstandingPeriodsError) && activeReport !== "income";
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
@@ -176,6 +191,7 @@ export default function Reports() {
   const grandOutstanding = reportData.reduce((s, r) => s + r.outstanding, 0);
 
   const handlePrint = (title: string) => {
+    if (settlementReportUnavailable) return;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const source = document.getElementById("report-content");
@@ -203,7 +219,11 @@ export default function Reports() {
       ? companyInfo.accent_color!
       : "#1E4078";
     const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Approved gross and approval variance are shown when insurer payment advice is available. The WHT applied to outstanding balances is actual WHT when confirmed, otherwise the provisional estimate.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
-const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Cash and actual withholding tax are grouped by the month the facility received the remittance, independently of the original claims month.</p><table><thead><tr><th>Insurance Company</th><th>Receipt Month</th><th>Net Cash Received</th><th>Actual WHT</th><th>Remittances</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>GH¢ ${Number(entry.actual_withholding_tax || 0).toLocaleString()}</td><td>${Number(entry.remittance_count || 0)}</td></tr>`).join("")}</tbody></table></section>` : "";
+    const receiptTable = activeReport === "balance" && receiptMonthsError
+      ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Receipt-month data is unavailable from the connected database. This section is unavailable, not zero. Do not use this report as evidence of zero receipts.</p></section>`
+      : activeReport === "balance" && receiptMonthData.length
+        ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Cash and actual withholding tax are grouped by the month the facility received the remittance, independently of the original claims month.</p><table><thead><tr><th>Insurance Company</th><th>Receipt Month</th><th>Net Cash Received</th><th>Actual WHT</th><th>Remittances</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>GH¢ ${Number(entry.actual_withholding_tax || 0).toLocaleString()}</td><td>${Number(entry.remittance_count || 0)}</td></tr>`).join("")}</tbody></table></section>`
+        : "";
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${accentColor};padding:0 0 14px;margin-bottom:18px}
@@ -216,6 +236,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
   };
 
   const handleExportPDF = () => {
+    if (settlementReportUnavailable) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
@@ -244,6 +265,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
   };
 
   const handleExportExcel = () => {
+    if (settlementReportUnavailable) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
@@ -271,11 +293,14 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial Reports</h1><p className="page-description">Generate comprehensive financial statements and reconciliation reports</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)}><Printer className="w-4 h-4" />Print</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF}><Download className="w-4 h-4" />PDF</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel}><Download className="w-4 h-4" />Excel</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
         </div>
       </div>
+
+      {settlementReportUnavailable && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Claims settlement report data is unavailable. Financial totals are not zero; printing and exports are disabled until the settlement source is restored.</div>}
+      {activeReport === "balance" && receiptMonthsError && !settlementReportUnavailable && <div role="status" className="rounded-md border p-3 text-sm text-muted-foreground">Actual cash and WHT by receipt month are unavailable. The printout will identify this section as unavailable rather than reporting zero receipts.</div>}
 
       <div className="flex items-center gap-2 flex-wrap">
         {periods.map((p) => <Button key={p} variant={p === activePeriod ? "default" : "outline"} size="sm" onClick={() => setActivePeriod(p)}>{p}</Button>)}
@@ -300,10 +325,10 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
         <div id="report-content" className="mt-4">
           <TabsContent value="balance">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {grandSubmitted.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">GH¢ {grandPaid.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Paid</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">GH¢ {grandTax.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT</p></div>
-              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-destructive">GH¢ {grandOutstanding.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Outstanding</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">{settlementReportUnavailable ? "—" : `GH¢ ${grandSubmitted.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">{settlementReportUnavailable ? "—" : `GH¢ ${grandPaid.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Paid</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${grandTax.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">WHT</p></div>
+              <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-destructive">{settlementReportUnavailable ? "—" : `GH¢ ${grandOutstanding.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Outstanding</p></div>
             </div>
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">{periodLabel} — Account Balance Report</h3>
@@ -329,7 +354,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
                       <td className="text-destructive font-semibold">GH¢ {r.outstanding.toLocaleString()}</td>
                     </tr>
                   ))}
-                  {sortedReport.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">No data for selected period</td></tr>}
+                  {sortedReport.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero balance." : "No data for selected period"}</td></tr>}
                 </tbody>
                 {sortedReport.length > 0 && (
                   <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>GH¢ {grandSubmitted.toLocaleString()}</td><td className="text-destructive">GH¢ {grandRejected.toLocaleString()}</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td></tr></tfoot>
@@ -373,7 +398,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
                       <td>{r.netClaim > 0 ? `${(((r.paid + r.tax) / r.netClaim) * 100).toFixed(1)}%` : "—"}</td>
                     </tr>
                   ))}
-                  {sortedReport.filter(r => r.outstanding > 0).length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">No outstanding receivables</td></tr>}
+                  {sortedReport.filter(r => r.outstanding > 0).length === 0 && <tr><td colSpan={6} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero receivable balance." : "No outstanding receivables"}</td></tr>}
                 </tbody>
                 {sortedReport.filter(r => r.outstanding > 0).length > 0 && (
                   <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td><td>{grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"}</td></tr></tfoot>
@@ -393,6 +418,7 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
               <table className="data-table">
                 <thead><tr><th>Company</th><th>Claims Base</th><th>WHT Rate</th><th>WHT Amount</th></tr></thead>
                 <tbody>
+                  {settlementReportUnavailable && <tr><td colSpan={4} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
                     <tr key={r.company} className="hover:bg-muted/50 transition-colors">
                       <td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color || "#3b82f6" }} />{r.company}</div></td>
@@ -413,11 +439,11 @@ const receiptTable = activeReport === "balance" && receiptMonthData.length ? `<s
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">Claim Aging Report — Outstanding by Bucket</h3>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-success">GH¢ {agingData.b30.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-info">GH¢ {agingData.b60.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b90.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">GH¢ {agingData.b120.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
-                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-destructive">GH¢ {agingData.b120plus.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">120+ days (high risk)</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-success">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b30.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">0 – 30 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-info">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b60.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">31 – 60 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b90.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">61 – 90 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-warning">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b120.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">91 – 120 days</p></div>
+                <div className="stat-card text-center"><p className="text-xl font-bold font-heading text-destructive">{settlementReportUnavailable ? "—" : `GH¢ ${agingData.b120plus.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">120+ days (high risk)</p></div>
               </div>
               <p className="text-sm text-muted-foreground">Buckets are computed from the end of each claim's submission month to today. Aging shows where receivable exposure is concentrated and which insurers need escalation.</p>
             </div>
