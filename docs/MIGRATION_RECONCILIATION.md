@@ -472,3 +472,93 @@ The owner-confirmed production project is Supabase `claims tracker` (`jajfdgknct
 - The owner-confirmed project identity removes the prior identity uncertainty. Production migration release remains blocked until a verified backup and restore rehearsal exists and the semantic ledger/source crosswalk is reviewed.
 
 No production DDL, data changes, migration replay, migration-ledger edits, Auth configuration changes, or `supabase db push --linked` were performed during this refresh. The 2026-11-22 and 2026-11-23 inventories above are retained as historical snapshots and must not be read as current counts.
+
+
+## Duplicate-version semantic inspection — 2026-11-26
+
+A source-level inspection of all six SQL files in the three duplicate timestamp groups was completed after the 2026-11-26 inventory refresh. This is a semantic review of the checked-in SQL, not proof that these exact bytes were deployed to production.
+
+### `20260907140000` — atomic create and version/submission foundation
+
+- `preauth_atomic_hardening.sql` defines the server-authoritative create/fingerprint path and initially defines `public.submit_preauthorization(uuid,text,text,text)`.
+- `preauth_versions_workflow_hardening.sql` creates `preauthorization_versions` and `preauth_submissions`, plus snapshot/version/submission helpers.
+- The latter file's initial `submit_preauthorization` definition contains an unscoped predicate, `WHERE id = id`, in its parent-status update. In isolation, that predicate can update every row in `public.pre_authorizations`, rather than only the submitted request.
+- The later source migration `20260907154000_preauth_submission_lifecycle.sql` explicitly drops and recreates that same function, scopes the update to `p.id = p_preauth_id`, and adds facility authorization plus audit recording. This later definition supersedes the unsafe initial function in the full ordered source sequence. Do not execute or deploy the earlier definition as a standalone patch.
+- The group still has a duplicate version identity. The later corrective migration does not make the two same-version files independently representable in the production ledger.
+
+### `20260907144000` — incompatible document registry definitions
+
+- `preauth_document_integrity.sql` creates `preauth_documents` with `file_name`, `storage_bucket`, `sha256`, `content_type`, and `generated_at`; its unique key is (preauth, version, document type). Its `register_preauth_document` signature accepts file/storage/hash/content-type arguments.
+- `preauth_document_lifecycle.sql` is an explicit extension/replacement: it adds `format`, `storage_provider`, `content_sha256`, `status`, and `created_at`; replaces the narrower unique key with a key including format; drops the earlier register function signature; and creates a different argument contract.
+- These are not two independent migrations that can safely be selected arbitrarily. The second file assumes the first table may already exist and evolves it, but the shared timestamp still prevents both from being independently recorded under that version.
+
+### `20260907145000` — separate audit and transition responsibilities
+
+- `preauth_audit_events.sql` creates the audit event table and `record_preauth_audit_event` RPC.
+- `preauth_workflow_transitions.sql` defines `transition_preauthorization_status` and its state-transition matrix; it does not create the same audit table or RPC.
+- These files are functionally distinct, but remain a duplicate migration-version collision. Their separate responsibilities do not remove the need for a canonical unique ordering.
+
+### Production catalog comparison (read-only)
+
+A read-only inspection of the live `public` function catalog on 2026-11-26 found:
+- `public.create_preauthorization_atomic(jsonb,jsonb,boolean)` is a SQL wrapper delegating to `security_internal.create_preauthorization_atomic`.
+- `public.register_preauth_document(uuid,integer,jsonb,text,uuid)` returns `preauth_document_registry` and delegates to `security_internal.register_preauth_document`; this is materially different from either checked-in `preauth_documents` function contract.
+- No public `submit_preauthorization` or `transition_preauthorization_status` function was returned by the exact-name catalog query.
+
+This confirms current production function contracts differ from the checked-in duplicate-group contracts. It does not establish which historical SQL was applied, whether these source functions were later replaced by other migrations, or whether the production registry is semantically equivalent. Recover original deployed SQL or a verified schema backup before classifying these files.
+
+### Disposition
+
+1. Keep all three duplicate version groups explicitly blocked from production migration release.
+2. Preserve the later scoped `submit_preauthorization` definition; add/retain a regression test asserting a submission cannot change any other pre-authorization row.
+3. Treat the two document definitions as an evolution chain for disposable replay only until their historical applied status and production registry mapping are proven.
+4. Treat the audit and transition files as distinct changes that still need unique, dependency-correct identities in a future canonical bootstrap plan.
+5. Do not rename source migrations, edit the live migration ledger, or apply production DDL based on this source-only inspection.
+
+No production schema, data, migration ledger, Auth settings, or Edge Functions were changed during this review.
+
+
+## Product-scope clarification — 2026-11-26
+
+The project owner clarified that the Pre-Authorization module is a **document-preparation and generation tool**, not the primary source or system of record for insurer authorization submission.
+
+The authoritative product boundary is already described in `docs/PREAUTHORIZATION_STUDIO.md` and is reinforced by migrations `20260907170000_preauthorization_scope.sql`, `20260908104000_disable_legacy_preauth_submission_execution.sql`, and `20260908113000_preauth_rpc_boundary_hardening.sql`:
+
+- Capture and validate the request information and itemised charges.
+- Create immutable document revisions and generate the PDF.
+- Prepare the accompanying email package and open the officer's email client.
+- Record that the package is **prepared** and handed to the officer; do not claim the email was sent or delivered.
+- Insurer submission execution, insurer responses, approval/decline, authorization numbers, validity, follow-up and delivery reconciliation are outside this module.
+
+### Correction to the duplicate-version review
+
+The initial unscoped `WHERE id = id` in `20260907140000_preauth_versions_workflow_hardening.sql` is a source-history defect that must be understood in the replay sequence, but it is **not evidence that the production system currently executes that legacy insurer-submission RPC**:
+
+1. `20260907140500_preauth_version_audit_trigger.sql` replaces the function with a scoped `WHERE p.id = p_preauth_id` update.
+2. `20260907154000_preauth_submission_lifecycle.sql` later recreates the same legacy RPC with facility authorization and the scoped update.
+3. `20260908104000_disable_legacy_preauth_submission_execution.sql` drops the legacy submit/process/complete/fail RPCs and revokes authenticated write access to the legacy `preauth_submissions` table.
+4. `20260908113000_preauth_rpc_boundary_hardening.sql` repeats removal of those legacy execution RPCs and hardens the supported document/email-handoff RPC boundary.
+5. `20260907170000_preauthorization_scope.sql` explicitly constrains the document/email handoff record to status `prepared` and removes insurer-delivery response fields.
+
+The production catalog query that returned no public `submit_preauthorization` function is consistent with the intended boundary, not by itself a missing-feature defect. The separate document registry mismatch remains a migration-reconciliation issue and must be resolved using the actual production catalog and historical applied SQL.
+
+### Interpretation for future implementation
+
+Do not treat `preauth_submissions`, `submit_preauthorization`, insurer response tables, or payer integration adapters as mandatory core functionality. The supported handoff record is an internal record of document/email preparation. Internal review/approval of a prepared request, if retained by the facility workflow, must be clearly distinguished from insurer authorization approval. Do not silently map a local status such as `Approved` to an insurer decision.
+
+This scope clarification changes the product requirements and prioritisation; it does not authorize deleting historical tables or editing deployed migrations. Any UI terminology or workflow refactor must preserve the current user experience unless a separately reviewed implementation is approved.
+
+
+### Additional live finalisation-RPC mismatch — 2026-11-26
+
+A focused read-only production inspection of the document-finalisation path found a concrete compatibility defect:
+
+- Production has `public.preauth_submissions`, `public.preauth_document_registry`, `public.preauth_handoff_log`, and `public.preauthorization_versions`.
+- Production does **not** have `public.pre_auth_submissions` (the distinct relation name with an underscore after `pre`).
+- The live `security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)` function definition contains `INSERT INTO public.pre_auth_submissions`. Its public wrapper delegates to this function.
+- The repository's `20260910183000_harden_preauthorization_idempotency.sql` source uses the canonical `public.preauth_submissions` relation and includes an explicit regression contract in `supabase/tests/preauth_submission_idempotency.test.sql` that rejects the misspelled relation reference.
+- The live migration ledger query returned the earlier finalisation/hardening entries (`restore_preauthorization_finalize_handoff`, `harden_preauth_finalize_duplicate_concurrency`) but did not return a row named `20260910183000_harden_preauthorization_idempotency`.
+
+**Impact:** the production finalisation RPC references a relation that is absent from the live catalog. This is a strong static indication that the finalisation transaction can fail when it reaches that insert. No user-facing RPC was invoked to test this, and no production writes were attempted. The missing source migration ledger row and live function body mismatch are evidence of production/source drift; do not assume simply applying the source migration is safe until the complete migration crosswalk, backup and restore gates are satisfied.
+
+**Scope:** this is a defect in the internal document-freeze/email-handoff record path, not a requirement to implement insurer-side submission. The fix must keep the module document-first, use the canonical handoff/idempotency records, and never re-enable external insurer queue processing.
