@@ -18,12 +18,12 @@ required_relations(relation_name) AS (
     ('claims_outstanding_periods'),
     ('facilities'),
     ('facility_memberships'),
-    -- Document-preparation core; preauth_submissions is an internal idempotency/handoff record,
-    -- not an insurer-side processing queue.
+    -- Document-preparation core. The legacy preauth_submissions queue table is not the handoff source.
     ('pre_authorizations'),
     ('preauth_items'),
     ('preauthorization_versions'),
-    ('preauth_submissions'),
+    ('preauthorization_submissions'),
+    ('preauthorization_audit_events'),
     ('preauth_document_registry'),
     ('preauth_handoff_log'),
     ('preauth_email_log')
@@ -101,14 +101,35 @@ preauth_legacy_name_check AS (
 preauth_finalizer_contract AS (
   SELECT
     'pre-authorization finalizer relation reference: security_internal.finalize_preauthorization_handoff' AS check_name,
-    'canonical public.preauth_submissions only'::text AS expected,
+    'canonical public.preauthorization_submissions only'::text AS expected,
     CASE
       WHEN p.oid IS NULL THEN 'missing private finalizer'
       WHEN position('public.pre_auth_submissions' in pg_get_functiondef(p.oid)) > 0
-        THEN 'references public.pre_auth_submissions (non-canonical)'
+        THEN 'references misspelled public.pre_auth_submissions'
       WHEN position('public.preauth_submissions' in pg_get_functiondef(p.oid)) > 0
-        THEN 'canonical public.preauth_submissions only'
-      ELSE 'canonical relation reference not found'
+        THEN 'references legacy queue-shaped public.preauth_submissions'
+      WHEN position('public.preauthorization_submissions' in pg_get_functiondef(p.oid)) > 0
+        THEN 'canonical public.preauthorization_submissions only'
+      ELSE 'canonical handoff relation reference not found'
+    END AS observed
+  FROM (SELECT 1) seed
+  LEFT JOIN pg_proc p
+    ON p.proname = 'finalize_preauthorization_handoff'
+   AND p.pronamespace = 'security_internal'::regnamespace
+   AND pg_get_function_identity_arguments(p.oid) =
+       'p_preauth_id uuid, p_snapshot jsonb, p_total_cost numeric, p_recipient_manifest jsonb, p_attachment_manifest jsonb, p_subject text, p_message_body text, p_idempotency_key text'
+),
+preauth_finalizer_status_contract AS (
+  SELECT
+    'pre-authorization finalizer status semantics' AS check_name,
+    'prepared handoff only; no queue status'::text AS expected,
+    CASE
+      WHEN p.oid IS NULL THEN 'missing private finalizer'
+      WHEN position(chr(39) || 'queued' || chr(39) in pg_get_functiondef(p.oid)) > 0
+        THEN 'contains legacy queued status'
+      WHEN position(chr(39) || 'prepared' || chr(39) in pg_get_functiondef(p.oid)) > 0
+        THEN 'prepared handoff only; no queue status'
+      ELSE 'prepared status not found'
     END AS observed
   FROM (SELECT 1) seed
   LEFT JOIN pg_proc p
@@ -162,6 +183,7 @@ FROM (
   UNION ALL SELECT * FROM permission_checks
   UNION ALL SELECT * FROM preauth_legacy_name_check
   UNION ALL SELECT * FROM preauth_finalizer_contract
+  UNION ALL SELECT * FROM preauth_finalizer_status_contract
   UNION ALL SELECT * FROM preauth_public_wrapper_security
   UNION ALL SELECT * FROM ledger_check
 ) checks
