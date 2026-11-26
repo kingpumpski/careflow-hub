@@ -472,3 +472,47 @@ The owner-confirmed production project is Supabase `claims tracker` (`jajfdgknct
 - The owner-confirmed project identity removes the prior identity uncertainty. Production migration release remains blocked until a verified backup and restore rehearsal exists and the semantic ledger/source crosswalk is reviewed.
 
 No production DDL, data changes, migration replay, migration-ledger edits, Auth configuration changes, or `supabase db push --linked` were performed during this refresh. The 2026-11-22 and 2026-11-23 inventories above are retained as historical snapshots and must not be read as current counts.
+
+
+## Duplicate-version semantic inspection — 2026-11-26
+
+A source-level inspection of all six SQL files in the three duplicate timestamp groups was completed after the 2026-11-26 inventory refresh. This is a semantic review of the checked-in SQL, not proof that these exact bytes were deployed to production.
+
+### `20260907140000` — atomic create and version/submission foundation
+
+- `preauth_atomic_hardening.sql` defines the server-authoritative create/fingerprint path and initially defines `public.submit_preauthorization(uuid,text,text,text)`.
+- `preauth_versions_workflow_hardening.sql` creates `preauthorization_versions` and `preauth_submissions`, plus snapshot/version/submission helpers.
+- The latter file's initial `submit_preauthorization` definition contains an unscoped predicate, `WHERE id = id`, in its parent-status update. In isolation, that predicate can update every row in `public.pre_authorizations`, rather than only the submitted request.
+- The later source migration `20260907154000_preauth_submission_lifecycle.sql` explicitly drops and recreates that same function, scopes the update to `p.id = p_preauth_id`, and adds facility authorization plus audit recording. This later definition supersedes the unsafe initial function in the full ordered source sequence. Do not execute or deploy the earlier definition as a standalone patch.
+- The group still has a duplicate version identity. The later corrective migration does not make the two same-version files independently representable in the production ledger.
+
+### `20260907144000` — incompatible document registry definitions
+
+- `preauth_document_integrity.sql` creates `preauth_documents` with `file_name`, `storage_bucket`, `sha256`, `content_type`, and `generated_at`; its unique key is (preauth, version, document type). Its `register_preauth_document` signature accepts file/storage/hash/content-type arguments.
+- `preauth_document_lifecycle.sql` is an explicit extension/replacement: it adds `format`, `storage_provider`, `content_sha256`, `status`, and `created_at`; replaces the narrower unique key with a key including format; drops the earlier register function signature; and creates a different argument contract.
+- These are not two independent migrations that can safely be selected arbitrarily. The second file assumes the first table may already exist and evolves it, but the shared timestamp still prevents both from being independently recorded under that version.
+
+### `20260907145000` — separate audit and transition responsibilities
+
+- `preauth_audit_events.sql` creates the audit event table and `record_preauth_audit_event` RPC.
+- `preauth_workflow_transitions.sql` defines `transition_preauthorization_status` and its state-transition matrix; it does not create the same audit table or RPC.
+- These files are functionally distinct, but remain a duplicate migration-version collision. Their separate responsibilities do not remove the need for a canonical unique ordering.
+
+### Production catalog comparison (read-only)
+
+A read-only inspection of the live `public` function catalog on 2026-11-26 found:
+- `public.create_preauthorization_atomic(jsonb,jsonb,boolean)` is a SQL wrapper delegating to `security_internal.create_preauthorization_atomic`.
+- `public.register_preauth_document(uuid,integer,jsonb,text,uuid)` returns `preauth_document_registry` and delegates to `security_internal.register_preauth_document`; this is materially different from either checked-in `preauth_documents` function contract.
+- No public `submit_preauthorization` or `transition_preauthorization_status` function was returned by the exact-name catalog query.
+
+This confirms current production function contracts differ from the checked-in duplicate-group contracts. It does not establish which historical SQL was applied, whether these source functions were later replaced by other migrations, or whether the production registry is semantically equivalent. Recover original deployed SQL or a verified schema backup before classifying these files.
+
+### Disposition
+
+1. Keep all three duplicate version groups explicitly blocked from production migration release.
+2. Preserve the later scoped `submit_preauthorization` definition; add/retain a regression test asserting a submission cannot change any other pre-authorization row.
+3. Treat the two document definitions as an evolution chain for disposable replay only until their historical applied status and production registry mapping are proven.
+4. Treat the audit and transition files as distinct changes that still need unique, dependency-correct identities in a future canonical bootstrap plan.
+5. Do not rename source migrations, edit the live migration ledger, or apply production DDL based on this source-only inspection.
+
+No production schema, data, migration ledger, Auth settings, or Edge Functions were changed during this review.
