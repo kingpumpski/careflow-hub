@@ -11,7 +11,7 @@ import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
-import { calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
+import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -106,10 +106,7 @@ export default function Reports() {
         }
         taxByPeriod.set(key, periodTax);
       });
-      const fallbackTaxApplied = Array.from(taxByPeriod.values()).reduce(
-        (sum, periodTax) => sum + (periodTax.actualCount > 0 ? periodTax.actual : periodTax.provisional),
-        0,
-      );
+      const fallbackTaxApplied = calculateAppliedWithholdingTax(Array.from(taxByPeriod.values()));
 
       // The settlement-period view is authoritative: it prefers aggregate claim
       // submissions, approved gross, matched payments and actual WHT, and uses
