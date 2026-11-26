@@ -612,3 +612,29 @@ The production permission compatibility finding must be separated from the missi
 The production preflight now checks the intended role grants explicitly. Both claims-officer settlement permission checks return BLOCKED; the two accounts-officer payment permission checks return PASS. The missing scoped grants are a real operational permission rollout blocker for the claims department, not a column-name compatibility problem.
 
 Do not patch the live role-permission rows manually. The permission seed migration must be included in the reviewed forward release after backup/restore and migration-ledger reconciliation, then verified with representative claims-officer and accounts-officer identities in the restored copy.
+
+
+## Live settlement/claim-case ledger cross-check — 2026-11-26
+
+A read-only query against the owner-confirmed production project's `supabase_migrations.schema_migrations` filtered names containing `settlement` or `claim_case`. It returned only:
+
+| Production ledger version | Name |
+|---|---|
+| `20260908234726` | `add_actual_withholding_tax_settlement_state` |
+| `20260909064811` | `claims_settlement_period_model` |
+| `20260909135839` | `index_claims_settlement_period_foreign_keys` |
+
+No claim-case or newer settlement exception/remittance migration names were returned. The live catalog independently lacks the settlement exception tables/RPCs, remittance ledger/RPC, receipt-month view, claim-case tables/RPCs, and the `approved_gross_amount` / `actual_receipt_date` columns. This is consistent with the newer source feature migrations not being deployed; it does not identify the exact historical SQL bodies or prove the entire migration ledger is reconciled.
+
+The repository includes the newer migrations:
+- `20260908150000_settlement_exception_register.sql` and `20261120160000_settlement_exception_atomic_lifecycle.sql`
+- `20261120170000_individual_claim_case_lifecycle.sql`
+- `20261123140000_claims_settlement_scoped_permissions.sql`
+- `20261123153000_add_claims_settlement_remittance_ledger.sql`
+- `20261123160000_match_aggregate_claims_periods_and_receipt_months.sql`
+- `20261123170000_add_claims_settlement_remittance_reversals.sql`
+- `20261123173000_exclude_reversed_remittances_from_receipt_reporting.sql)
+
+These source migrations have passed the repository's disposable migration replay and SQL contract suite on the merged PR #122 head, but that test does not prove production ledger equivalence. Before any production deployment, compare their exact effects with a verified restored copy, including the monthly aggregate-vs-individual claim fallback, approved gross/rejection variance, provisional-vs-actual WHT replacement, multi-remittance totals, reversal exclusion, receipt-month grouping, facility RLS and role permissions.
+
+No production migration, data, permission or ledger changes were performed during this cross-check.
