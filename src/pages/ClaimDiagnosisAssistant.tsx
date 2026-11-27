@@ -45,6 +45,8 @@ import {
   type ManualClaimLine,
 } from "@/features/claims/services/claimDiagnosis.service";
 import { exportClaimDiagnosisDraftPdf, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
+import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { buildLetterheadConfig } from "@/lib/letterhead";
 
 const REJECTION_REASONS = [
   "Medical Necessity",
@@ -95,6 +97,8 @@ export default function ClaimDiagnosisAssistant() {
   const { data: diagnosisRows } = useSupabaseQuery("diagnosis_codes");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: savedDrafts } = useSupabaseQuery("claim_diagnosis_drafts", { limit: 10 });
+  const { data: letterheadSettings } = useSupabaseQuery("system_settings");
+  const letterhead = buildLetterheadConfig((key) => (letterheadSettings || []).find((row: any) => row.key === key)?.value || "");
   const [workflowType, setWorkflowType] = useState<ClaimWorkflowType>("new_claim");
   const [entryMode, setEntryMode] = useState<ClaimEntryMode>("upload");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -331,7 +335,7 @@ export default function ClaimDiagnosisAssistant() {
 
   const exportDraftPdf = (draft: ClaimDiagnosisPdfData) => {
     try {
-      exportClaimDiagnosisDraftPdf(draft);
+      void exportClaimDiagnosisDraftPdf(draft, letterhead);
       toast({ title: "Draft PDF downloaded" });
     } catch (error) {
       toast({
