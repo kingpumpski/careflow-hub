@@ -11,6 +11,7 @@ import { useSupabaseInsert, useSupabaseQuery, useSupabaseUpdate } from "@/hooks/
 import { useAuth } from "@/contexts/AuthContext";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 import { isFullCalendarMonth, canReconcileSettlement, parseApprovedWithholdingTaxRate } from "@/features/settlements/domain/settlement";
 import { DEFAULT_PLATFORM_LOCALE } from "@/modules/platform/standards";
 import { fromMinorUnits, percentageOfMoney, subtractMoney, toMinorUnits } from "@/modules/platform/decimalMoney";
@@ -38,8 +39,8 @@ export default function ClaimsSettlement() {
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: settlementEnabled });
   const { data: facilities } = useSupabaseQuery("facilities", { enabled: settlementEnabled });
   const { data: periods, isLoading, error: periodsError } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled, missingSchemaBehavior: "error" });
-  const { data: remittances, isLoading: remittancesLoading, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled, missingSchemaBehavior: "error" });
-  const remittanceLedgerAvailable = getCareFlowDataMode() !== "offline" && !remittancesLoading && !remittancesError;
+  const { data: remittances, isLoading: remittancesLoading, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled && databaseCapabilities.settlementRemittanceLedger, missingSchemaBehavior: "error" });
+  const remittanceLedgerAvailable = databaseCapabilities.settlementRemittanceLedger && getCareFlowDataMode() !== "offline" && !remittancesLoading && !remittancesError;
   const insertPeriod = useSupabaseInsert("claims_settlement_periods");
   const updatePeriod = useSupabaseUpdate("claims_settlement_periods");
   const [form, setForm] = useState(emptyForm);
@@ -204,7 +205,7 @@ export default function ClaimsSettlement() {
         <div><Label>Correction reason</Label><Input value={reversalReason} onChange={(e) => setReversalReason(e.target.value)} maxLength={1000} placeholder="Explain the correction" /></div>
         <div className="flex items-end"><Button className="w-full sm:w-auto" variant="outline" disabled={busy || !reversalId || !reversalReason.trim()} onClick={() => void reverseAdvice()}>Reverse selected advice</Button></div>
       </div>}
-    </section> : <section className="stat-card space-y-2" role="status"><h2 className="font-semibold">Remittance ledger not yet available</h2><p className="text-sm text-muted-foreground">The connected production database has the legacy settlement-period table but does not yet have the remittance ledger, approved-gross field, receipt-date field or atomic advice RPC. Payment-advice capture, reversals and reconciliation are disabled to prevent incomplete or misleading records. Existing period data remains available for review.</p></section>}
+    </section> : <section className="stat-card space-y-2" role="status"><h2 className="font-semibold">Remittance ledger not yet available</h2><p className="text-sm text-muted-foreground">The remittance-ledger capability is disabled for this production build until the remittance table, approved-gross and receipt-date columns, atomic RPCs, and scoped permissions pass the approved release checks. Payment-advice capture, reversals and reconciliation are disabled to prevent incomplete or misleading records. Existing period data remains available for review.</p></section>}
     <SettlementExceptionRegister periods={periods || []} />
   </div>;
 }
