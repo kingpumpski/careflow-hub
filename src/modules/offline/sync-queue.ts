@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { putManyOffline, putOffline, type OfflineEntity } from "./offline-store";
+import { assertDatabaseCapabilityAvailable, isDatabaseCapabilityAvailable, isRowInSelectedFacilityScope } from "@/config/databaseTableCapabilities";
 
 export type SyncOperationType = "insert" | "update" | "delete" | "rpc";
 export type SyncOperationStatus = "pending" | "failed" | "blocked";
@@ -180,6 +181,7 @@ function withBaseVersion<T extends { eq: (column: string, value: string | number
 }
 
 async function applyOperation(operation: SyncOperation): Promise<void> {
+  assertDatabaseCapabilityAvailable(operation.type === "rpc" ? operation.rpcName ?? "" : operation.table);
   if (operation.type === "rpc") {
     if (!operation.rpcName) throw new Error(`Sync operation ${operation.id} has no RPC name.`);
     const { error } = await (supabase as any).rpc(operation.rpcName, operation.rpcArgs ?? {});
@@ -220,6 +222,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
   let skipped = 0;
 
   for (const mapping of OFFLINE_PULL_TABLES) {
+    if (!isDatabaseCapabilityAvailable(mapping.table)) { skipped += 1; continue; }
     let offset = 0;
     while (true) {
       // Keep each response bounded. A full-table response can otherwise hold
@@ -233,7 +236,7 @@ export async function pullSupabaseDataToOffline(): Promise<{ tables: number; rec
       const facilityId = getStoredFacilityId();
       const rows = ((data ?? []) as Record<string, unknown>[])
         .filter((row) => typeof row.id === "string")
-        .filter((row) => !facilityId || !Object.prototype.hasOwnProperty.call(row, "facility_id") || row.facility_id === facilityId);
+        .filter((row) => isRowInSelectedFacilityScope(row, facilityId));
       const safeRows = rows.filter((row) => {
         const changed = queuedRecordKeys.has(`${mapping.table}:${String(row.id)}`);
         if (changed) skipped += 1;
@@ -276,6 +279,10 @@ async function runSyncPendingOperations(): Promise<SyncResult> {
   let blocked = 0;
   const now = Date.now();
   for (const operation of operations) {
+    // Keep writes for unreleased optional modules pending; do not consume retry
+    // attempts or mark them failed merely because this deployment lacks schema.
+    const resource = operation.type === "rpc" ? operation.rpcName ?? "" : operation.table;
+    if (!isDatabaseCapabilityAvailable(resource)) continue;
     if (operation.status === "blocked" || new Date(operation.nextAttemptAt).getTime() > now) {
       if (operation.status === "blocked") blocked += 1;
       continue;
