@@ -45,7 +45,6 @@ import {
   type ManualClaimLine,
 } from "@/features/claims/services/claimDiagnosis.service";
 import { exportClaimDiagnosisDraftPdf, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
-import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 
 const REJECTION_REASONS = [
