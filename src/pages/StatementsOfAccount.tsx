@@ -10,7 +10,7 @@ import { usePermissions } from "@/modules/security/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
-import { buildCompanyStatement, buildStatementReconciliation, formatStatementAmount, type StatementClaimsPeriod, type StatementLedgerEntry } from "@/modules/statements/statementOfAccount";
+import { buildCompanyStatement, buildStatementReconciliation, formatStatementAmount, type StatementClaimRow, type StatementLedgerEntry, type StatementSettlementPeriod, type StatementTaxRow } from "@/modules/statements/statementOfAccount";
 import { exportCompanyStatementPDF } from "@/modules/statements/exportStatementPdf";
 import { toast } from "@/hooks/use-toast";
 
@@ -60,25 +60,42 @@ export default function StatementsOfAccount() {
     retry: 1,
   });
 
-  const { data: claimsPeriods, isLoading: claimsPeriodsLoading, error: claimsPeriodsError } = useQuery({
+  const { data: claimsReconciliationSources, isLoading: claimsPeriodsLoading, error: claimsPeriodsError } = useQuery({
     queryKey: ["company-statement-claims-periods", companyId],
     enabled: canRead && !permissionsLoading && Boolean(companyId),
     queryFn: async () => {
       const pageSize = 1000;
-      const rows: StatementClaimsPeriod[] = [];
-      for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await supabase.from("claims_outstanding_periods")
-          .select("period_year, period_month, rejected_amount, provisional_withholding_tax_amount, actual_withholding_tax_amount, withholding_tax_amount")
+      const fetchAll = async <T,>(loadPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>) => {
+        const rows: T[] = [];
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await loadPage(offset, offset + pageSize - 1);
+          if (error) throw error;
+          const batch = data || [];
+          rows.push(...batch);
+          if (batch.length < pageSize) break;
+        }
+        return rows;
+      };
+      const [claims, taxRows, settlementPeriods] = await Promise.all([
+        fetchAll<StatementClaimRow>((from, to) => supabase.from("claims")
+          .select("claim_year, claim_month, claim_amount, status")
           .eq("insurance_company_id", companyId)
-          .order("period_year", { ascending: true })
-          .order("period_month", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (error) throw error;
-        const batch = (data || []) as StatementClaimsPeriod[];
-        rows.push(...batch);
-        if (batch.length < pageSize) break;
-      }
-      return rows;
+          .order("claim_year", { ascending: true })
+          .order("claim_month", { ascending: true })
+          .range(from, to)),
+        fetchAll<StatementTaxRow>((from, to) => supabase.from("withholding_tax")
+          .select("year, month, tax_amount, is_actual")
+          .eq("insurance_company_id", companyId)
+          .order("year", { ascending: true })
+          .order("month", { ascending: true })
+          .range(from, to)),
+        fetchAll<StatementSettlementPeriod>((from, to) => supabase.from("claims_settlement_periods")
+          .select("period_start, period_end, period_type, rejection_amount, provisional_withholding_tax, actual_withholding_tax, settlement_status")
+          .eq("insurance_company_id", companyId)
+          .order("period_start", { ascending: true })
+          .range(from, to)),
+      ]);
+      return { claims, taxRows, settlementPeriods };
     },
     staleTime: 30_000,
     retry: 1,
@@ -103,11 +120,11 @@ export default function StatementsOfAccount() {
   const letterhead = buildLetterheadConfig((key: string) => settingRows.find((row) => row.key === key)?.value || "");
   const selectedCompany = companyRows.find((company) => company.id === companyId);
   const statementResult = useMemo(() => {
-    if (!companyId || !ledger || !claimsPeriods) return { statement: null, reconciliation: null, error: null as string | null };
+    if (!companyId || !ledger || !claimsReconciliationSources) return { statement: null, reconciliation: null, error: null as string | null };
     try {
       return {
         statement: buildCompanyStatement(ledger, companyId, startDate, endDate),
-        reconciliation: buildStatementReconciliation(claimsPeriods, startDate, endDate),
+        reconciliation: buildStatementReconciliation(claimsReconciliationSources.claims, claimsReconciliationSources.taxRows, claimsReconciliationSources.settlementPeriods, startDate, endDate),
         error: null as string | null,
       };
     } catch (error) {
@@ -117,7 +134,7 @@ export default function StatementsOfAccount() {
         error: error instanceof Error ? error.message : "The statement could not be calculated.",
       };
     }
-  }, [ledger, claimsPeriods, companyId, startDate, endDate]);
+  }, [ledger, claimsReconciliationSources, companyId, startDate, endDate]);
   const statement = statementResult.statement;
   const reconciliation = statementResult.reconciliation;
   const statementError = statementResult.error;
