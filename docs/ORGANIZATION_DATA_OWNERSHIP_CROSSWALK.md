@@ -90,8 +90,8 @@ A read-only Supabase type generation from the live project was compared with `sr
 
 - Live generated schema: 35 public table definitions.
 - Repository type file: 25 public table definitions.
-- Twelve live table definitions are absent from the repository type file, including facilities, facility memberships, permission catalogues, and pre-authorization support tables.
-- The repository type file contains two backup table definitions that were not present in the live generated schema.
+- Twelve live table definitions are absent from the repository type file: `app_permissions`, `facilities`, `facility_memberships`, `preauth_client_suggestions`, `preauth_document_registry`, `preauth_handoff_log`, `preauth_insurer_tariffs`, `preauth_submissions`, `preauthorization_versions`, `role_permissions`, `security_audit_log`, and `user_permission_overrides`.
+- The repository type file contains two backup table definitions (`backup_runs`, `backup_settings`) that were not present in the live generated schema.
 - Live `pre_authorizations` has additional document/facility/request identity columns absent from the repository type file.
 - Repository `claims_settlement_periods` types include `approved_gross_amount` and `actual_receipt_date`, which are absent from the live schema.
 - The current source migrations add facility ownership columns to core tables that are absent from the live schema.
