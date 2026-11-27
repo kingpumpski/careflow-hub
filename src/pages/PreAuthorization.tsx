@@ -20,6 +20,7 @@ import { createPreAuthorizationAtomic } from "@/features/preauth/services/preaut
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { canPersistRemoteUserNotification } from "@/modules/offline/notificationGuard";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 
 const statusStyles: Record<string, string> = {
   Draft: "bg-muted text-muted-foreground border-border", PendingApproval: "bg-warning/10 text-warning border-warning/20", Approved: "bg-success/10 text-success border-success/20", Rejected: "bg-destructive/10 text-destructive border-destructive/20", Completed: "bg-info/10 text-info border-info/20",
@@ -73,6 +74,9 @@ export default function PreAuthorization() {
   const companyInfo = buildLetterheadConfig(getS);
 
   const notifyTransition = async (pa: any, newState: string, note?: string) => {
+    // Once database audit fan-out is released, the trigger notifies the actor and
+    // affected facility members. Avoid creating a duplicate client-side message.
+    if (databaseCapabilities.notificationEvents) return;
     const offline = getCareFlowDataMode() === "offline";
     if (!canPersistRemoteUserNotification(user?.id, offline)) return;
     try {
@@ -80,7 +84,6 @@ export default function PreAuthorization() {
         user_id: user!.id,
         title: `Pre-Auth ${newState}`,
         message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`,
-        type: "preauth",
         read: false,
       });
     } catch (error) {
