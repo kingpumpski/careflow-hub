@@ -32,7 +32,10 @@ BEGIN
   END IF;
 
   v_audit_definition := pg_get_functiondef(v_audit);
-  IF position('SET search_path TO ''''' in v_audit_definition) = 0
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_proc p, unnest(coalesce(p.proconfig, ARRAY[]::text[])) AS setting
+        WHERE p.oid = v_audit AND setting LIKE 'search_path=%'
+     )
      OR position('clinical_notes' in v_audit_definition) = 0
      OR position('membership_number' in v_audit_definition) = 0
      OR position('message_body' in v_audit_definition) = 0
