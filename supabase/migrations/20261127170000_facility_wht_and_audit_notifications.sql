@@ -52,8 +52,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_audit_event_unique
 
 -- Make recipient ownership explicit on notification updates. A user may update
 -- only their own notification rows and cannot reassign them to another account.
-DROP POLICY IF EXISTS "Users update own notifications" ON public.notifications;
-DROP POLICY IF EXISTS notifications_update_own ON public.notifications;
+DO $notification_policies$
+DECLARE
+  v_policy record;
+BEGIN
+  FOR v_policy IN
+    SELECT policyname
+      FROM pg_catalog.pg_policies
+     WHERE schemaname = 'public'
+       AND tablename = 'notifications'
+       AND cmd = 'UPDATE'
+  LOOP
+    EXECUTE format('DROP POLICY %I ON public.notifications', v_policy.policyname);
+  END LOOP;
+END;
+$notification_policies$;
 CREATE POLICY notifications_update_own
   ON public.notifications
   FOR UPDATE TO authenticated
@@ -194,6 +207,25 @@ BEGIN
        AND NEW.table_name <> 'facility_memberships'
     UNION
     SELECT v_target_user_id WHERE v_target_user_id IS NOT NULL
+    UNION
+    -- Legacy/global records without facility scope are routed to users whose
+    -- current platform roles match the operational area of the changed record.
+    SELECT ur.user_id
+      FROM public.user_roles ur
+     WHERE v_facility_id IS NULL
+       AND (
+         (NEW.table_name IN ('claims', 'claim_cases', 'settlement_exceptions', 'pre_authorizations', 'preauthorization_submissions', 'claim_diagnosis_drafts', 'patients')
+          AND ur.role::text = ANY(ARRAY['superuser', 'admin', 'claims_officer', 'auditor']))
+         OR
+         (NEW.table_name IN ('payments', 'withholding_tax', 'claims_settlement_periods', 'claims_settlement_remittances', 'ledger_entries')
+          AND ur.role::text = ANY(ARRAY['superuser', 'admin', 'accounts_officer', 'auditor']))
+         OR
+         (NEW.table_name IN ('insurance_companies', 'client_companies', 'doctors', 'procedures')
+          AND ur.role::text = ANY(ARRAY['superuser', 'admin', 'claims_officer', 'data_entry_officer']))
+         OR
+         (NEW.table_name = 'system_settings'
+          AND ur.role::text = ANY(ARRAY['superuser', 'admin']))
+       )
     UNION
     SELECT NEW.changed_by WHERE NEW.changed_by IS NOT NULL
   )
