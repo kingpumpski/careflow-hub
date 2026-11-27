@@ -7,7 +7,7 @@ import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
 import { isFacilityInfrastructureAvailable, isMissingSchemaError, MissingSchemaError } from "@/lib/schemaFallback";
 import { usePermissions } from "@/modules/security/usePermissions";
-import { assertDatabaseCapabilityAvailable, isDatabaseCapabilityAvailable } from "@/config/databaseTableCapabilities";
+import { assertDatabaseCapabilityAvailable, DatabaseCapabilityUnavailableError, isDatabaseCapabilityAvailable } from "@/config/databaseTableCapabilities";
 import type { Permission } from "@/modules/security";
 
 type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "claims_settlement_remittances" | "claims_settlement_receipt_months" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts" | "claim_cases" | "claim_case_events" | "facilities" | "facility_memberships";
@@ -90,7 +90,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
       const { data, error } = await query;
       if (error) { if (isMissingSchemaError(error)) { if (options?.missingSchemaBehavior === "error") throw new MissingSchemaError(table); return []; } throw error; }
       return data;
-    }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: (failureCount, error) => !(error instanceof MissingSchemaError) && !isMissingSchemaError(error) && failureCount < 1, refetchOnWindowFocus: false,
+    }, staleTime: STALE_TIME_MS, gcTime: GC_TIME_MS, retry: (failureCount, error) => !(error instanceof MissingSchemaError) && !(error instanceof DatabaseCapabilityUnavailableError) && !isMissingSchemaError(error) && failureCount < 1, refetchOnWindowFocus: false,
   });
 }
 
