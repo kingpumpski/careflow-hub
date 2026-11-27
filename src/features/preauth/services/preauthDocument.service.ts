@@ -1,46 +1,54 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export interface PreAuthDocumentRegistration {
+export interface PreAuthDocumentRegistryRecord {
+  id: string;
   preauth_id: string;
   version_number: number;
-  document_type?: string;
-  format?: string;
-  storage_provider?: string | null;
-  storage_path?: string | null;
-  content_sha256?: string | null;
-  status?: "pending" | "generated" | "failed" | "superseded";
-  metadata?: Record<string, unknown>;
+  snapshot: Record<string, unknown>;
+  snapshot_hash: string;
+  document_name: string;
+  document_format: "pdf";
+  status: "prepared" | "superseded";
+  created_by: string;
+  facility_id: string;
+  created_at: string;
 }
 
-export async function registerPreAuthDocument(input: PreAuthDocumentRegistration) {
-  const { data, error } = await (supabase.rpc as any)("register_preauth_document", {
-    p_preauth_id: input.preauth_id,
-    p_version_number: input.version_number,
-    p_document_type: input.document_type ?? "preauthorization_request",
-    p_format: input.format ?? "pdf",
-    p_storage_provider: input.storage_provider ?? null,
-    p_storage_path: input.storage_path ?? null,
-    p_content_sha256: input.content_sha256 ?? null,
-    p_status: input.status ?? "generated",
-    p_metadata: input.metadata ?? {},
-  });
+const REGISTRY_COLUMNS = "id,preauth_id,version_number,snapshot,snapshot_hash,document_name,document_format,status,created_by,facility_id,created_at";
 
-  if (error) throw error;
-  return data;
-}
-
-export async function listPreAuthDocuments(preauthId: string) {
+/**
+ * Lists immutable document registrations created by the prepared-handoff
+ * finalizer. This is deliberately a read-only client path: registration is
+ * performed atomically by finalize_preauthorization_handoff.
+ */
+export async function listPreAuthDocuments(preauthId: string): Promise<PreAuthDocumentRegistryRecord[]> {
   if (!preauthId) throw new Error("Pre-authorization ID is required");
 
   const { data, error } = await (supabase as any)
-    .from("preauth_documents")
-
-    .select(
-      "id,preauth_id,version_number,document_type,format,storage_provider,storage_path,content_sha256,status,generated_by,created_at,metadata",
-    )
+    .from("preauth_document_registry")
+    .select(REGISTRY_COLUMNS)
     .eq("preauth_id", preauthId)
     .order("version_number", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as PreAuthDocumentRegistryRecord[];
+}
+
+export async function getPreAuthDocument(
+  preauthId: string,
+  versionNumber: number,
+): Promise<PreAuthDocumentRegistryRecord | null> {
+  if (!preauthId || !Number.isInteger(versionNumber) || versionNumber < 1) {
+    throw new Error("A valid pre-authorization document revision is required");
+  }
+
+  const { data, error } = await (supabase as any)
+    .from("preauth_document_registry")
+    .select(REGISTRY_COLUMNS)
+    .eq("preauth_id", preauthId)
+    .eq("version_number", versionNumber)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data ?? null) as PreAuthDocumentRegistryRecord | null;
 }

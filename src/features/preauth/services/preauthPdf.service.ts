@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "@/integrations/supabase/client";
-import { registerPreAuthDocument } from "./preauthDocument.service";
+import { getPreAuthDocument } from "./preauthDocument.service";
 
 export interface PreAuthSnapshotRequest {
   id: string;
@@ -87,6 +87,14 @@ export async function renderPreAuthVersionPdf(preauthId: string, versionNumber: 
 export async function generateAndRegisterPreAuthVersionPdf(preauthId: string, versionNumber: number) {
   const blob = await renderPreAuthVersionPdf(preauthId, versionNumber);
   const contentSha256 = await sha256(blob);
-  const registration = await registerPreAuthDocument({ preauth_id: preauthId, version_number: versionNumber, document_type: "preauthorization_request", format: "pdf", content_sha256: contentSha256, status: "generated", metadata: { renderer: "careflow-preauth-pdf-v1", byte_length: blob.size } });
+
+  // The atomic finalization RPC creates the immutable registry row together
+  // with the version and prepared handoff. Do not register it again from the
+  // browser: the registry RPC hashes the frozen JSON snapshot, not PDF bytes.
+  const registration = await getPreAuthDocument(preauthId, versionNumber);
+  if (!registration) {
+    throw new Error("This revision has no prepared document registration. Finalize the revision before generating its PDF.");
+  }
+
   return { blob, contentSha256, registration };
 }
