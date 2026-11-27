@@ -9,7 +9,6 @@ describe("resolveDatabaseCapabilities", () => {
       settlementExceptions: false,
       settlementRemittanceLedger: false,
       facilityAdministration: false,
-      claimDiagnosisDrafts: true,
       claimDiagnosisDrafts: false,
     });
   });
@@ -28,6 +27,7 @@ describe("resolveDatabaseCapabilities", () => {
       settlementExceptions: false,
       settlementRemittanceLedger: true,
       facilityAdministration: false,
+      claimDiagnosisDrafts: true,
     });
   });
 });
