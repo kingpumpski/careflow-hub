@@ -4,7 +4,7 @@
 WITH checks AS (
   SELECT
     'Migration ledger head' AS check_name,
-    CASE WHEN (SELECT max(version) FROM supabase_migrations.schema_migrations) >= '20261127180000'
+    CASE WHEN (SELECT max(version) FROM supabase_migrations.schema_migrations) >= '20261127190000'
       THEN 'PASS' ELSE 'BLOCKED' END AS status,
     coalesce((SELECT version || ' / ' || name FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1), 'No migration rows') AS detail
 
@@ -26,10 +26,15 @@ WITH checks AS (
     'create/add/suspend/WHT RPC signatures must all exist'
 
   UNION ALL
-  SELECT 'Report letterhead RPC',
+  SELECT 'Document letterhead RPC and role scope',
     CASE WHEN to_regprocedure('public.get_report_letterhead_settings()') IS NOT NULL
+           AND to_regprocedure('security_internal.get_report_letterhead_settings()') IS NOT NULL
+           AND position('reports.read' in pg_get_functiondef(to_regprocedure('security_internal.get_report_letterhead_settings()'))) > 0
+           AND position('ledger.read' in pg_get_functiondef(to_regprocedure('security_internal.get_report_letterhead_settings()'))) > 0
+           AND position('claims.read' in pg_get_functiondef(to_regprocedure('security_internal.get_report_letterhead_settings()'))) > 0
+           AND position('preauth.read' in pg_get_functiondef(to_regprocedure('security_internal.get_report_letterhead_settings()'))) > 0
       THEN 'PASS' ELSE 'BLOCKED' END,
-    'Authorized report users must be able to read company letterhead settings'
+    'Reports, ledger, claims and pre-authorization readers must receive only approved branding fields'
 
   UNION ALL
   SELECT 'Notification schema',
