@@ -45,6 +45,8 @@ import {
   type ManualClaimLine,
 } from "@/features/claims/services/claimDiagnosis.service";
 import { exportClaimDiagnosisDraftPdf, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
+import { buildLetterheadConfig } from "@/lib/letterhead";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 
 const REJECTION_REASONS = [
   "Medical Necessity",
@@ -95,6 +97,9 @@ export default function ClaimDiagnosisAssistant() {
   const { data: diagnosisRows } = useSupabaseQuery("diagnosis_codes");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: savedDrafts } = useSupabaseQuery("claim_diagnosis_drafts", { limit: 10 });
+  const { data: letterheadSettings } = useSupabaseQuery("system_settings");
+  const letterhead = buildLetterheadConfig((key) => (letterheadSettings || []).find((row) => row.key === key)?.value || "");
+  const canSaveDrafts = databaseCapabilities.claimDiagnosisDrafts;
   const [workflowType, setWorkflowType] = useState<ClaimWorkflowType>("new_claim");
   const [entryMode, setEntryMode] = useState<ClaimEntryMode>("upload");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -329,9 +334,9 @@ export default function ClaimDiagnosisAssistant() {
     }
   };
 
-  const exportDraftPdf = (draft: ClaimDiagnosisPdfData) => {
+  const exportDraftPdf = async (draft: ClaimDiagnosisPdfData) => {
     try {
-      exportClaimDiagnosisDraftPdf(draft);
+      await exportClaimDiagnosisDraftPdf(draft, letterhead);
       toast({ title: "Draft PDF downloaded" });
     } catch (error) {
       toast({
@@ -343,9 +348,9 @@ export default function ClaimDiagnosisAssistant() {
   };
 
   const exportSavedDraftPdf = (draft: Record<string, unknown>) => {
-    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
-      .find((insurer) => insurer.id === draft.insurance_company_id)?.company_name;
-    exportDraftPdf({ ...draft, insurer_name: insurerName } as ClaimDiagnosisPdfData);
+    const insurer = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((row) => row.id === draft.insurance_company_id);
+    void exportDraftPdf({ ...draft, insurer_name: insurer?.company_name, insurer_address: insurer?.address, insurer_phone: insurer?.phone, insurer_email: insurer?.email } as ClaimDiagnosisPdfData);
   };
 
   const exportCurrentDraftPdf = () => {
@@ -366,16 +371,19 @@ export default function ClaimDiagnosisAssistant() {
           status: "Pending",
           category: item.category,
         }));
-    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
-      .find((insurer) => insurer.id === manualClaim.insurance_company_id)?.company_name;
-    exportDraftPdf({
+    const insurer = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((row) => row.id === manualClaim.insurance_company_id);
+    void exportDraftPdf({
       id: analysis.analysis_id,
       workflow_type: workflowType,
       patient_name: manualClaim.patient_name || analysis.patient_name,
       claim_number: manualClaim.claim_number || analysis.claim_number,
       date_of_service: manualClaim.date_of_service || analysis.date_of_service,
       insurance_company_id: manualClaim.insurance_company_id,
-      insurer_name: insurerName,
+      insurer_name: insurer?.company_name,
+      insurer_address: insurer?.address,
+      insurer_phone: insurer?.phone,
+      insurer_email: insurer?.email,
       rejection_reason: manualClaim.rejection_reason || analysis.rejection_reason,
       clinical_notes: manualClaim.clinical_notes,
       authorization_code: manualClaim.authorization_code,
@@ -641,7 +649,7 @@ export default function ClaimDiagnosisAssistant() {
         </div>
       </Card>
 
-      {savedDrafts && savedDrafts.length > 0 && (
+      {!canSaveDrafts && <Card className="border-dashed p-3 text-sm text-muted-foreground">Saved claim-diagnosis drafts are temporarily unavailable in this deployment because the production database table has not yet passed its release migration. Analysis and PDF export remain available; no claim is submitted by this assistant.</Card>}\n      {savedDrafts && savedDrafts.length > 0 && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between"><div><h2 className="font-semibold">Prepared Claim Updates</h2><p className="text-sm text-muted-foreground">Saved drafts are not submitted claims.</p></div><Badge variant="outline">{savedDrafts.length}</Badge></div>
           <div className="overflow-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-muted/50 text-xs"><tr><th className="px-3 py-2">Patient</th><th className="px-3 py-2">Claim reference</th><th className="px-3 py-2">Workflow</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Updated</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Export</th></tr></thead><tbody>
@@ -691,7 +699,7 @@ export default function ClaimDiagnosisAssistant() {
             <div className="rounded-xl border bg-background p-3"><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Selected for Claim</h3><Badge variant="outline">{selectedCodes.length}</Badge></div>
               <div className="space-y-2">{selectedCodes.map((code) => <div key={code.code} className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-2 text-sm"><div><div className="flex items-center gap-2"><span className="font-mono font-semibold">{code.code}</span><Badge variant={code.source === "manual" ? "secondary" : "outline"}>{code.source === "manual" ? "Manual Override" : "AI Recommended"}</Badge></div><p className="mt-1 text-muted-foreground">{code.description}</p></div><Button type="button" size="icon" variant="ghost" aria-label={`Remove ${code.code}`} onClick={() => removeSelectedCode(code.code)}><X className="h-4 w-4" /></Button></div>)}{!selectedCodes.length && <p className="text-sm text-muted-foreground">Accept recommendations or add a code manually.</p>}</div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />Export Draft PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : "Prepare Claim Update"}</Button></div>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />Export Draft PDF</Button><Button type="button" variant="outline" onClick={() => void exportCurrentDraftPdf()}><Printer className="mr-2 h-4 w-4" /> Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : !canSaveDrafts ? "Draft saving unavailable" : "Prepare Claim Update"}</Button></div>
             {!canWrite && <p className="text-right text-xs text-muted-foreground">Claims write permission is required to save a review draft.</p>}
           </Card>
 

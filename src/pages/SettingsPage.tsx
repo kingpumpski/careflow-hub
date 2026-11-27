@@ -211,12 +211,12 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-4xl">
       <div className="page-header">
         <h1 className="page-title">System Settings</h1>
-        <p className="page-description">Configure system-wide settings and preferences</p>
+        <p className="page-description">Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></p>
       </div>
 
       <Tabs defaultValue="provider">
         <TabsList>
-          <TabsTrigger value="provider">Provider Info</TabsTrigger>
+          <TabsTrigger value="provider">Company &amp; Letterhead</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax Configuration</TabsTrigger>
           <TabsTrigger value="email">Email (SMTP)</TabsTrigger>
@@ -303,7 +303,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="stat-card space-y-4">
-            <h3 className="font-heading font-semibold flex items-center gap-2">
+            <h3 id="letterhead-designer" className="font-heading font-semibold flex items-center gap-2 scroll-mt-24">
               <PenTool className="w-4 h-4 text-primary" />
               Letterhead Designer
             </h3>

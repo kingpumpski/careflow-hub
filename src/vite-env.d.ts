@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_CAREFLOW_SETTLEMENT_EXCEPTIONS_ENABLED?: string;
   readonly VITE_CAREFLOW_SETTLEMENT_REMITTANCES_ENABLED?: string;
   readonly VITE_CAREFLOW_FACILITY_ADMIN_ENABLED?: string;
+  readonly VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED?: string;
 }
 
 interface ImportMeta {

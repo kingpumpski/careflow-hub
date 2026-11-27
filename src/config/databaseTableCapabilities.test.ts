@@ -14,6 +14,7 @@ const disabled: DatabaseCapabilities = {
   settlementExceptions: false,
   settlementRemittanceLedger: false,
   facilityAdministration: false,
+  claimDiagnosisDrafts: false,
 };
 const enabled: DatabaseCapabilities = {
   preAuthPreparedHandoff: true,
@@ -21,6 +22,7 @@ const enabled: DatabaseCapabilities = {
   settlementExceptions: true,
   settlementRemittanceLedger: true,
   facilityAdministration: true,
+  claimDiagnosisDrafts: true,
 };
 
 describe("database table and RPC capability contracts", () => {
@@ -32,6 +34,7 @@ describe("database table and RPC capability contracts", () => {
     expect(getDatabaseCapabilityForResource("settlement_exception_audit_events")).toBe("settlementExceptions");
     expect(getDatabaseCapabilityForResource("claims_settlement_remittances")).toBe("settlementRemittanceLedger");
     expect(getDatabaseCapabilityForResource("claims_settlement_receipt_months")).toBe("settlementRemittanceLedger");
+    expect(getDatabaseCapabilityForResource("claim_diagnosis_drafts")).toBe("claimDiagnosisDrafts");
   });
 
   it("maps privileged RPCs to the same capability as their tables", () => {
@@ -53,6 +56,7 @@ describe("database table and RPC capability contracts", () => {
     expect(isDatabaseCapabilityAvailable("claims_settlement_periods", disabled)).toBe(true);
     expect(isDatabaseCapabilityAvailable("payments", disabled)).toBe(true);
     expect(isDatabaseCapabilityAvailable("claim_cases", disabled)).toBe(false);
+    expect(isDatabaseCapabilityAvailable("claim_diagnosis_drafts", disabled)).toBe(false);
     expect(isDatabaseCapabilityAvailable("settlement_exceptions", disabled)).toBe(false);
     expect(isDatabaseCapabilityAvailable("create_facility_with_owner", disabled)).toBe(false);
   });
@@ -62,6 +66,7 @@ describe("database table and RPC capability contracts", () => {
       .toThrow(DatabaseCapabilityUnavailableError);
     expect(() => assertDatabaseCapabilityAvailable("claims_settlement_periods", disabled)).not.toThrow();
     expect(isDatabaseCapabilityAvailable("claims_settlement_remittances", enabled)).toBe(true);
+    expect(isDatabaseCapabilityAvailable("claim_diagnosis_drafts", enabled)).toBe(true);
   });
 });
 

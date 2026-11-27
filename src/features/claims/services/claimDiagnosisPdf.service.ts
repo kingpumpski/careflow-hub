@@ -1,5 +1,6 @@
 import autoTable from "jspdf-autotable";
 import jsPDF from "jspdf";
+import { drawLetterhead, type LetterheadConfig } from "@/lib/exportUtils";
 
 type PdfRow = Record<string, unknown>;
 
@@ -11,6 +12,9 @@ export interface ClaimDiagnosisPdfData {
   date_of_service?: unknown;
   insurance_company_id?: unknown;
   insurer_name?: unknown;
+  insurer_address?: unknown;
+  insurer_phone?: unknown;
+  insurer_email?: unknown;
   rejection_reason?: unknown;
   clinical_notes?: unknown;
   authorization_code?: unknown;
@@ -33,20 +37,28 @@ function safeFilename(value: string): string {
   return value.trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "claim";
 }
 
-export function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData): void {
+export async function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData, letterhead: LetterheadConfig = {}): Promise<void> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 15;
   const workflow = draft.workflow_type === "rejected_claim" ? "Rejected claim response" : "Claim update";
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("CLAIM REVIEW DRAFT", margin, 18);
+  const headerY = await drawLetterhead(doc, letterhead, "Claim Review Draft");
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`${workflow} · Generated ${new Date().toLocaleString()}`, margin, headerY);
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text(`${workflow} · Generated ${new Date().toLocaleString()}`, margin, 25);
+  const insurerLines = [
+    `Insurer / Company: ${value(draft.insurer_name ?? (draft.insurance_company_id ? "Selected (name unavailable)" : "Not specified"))}`,
+    draft.insurer_address ? `Address: ${value(draft.insurer_address)}` : "",
+    draft.insurer_phone ? `Telephone: ${value(draft.insurer_phone)}` : "",
+    draft.insurer_email ? `Email: ${value(draft.insurer_email)}` : "",
+  ].filter(Boolean);
+  doc.text(insurerLines, margin, headerY + 7);
+  doc.setFont("helvetica", "normal");
 
   autoTable(doc, {
-    startY: 31,
+    startY: headerY + 10 + insurerLines.length * 4,
     theme: "grid",
     styles: { fontSize: 9, cellPadding: 2.5, overflow: "linebreak" },
     head: [["Claim details", "Value", "Claim details", "Value"]],
@@ -115,11 +127,17 @@ export function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData): void
   addTextSection("Comments", comments.join("\n"));
 
   const pageCount = doc.getNumberOfPages();
+  const accent = letterhead.accent_color || "#1E4078";
+  const rgb = /^#([0-9a-f]{6})$/i.exec(accent)?.[1];
+  const color = rgb ? [parseInt(rgb.slice(0,2),16), parseInt(rgb.slice(2,4),16), parseInt(rgb.slice(4,6),16)] as [number,number,number] : [30,64,120] as [number,number,number];
   for (let page = 1; page <= pageCount; page += 1) {
     doc.setPage(page);
     doc.setFontSize(8);
     doc.setTextColor(100);
-    doc.text("Review draft only — not submitted to a payer. Verify all clinical and billing details before use.", margin, 287);
+    doc.setDrawColor(color[0], color[1], color[2]);
+    doc.line(margin, 281, 195, 281);
+    doc.text(letterhead.footer_note || "Review draft only — not submitted to a payer. Verify all clinical and billing details before use.", margin, 286, { maxWidth: 180 });
+    doc.text(`${letterhead.provider_name || "CareFlow Hub"} · Page ${page} of ${pageCount}`, margin, 291);
   }
 
   const reference = safeFilename(String(draft.claim_number || draft.id || "claim"));

@@ -136,7 +136,7 @@ export default function ScheduleGenerator() {
           <Button onClick={() => setGenerated(true)} className="gap-2"><ClipboardList className="w-4 h-4" />Generate Schedule</Button>
           <Button variant="outline" disabled={!generated} onClick={() => exportReportPDF(title, pdfBody(), columns, companyInfo)} className="gap-2"><FileDown className="w-4 h-4" />Export PDF</Button>
           <Button variant="outline" disabled={!generated} onClick={() => exportReportExcel(title, excelRows(), "Schedule")} className="gap-2"><FileSpreadsheet className="w-4 h-4" />Export Excel</Button>
-          <Button variant="outline" disabled={!generated} onClick={() => window.print()} className="gap-2"><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" disabled={!generated} onClick={() => exportReportPDF(title, pdfBody(), columns, companyInfo)} className="gap-2"><Printer className="w-4 h-4" />Print</Button>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ const TABLE_CAPABILITIES: Readonly<Record<string, DatabaseCapabilityKey>> = Obje
   settlement_exception_audit_events: "settlementExceptions",
   claims_settlement_remittances: "settlementRemittanceLedger",
   claims_settlement_receipt_months: "settlementRemittanceLedger",
+  claim_diagnosis_drafts: "claimDiagnosisDrafts",
 });
 
 const RPC_CAPABILITIES: Readonly<Record<string, DatabaseCapabilityKey>> = Object.freeze({
