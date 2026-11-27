@@ -74,8 +74,10 @@ export default function StatementsOfAccount() {
     retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
   });
 
-  const letterhead = buildLetterheadConfig((key: string) => settings?.find?.((row: any) => row.key === key)?.value || "");
-  const selectedCompany = (companies || []).find((company: any) => company.id === companyId);
+  const settingRows = (settings || []) as SettingRow[];
+  const companyRows = (companies || []) as unknown as CompanyOption[];
+  const letterhead = buildLetterheadConfig((key: string) => settingRows.find((row) => row.key === key)?.value || "");
+  const selectedCompany = companyRows.find((company) => company.id === companyId);
   const statementResult = useMemo(() => {
     if (!companyId || !ledger) return { statement: null, error: null as string | null };
     try {
