@@ -62,7 +62,7 @@ CREATE POLICY notifications_update_own
 
 -- Create one safe notification per affected recipient for each audit event.
 -- Do not copy source row JSON, patient details, claim amounts or clinical notes.
-CREATE OR REPLACE FUNCTION public.notify_from_audit_log()
+CREATE OR REPLACE FUNCTION security_internal.notify_from_audit_log()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -226,11 +226,11 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.notify_from_audit_log() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION security_internal.notify_from_audit_log() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS notify_from_audit_log_insert ON public.audit_logs;
 CREATE TRIGGER notify_from_audit_log_insert
   AFTER INSERT ON public.audit_logs
-  FOR EACH ROW EXECUTE FUNCTION public.notify_from_audit_log();
+  FOR EACH ROW EXECUTE FUNCTION security_internal.notify_from_audit_log();
 
 -- Add audit coverage to the known operational write tables where the canonical
 -- audit trigger is not already attached. Tables absent from this deployment are
@@ -296,5 +296,5 @@ BEGIN
 END;
 $realtime$;
 
-COMMENT ON FUNCTION public.notify_from_audit_log() IS
+COMMENT ON FUNCTION security_internal.notify_from_audit_log() IS
   'Creates recipient-scoped notifications from audit events without copying sensitive source-row data.';
