@@ -46,7 +46,7 @@ DECLARE
 BEGIN
   SELECT created.facility_id INTO v_facility_id
   FROM public.create_facility_with_owner(
-    'CFTEST001', 'CareFlow Onboarding Test', 'GH', 'Africa/Accra', 'GHS', 'DD/MM/YYYY'
+    'TEST-HOSPITAL-01', 'CareFlow Test Hospital', 'GH', 'Africa/Accra', 'GHS', 'DD/MM/YYYY'
   ) AS created;
 
   IF v_facility_id IS NULL THEN
