@@ -43,6 +43,7 @@ export default function FacilityManagement() {
   const queryClient = useQueryClient();
   const canManageFacilities = !permissionsLoading && can("settings.manage");
   const canManageUsers = canManageFacilities && can("users.manage");
+  const facilityAdministrationAvailable = databaseCapabilities.facilityAdministration && !offline;
   const { data: facilities } = useSupabaseQuery("facilities", { orderBy: "name", enabled: !offline && canManageFacilities });
   const facilityRows = useMemo(() => (facilities ?? []) as FacilityRow[], [facilities]);
   const [selectedFacilityId, setSelectedFacilityId] = useState(() => getStoredFacilityId() ?? "");
@@ -98,6 +99,7 @@ export default function FacilityManagement() {
 
   const createFacility = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!facilityAdministrationAvailable) { toast({ title: "Facility administration unavailable", description: "The facility onboarding RPCs have not been released to this production database. No facility or membership has been changed.", variant: "destructive" }); return; }
     if (!canManageFacilities || !facilityForm.code.trim() || !facilityForm.name.trim()) return;
     setCreating(true);
     try {
@@ -126,6 +128,7 @@ export default function FacilityManagement() {
 
   const saveProvisionalWhtRate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!facilityAdministrationAvailable) { toast({ title: "Facility settings unavailable", description: "The facility administration migration is not released in this database.", variant: "destructive" }); return; }
     const rate = Number(provisionalWhtRate);
     if (!selectedFacilityId || !canManageFacilities || !provisionalWhtRate.trim()
       || !Number.isFinite(rate) || rate < 0 || rate > 100) {
@@ -150,6 +153,7 @@ export default function FacilityManagement() {
 
   const addMember = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!facilityAdministrationAvailable) { toast({ title: "Membership administration unavailable", description: "The facility membership RPCs have not been released to this database.", variant: "destructive" }); return; }
     if (!selectedFacilityId || !memberForm.email.trim() || !canManageUsers) return;
     setAddingMember(true);
     try {
@@ -171,7 +175,7 @@ export default function FacilityManagement() {
   };
 
   const suspendMember = async (membership: MembershipRow) => {
-    if (!canManageUsers) return;
+    if (!facilityAdministrationAvailable || !canManageUsers) return;
     const reason = window.prompt("Enter the reason for suspending this user's facility access:");
     if (!reason?.trim()) return;
     try {
@@ -193,6 +197,7 @@ export default function FacilityManagement() {
   return <div className="space-y-6 min-w-0">
     <header className="page-header flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="page-title">Facilities & Access</h1><p className="page-description">Onboard facilities and control which existing CareFlow users can access each facility.</p></div><Button variant="outline" onClick={() => void refresh()} disabled={offline}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></header>
     {offline && <div role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm">Facility administration requires an online connection.</div>}
+    {!offline && !databaseCapabilities.facilityAdministration && <div role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm"><p className="font-semibold">Facility onboarding is not yet released to this database</p><p className="mt-1">The production project has the facility tables but not the reviewed superuser-only onboarding, membership and WHT-rate RPCs. Create, add-member, suspend and rate changes are disabled until the approved migration and permission checks are deployed. Existing facility data is not changed.</p></div>}
 
     <section className="stat-card space-y-4">
       <div className="flex items-center gap-2"><Building2 className="h-5 w-5" /><h2 className="font-semibold">Create a facility</h2></div>
@@ -204,13 +209,13 @@ export default function FacilityManagement() {
         <div className="space-y-2"><Label htmlFor="facility-timezone">IANA time zone</Label><Input id="facility-timezone" required value={facilityForm.timezone} onChange={(event) => setFacilityForm((old) => ({ ...old, timezone: event.target.value }))} placeholder="Africa/Accra" /></div>
         <div className="space-y-2"><Label htmlFor="facility-currency">Default currency (ISO 4217)</Label><Input id="facility-currency" required maxLength={3} value={facilityForm.default_currency} onChange={(event) => setFacilityForm((old) => ({ ...old, default_currency: event.target.value.toUpperCase() }))} /></div>
         <div className="space-y-2"><Label htmlFor="facility-date-format">Date format</Label><select id="facility-date-format" value={facilityForm.date_format} onChange={(event) => setFacilityForm((old) => ({ ...old, date_format: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="DD/MM/YYYY">DD/MM/YYYY</option><option value="YYYY-MM-DD">YYYY-MM-DD</option><option value="MM/DD/YYYY">MM/DD/YYYY</option><option value="DD-MM-YYYY">DD-MM-YYYY</option><option value="MM-DD-YYYY">MM-DD-YYYY</option></select></div>
-        <div className="md:col-span-2"><Button type="submit" disabled={creating || offline}>{creating ? "Creating…" : "Create facility and assign owner"}</Button></div>
+        <div className="md:col-span-2"><Button type="submit" disabled={creating || !facilityAdministrationAvailable}>{creating ? "Creating…" : "Create facility and assign owner"}</Button></div>
       </form>
     </section>
 
     <section className="stat-card space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><Building2 className="h-5 w-5" /><h2 className="font-semibold">Registered facilities</h2></div><Badge variant="outline">{facilityRows.length} facilities</Badge></div>
-      {!facilityRows.length ? <p className="rounded-md border p-5 text-sm text-muted-foreground">No facilities have been registered yet. Create the first facility above to enable facility-scoped workflows.</p> : <div className="space-y-3"><Label htmlFor="facility-select">Manage facility</Label><select id="facility-select" value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm">{facilityRows.map((facility) => <option key={facility.id} value={facility.id}>{facility.name} ({facility.code})</option>)}</select>{selectedFacility && <><div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-2"><p><span className="text-muted-foreground">Country:</span> {selectedFacility.country_code ?? "—"}</p><p><span className="text-muted-foreground">Currency:</span> {selectedFacility.default_currency}</p><p><span className="text-muted-foreground">Time zone:</span> {selectedFacility.timezone}</p><p><span className="text-muted-foreground">Date format:</span> {selectedFacility.date_format}</p></div><form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_auto] sm:items-end" onSubmit={(event) => void saveProvisionalWhtRate(event)}><div className="space-y-2"><Label htmlFor="facility-provisional-wht-rate">Approved provisional WHT rate (%)</Label><Input id="facility-provisional-wht-rate" type="number" min="0" max="100" step="0.0001" required value={provisionalWhtRate} onChange={(event) => setProvisionalWhtRate(event.target.value)} placeholder="Enter facility-approved rate" /><p className="text-xs text-muted-foreground">Used only to estimate WHT on submitted claims. Actual WHT is recorded separately from insurer payment advice.</p></div><Button type="submit" disabled={savingWhtRate || offline}>{savingWhtRate ? "Saving…" : "Save approved rate"}</Button></form></>}</div>}
+      {!facilityRows.length ? <p className="rounded-md border p-5 text-sm text-muted-foreground">No facilities have been registered yet. Create the first facility above to enable facility-scoped workflows.</p> : <div className="space-y-3"><Label htmlFor="facility-select">Manage facility</Label><select id="facility-select" value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm">{facilityRows.map((facility) => <option key={facility.id} value={facility.id}>{facility.name} ({facility.code})</option>)}</select>{selectedFacility && <><div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-2"><p><span className="text-muted-foreground">Country:</span> {selectedFacility.country_code ?? "—"}</p><p><span className="text-muted-foreground">Currency:</span> {selectedFacility.default_currency}</p><p><span className="text-muted-foreground">Time zone:</span> {selectedFacility.timezone}</p><p><span className="text-muted-foreground">Date format:</span> {selectedFacility.date_format}</p></div><form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_auto] sm:items-end" onSubmit={(event) => void saveProvisionalWhtRate(event)}><div className="space-y-2"><Label htmlFor="facility-provisional-wht-rate">Approved provisional WHT rate (%)</Label><Input id="facility-provisional-wht-rate" type="number" min="0" max="100" step="0.0001" required value={provisionalWhtRate} onChange={(event) => setProvisionalWhtRate(event.target.value)} placeholder="Enter facility-approved rate" /><p className="text-xs text-muted-foreground">Used only to estimate WHT on submitted claims. Actual WHT is recorded separately from insurer payment advice.</p></div><Button type="submit" disabled={savingWhtRate || !facilityAdministrationAvailable}>{savingWhtRate ? "Saving…" : "Save approved rate"}</Button></form></>}</div>}
     </section>
 
     {selectedFacility && <section className="stat-card space-y-4">
@@ -218,12 +223,12 @@ export default function FacilityManagement() {
       {canManageUsers && <form className="grid gap-3 sm:grid-cols-[1fr_180px_auto]" onSubmit={(event) => void addMember(event)}>
         <div className="space-y-2"><Label htmlFor="member-email">Existing user email</Label><Input id="member-email" type="email" required value={memberForm.email} onChange={(event) => setMemberForm((old) => ({ ...old, email: event.target.value }))} placeholder="user@example.com" /></div>
         <div className="space-y-2"><Label htmlFor="member-role">Facility label</Label><select id="member-role" value={memberForm.role} onChange={(event) => setMemberForm((old) => ({ ...old, role: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm"><option value="member">Member</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select></div>
-        <div className="flex items-end"><Button type="submit" disabled={addingMember || offline}><UserPlus className="mr-2 h-4 w-4" />{addingMember ? "Adding…" : "Add user"}</Button></div>
+        <div className="flex items-end"><Button type="submit" disabled={addingMember || !facilityAdministrationAvailable}><UserPlus className="mr-2 h-4 w-4" />{addingMember ? "Adding…" : "Add user"}</Button></div>
       </form>}
       <div className="rounded-md border p-3 text-xs text-muted-foreground">Facility membership controls which facility data a user can access. It does not grant global application permissions. Assign the user's Claims, Payments or other application role separately in User Management.</div>
       {!membershipRows.length ? <p className="text-sm text-muted-foreground py-4">No members found for this facility.</p> : <div className="overflow-x-auto"><table className="data-table min-w-[620px]"><thead><tr><th>User</th><th>Facility label</th><th>Status</th><th>Added</th><th>Action</th></tr></thead><tbody>{membershipRows.map((membership) => {
         const profile = profileById.get(membership.user_id);
-        return <tr key={membership.id}><td><div className="font-medium">{profile?.full_name || profile?.email || membership.user_id}</div>{profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}</td><td>{membership.role}</td><td><Badge variant={membership.status === "active" ? "secondary" : "outline"}>{membership.status}</Badge></td><td>{new Date(membership.created_at).toLocaleDateString()}</td><td>{canManageUsers && membership.status === "active" ? <Button size="sm" variant="ghost" onClick={() => void suspendMember(membership)}><Ban className="mr-1 h-4 w-4" />Suspend</Button> : "—"}</td></tr>;
+        return <tr key={membership.id}><td><div className="font-medium">{profile?.full_name || profile?.email || membership.user_id}</div>{profile?.email && <div className="text-xs text-muted-foreground">{profile.email}</div>}</td><td>{membership.role}</td><td><Badge variant={membership.status === "active" ? "secondary" : "outline"}>{membership.status}</Badge></td><td>{new Date(membership.created_at).toLocaleDateString()}</td><td>{canManageUsers && membership.status === "active" ? <Button size="sm" variant="ghost" onClick={() => void suspendMember(membership)} disabled={!facilityAdministrationAvailable}><Ban className="mr-1 h-4 w-4" />Suspend</Button> : "—"}</td></tr>;
       })}</tbody></table></div>}
     </section>}
 
