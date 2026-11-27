@@ -348,9 +348,9 @@ export default function ClaimDiagnosisAssistant() {
   };
 
   const exportSavedDraftPdf = (draft: Record<string, unknown>) => {
-    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
-      .find((insurer) => insurer.id === draft.insurance_company_id)?.company_name;
-    void exportDraftPdf({ ...draft, insurer_name: insurerName } as ClaimDiagnosisPdfData);
+    const insurer = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((row) => row.id === draft.insurance_company_id);
+    void exportDraftPdf({ ...draft, insurer_name: insurer?.company_name, insurer_address: insurer?.address, insurer_phone: insurer?.phone, insurer_email: insurer?.email } as ClaimDiagnosisPdfData);
   };
 
   const exportCurrentDraftPdf = () => {
@@ -371,8 +371,8 @@ export default function ClaimDiagnosisAssistant() {
           status: "Pending",
           category: item.category,
         }));
-    const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
-      .find((insurer) => insurer.id === manualClaim.insurance_company_id)?.company_name;
+    const insurer = ((insurers ?? []) as Array<Record<string, unknown>>)
+      .find((row) => row.id === manualClaim.insurance_company_id);
     void exportDraftPdf({
       id: analysis.analysis_id,
       workflow_type: workflowType,
@@ -380,7 +380,10 @@ export default function ClaimDiagnosisAssistant() {
       claim_number: manualClaim.claim_number || analysis.claim_number,
       date_of_service: manualClaim.date_of_service || analysis.date_of_service,
       insurance_company_id: manualClaim.insurance_company_id,
-      insurer_name: insurerName,
+      insurer_name: insurer?.company_name,
+      insurer_address: insurer?.address,
+      insurer_phone: insurer?.phone,
+      insurer_email: insurer?.email,
       rejection_reason: manualClaim.rejection_reason || analysis.rejection_reason,
       clinical_notes: manualClaim.clinical_notes,
       authorization_code: manualClaim.authorization_code,
