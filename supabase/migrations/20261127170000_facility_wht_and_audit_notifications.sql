@@ -87,7 +87,8 @@ BEGIN
     v_payload->>'created_by',
     v_payload->>'assigned_to',
     v_payload->>'owner_id',
-    v_payload->>'approved_by'
+    v_payload->>'approved_by',
+    v_payload->>'recipient_id'
   );
   IF v_target_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
     v_target_user_id := v_target_text::uuid;
@@ -147,9 +148,10 @@ BEGIN
     WHEN NEW.table_name IN ('patients', 'doctors', 'procedures', 'client_companies') THEN '/clients'
     WHEN NEW.table_name = 'insurance_companies' THEN '/insurance'
     WHEN NEW.table_name = 'ledger_entries' THEN '/ledger'
-    WHEN NEW.table_name IN ('facilities', 'facility_memberships') THEN '/facilities'
+    WHEN NEW.table_name = 'facilities' THEN '/facilities'
+    WHEN NEW.table_name = 'facility_memberships' THEN '/notifications'
     WHEN NEW.table_name = 'system_settings' THEN '/settings'
-    WHEN NEW.table_name IN ('user_roles', 'user_permission_overrides') THEN '/users'
+    WHEN NEW.table_name IN ('user_roles', 'user_permission_overrides') THEN '/notifications'
     ELSE '/audit-trail'
   END;
 
@@ -159,6 +161,7 @@ BEGIN
      WHERE v_facility_id IS NOT NULL
        AND fm.facility_id = v_facility_id
        AND fm.status = 'active'
+       AND NEW.table_name <> 'facility_memberships'
     UNION
     SELECT v_target_user_id WHERE v_target_user_id IS NOT NULL
     UNION
