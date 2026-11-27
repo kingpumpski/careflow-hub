@@ -126,7 +126,7 @@ export async function exportCompanyStatementPDF(
       ? "CREDIT BALANCE — the facility has an unapplied credit in the company's account."
       : "BALANCED — no debit or credit balance remains at the end of this period.";
   const pageHeight = doc.internal.pageSize.getHeight();
-  const finalY = (doc as any).lastAutoTable?.finalY || y;
+  const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y;
   if (finalY < pageHeight - 24) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
