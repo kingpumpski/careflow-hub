@@ -91,6 +91,7 @@ Avoid a global mutable database session variable as the sole tenant boundary. If
 
 - Export a complete schema-only snapshot from the connected project and run the repeatable read-only [catalogue inventory](ORGANIZATION_TENANCY_CATALOG_INVENTORY.md) to capture deployed relations, foreign keys, RLS policies, views, functions and triggers.
 - Enumerate all tenant-bearing and tenant-derived tables, views, RPCs, triggers, Storage buckets/policies, Edge Functions, and scheduled jobs.
+- Maintain the evidence-based [organization data ownership and referential-integrity crosswalk](ORGANIZATION_DATA_OWNERSHIP_CROSSWALK.md); do not generate tenant migrations until every relation has an approved ownership class and unresolved historical rows have a review path.
 - Capture current RLS policies, grants, constraints, indexes, function definitions, and migration ledger.
 - Record row counts and orphan/reference-integrity checks without exporting patient-identifying data into development artifacts.
 - Verify a full encrypted backup and restore it into a disposable project before any structural migration.
