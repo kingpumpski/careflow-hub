@@ -251,7 +251,3 @@ export function buildStatementReconciliation(
     monthlyBreakdown,
   };
 }
-
-export function formatStatementAmount(amount: number): string {
-  return new Intl.NumberFormat("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(amount));
-}
