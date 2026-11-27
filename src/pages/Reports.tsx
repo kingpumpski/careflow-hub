@@ -13,6 +13,7 @@ import { usePermissions } from "@/modules/security/usePermissions";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
+import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
@@ -31,7 +32,6 @@ export default function Reports() {
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
-  const { data: receiptMonths, error: receiptMonthsError } = useSupabaseQuery("claims_settlement_receipt_months", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useQuery({
     queryKey: ["report-letterhead-settings", canManageSettings],
@@ -229,7 +229,7 @@ export default function Reports() {
   }, [outstandingPeriods, selectedCompanyId]);
 
   const receiptMonthData = filterByPeriod(
-    (receiptMonths || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId),
+    summarizePaymentsByReceiptMonth(payments || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId),
     "receipt_year",
     "receipt_month_number",
   );
@@ -272,11 +272,9 @@ export default function Reports() {
       ? companyInfo.accent_color!
       : "#1E4078";
     const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Approved gross and approval variance are shown when insurer payment advice is available. The WHT applied to outstanding balances is actual WHT when confirmed, otherwise the provisional estimate.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
-    const receiptTable = activeReport === "balance" && receiptMonthsError
-      ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Receipt-month data is unavailable from the connected database. This section is unavailable, not zero. Do not use this report as evidence of zero receipts.</p></section>`
-      : activeReport === "balance" && receiptMonthData.length
-        ? `<section class="receipt-summary"><h2>Actual Cash and WHT by Receipt Month</h2><p class="section-note">Cash and actual withholding tax are grouped by the month the facility received the remittance, independently of the original claims month.</p><table><thead><tr><th>Insurance Company</th><th>Receipt Month</th><th>Net Cash Received</th><th>Actual WHT</th><th>Remittances</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>GH¢ ${Number(entry.actual_withholding_tax || 0).toLocaleString()}</td><td>${Number(entry.remittance_count || 0)}</td></tr>`).join("")}</tbody></table></section>`
-        : "";
+    const receiptTable = activeReport === "balance"
+      ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
+      : "";
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${accentColor};padding:0 0 14px;margin-bottom:18px}
@@ -379,7 +377,7 @@ export default function Reports() {
       </div>
 
       {settlementReportUnavailable && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Claims settlement report data is unavailable. Financial totals are not zero; printing and exports are disabled until the settlement source is restored.</div>}
-      {activeReport === "balance" && receiptMonthsError && !settlementReportUnavailable && <div role="status" className="rounded-md border p-3 text-sm text-muted-foreground">Actual cash and WHT by receipt month are unavailable. The printout will identify this section as unavailable rather than reporting zero receipts.</div>}
+      {activeReport === "balance" && !settlementReportUnavailable && <div role="status" className="rounded-md border p-3 text-sm text-muted-foreground">Cash receipts are grouped by recorded payment date. Actual withholding tax is grouped by claims period because the connected production schema does not record a separate tax receipt date.</div>}
 
       <div className="flex items-center gap-2 flex-wrap">
         {periods.map((p) => <Button key={p} variant={p === activePeriod ? "default" : "outline"} size="sm" onClick={() => setActivePeriod(p)}>{p}</Button>)}
