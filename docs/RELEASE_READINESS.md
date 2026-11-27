@@ -519,3 +519,22 @@ These merges do not apply SQL to production. The prepared-handoff migration rema
 6. Only then consider production migration and matching Edge Function deployment through the protected release workflow.
 
 **Hard stop:** no `supabase db push --linked`, direct production DDL, migration-ledger repair, manual role grant, Auth change or Edge Function deployment before the backup/restore and migration-crosswalk gates pass.
+
+
+## 2026-11-27 — production schema and optional-module decision
+
+The 2026-11-27 read-only production audit confirms that the connected project remains on 74 migrations (latest `20260921160938`). The project is healthy, but the repository's later migrations have not been deployed. The following relations are absent: `preauthorization_submissions`, `claim_cases`, `claim_case_events`, `settlement_exceptions`, `settlement_exception_audit_events`, `claims_settlement_remittances`, and `claims_settlement_receipt_months`. The live settlement-period table also lacks `approved_gross_amount` and `actual_receipt_date`.
+
+The legacy `preauth_submissions` table exists but is an insurer execution-queue legacy relation. The canonical prepared-only handoff relation is `preauthorization_submissions`; the two must never be conflated. The live public finalizer wrapper remains SECURITY DEFINER, while the merged source contract expects SECURITY INVOKER. The pre-authorization feature remains disabled until the complete deployed function/table/RLS/permission contract passes preflight.
+
+Exact production counts from read-only SQL: `facilities` 0; `facility_memberships` 0; `user_roles` 1; `profiles` 1; `app_permissions` 15; `role_permissions` 59; `user_permission_overrides` 0. Organization and organization-membership tables do not exist. The module entitlement architecture is therefore not yet implementable as a tenant-authoritative runtime feature.
+
+PR #129 (Statement of Account totals), PR #130 (payment-month reporting compatibility and route verification), and PR #131 (database capability release gates) have been merged. Their source changes do not alter production schema. PR #131's build-time variables are global release safeguards only; they are not a per-organization module entitlement mechanism.
+
+**Product decision:** retain a single shared application/schema and make optional modules available to each onboarded organization through server-authoritative organization entitlements. Keep user permissions and facility memberships separate. Do not provision separate schemas per customer or enable all modules for all users by default.
+
+**Pre-authorization scope:** internal document preparation, immutable PDF/version records, email drafting and internal officer handoff only. Insurer submission, acknowledgement, tracking and approval remain external-system activities and must not be represented as CareFlow outcomes.
+
+The Security Advisor snapshot on 2026-11-27 reports: `role_permissions` has RLS but no client policy (preserve deny-by-default), five authenticated-callable SECURITY DEFINER functions requiring individual caller-contract review, and leaked-password protection disabled. No policy, function ACL, Auth setting or database object was changed during this audit.
+
+No production SQL, DDL, data mutation, migration push, migration-ledger repair, Auth change or Edge Function deployment was performed.
