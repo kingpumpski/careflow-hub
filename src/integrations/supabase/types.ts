@@ -437,26 +437,53 @@ export type Database = {
       }
       notifications: {
         Row: {
+          action_url: string | null
+          actor_id: string | null
+          category: string
           created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          facility_id: string | null
           id: string
           message: string | null
+          metadata: Json
           read: boolean | null
+          read_at: string | null
+          source_audit_log_id: string | null
           title: string
           user_id: string | null
         }
         Insert: {
+          action_url?: string | null
+          actor_id?: string | null
+          category?: string
           created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          facility_id?: string | null
           id?: string
           message?: string | null
+          metadata?: Json
           read?: boolean | null
+          read_at?: string | null
+          source_audit_log_id?: string | null
           title: string
           user_id?: string | null
         }
         Update: {
+          action_url?: string | null
+          actor_id?: string | null
+          category?: string
           created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          facility_id?: string | null
           id?: string
           message?: string | null
+          metadata?: Json
           read?: boolean | null
+          read_at?: string | null
+          source_audit_log_id?: string | null
           title?: string
           user_id?: string | null
         }
