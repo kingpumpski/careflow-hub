@@ -30,7 +30,7 @@ The live database has the facility base tables but not the reviewed onboarding/m
 
 ## Repository migrations after the live ledger head
 
-The current source tree has 30 migration files whose version prefixes are later than the live latest version. They must be treated as **unreconciled candidates**, not automatically as unapplied migrations. The live ledger records names/versions, not the original SQL bytes/checksums.
+At the start of this follow-up, the current main branch had 30 migration files whose version prefixes were later than the live latest version. This branch adds the 31st proposed follow-up migration, `20261127180000_complete_operational_audit_coverage.sql`. The full list below therefore contains 31 entries for this branch. They must be treated as **unreconciled candidates**, not automatically as unapplied migrations. The live ledger records names/versions, not the original SQL bytes/checksums.
 
 1. `20260921161000_fix_facility_rls_runtime_recursion.sql`
 2. `20261104085000_claim_diagnosis_assistant.sql`
@@ -63,8 +63,6 @@ The current source tree has 30 migration files whose version prefixes are later 
 29. `20261126160000_harden_prepared_preauth_wrapper_security.sql`
 30. `20261127170000_facility_wht_and_audit_notifications.sql`
 31. `20261127180000_complete_operational_audit_coverage.sql`
-
-Correction: the list above currently contains 31 entries; the version-prefix comparison found 31 source migrations after the live head, not 30. This count should be recomputed at release time against the exact main SHA.
 
 Do not replay only the last two facility/notification migrations. Several preceding migrations establish permission grants, facility scoping, settlement schema, WHT semantics and function hardening that the later migrations depend on.
 
