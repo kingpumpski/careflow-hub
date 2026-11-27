@@ -15,7 +15,7 @@ describe("facility WHT and audit notification release contract", () => {
   });
 
   it("fans out safe notification metadata from immutable audit events", () => {
-    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.notify_from_audit_log()");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION security_internal.notify_from_audit_log()");
     expect(migration).toContain("AFTER INSERT ON public.audit_logs");
     expect(migration).toContain("public.facility_memberships fm");
     expect(migration).toContain("fm.status = 'active'");
@@ -29,6 +29,6 @@ describe("facility WHT and audit notification release contract", () => {
     expect(migration).toContain("entity_type");
     expect(migration).toContain("entity_id");
     expect(migration).toContain("jsonb_build_object('audit_action', NEW.action, 'audit_log_id', NEW.id)");
-    expect(migration).toContain("REVOKE ALL ON FUNCTION public.notify_from_audit_log() FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION security_internal.notify_from_audit_log() FROM PUBLIC, anon, authenticated");
   });
 });
