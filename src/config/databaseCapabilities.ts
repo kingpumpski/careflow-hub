@@ -4,6 +4,7 @@ export type DatabaseCapabilityEnvironment = {
   VITE_CAREFLOW_SETTLEMENT_EXCEPTIONS_ENABLED?: string;
   VITE_CAREFLOW_SETTLEMENT_REMITTANCES_ENABLED?: string;
   VITE_CAREFLOW_FACILITY_ADMIN_ENABLED?: string;
+  VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED?: string;
 };
 
 export type DatabaseCapabilities = {
@@ -12,6 +13,7 @@ export type DatabaseCapabilities = {
   settlementExceptions: boolean;
   settlementRemittanceLedger: boolean;
   facilityAdministration: boolean;
+  claimDiagnosisDrafts: boolean;
 };
 
 /**
@@ -31,6 +33,7 @@ export function resolveDatabaseCapabilities(
     settlementExceptions: environment.VITE_CAREFLOW_SETTLEMENT_EXCEPTIONS_ENABLED === "true",
     settlementRemittanceLedger: environment.VITE_CAREFLOW_SETTLEMENT_REMITTANCES_ENABLED === "true",
     facilityAdministration: environment.VITE_CAREFLOW_FACILITY_ADMIN_ENABLED === "true",
+    claimDiagnosisDrafts: environment.VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED === "true",
   });
 }
 
