@@ -24,6 +24,7 @@ type SettingRow = { key: string; value?: string | null };
 export default function StatementsOfAccount() {
   const { can, loading: permissionsLoading } = usePermissions();
   const canRead = can("ledger.read");
+  const canManageSettings = can("settings.manage");
   const [companyId, setCompanyId] = useState("");
   const [startDate, setStartDate] = useState(yearStart);
   const [endDate, setEndDate] = useState(today);
@@ -100,7 +101,7 @@ export default function StatementsOfAccount() {
     retry: 1,
   });
 
-  const { data: settings } = useDocumentLetterheadSettings();
+  const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: canRead, canManageSettings });
 
   const settingRows = (settings || []) as SettingRow[];
   const companyRows = (companies || []) as unknown as CompanyOption[];
