@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { useSupabaseInsert, useSupabaseQuery, useSupabaseUpdate } from "@/hooks/useSupabaseQuery";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
+import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { isFullCalendarMonth, canReconcileSettlement, parseApprovedWithholdingTaxRate } from "@/features/settlements/domain/settlement";
 import { DEFAULT_PLATFORM_LOCALE } from "@/modules/platform/standards";
 import { fromMinorUnits, percentageOfMoney, subtractMoney, toMinorUnits } from "@/modules/platform/decimalMoney";
@@ -38,7 +39,7 @@ export default function ClaimsSettlement() {
   const { data: facilities } = useSupabaseQuery("facilities", { enabled: settlementEnabled });
   const { data: periods, isLoading, error: periodsError } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled, missingSchemaBehavior: "error" });
   const { data: remittances, isLoading: remittancesLoading, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled, missingSchemaBehavior: "error" });
-  const remittanceLedgerAvailable = !remittancesLoading && !remittancesError;
+  const remittanceLedgerAvailable = getCareFlowDataMode() !== "offline" && !remittancesLoading && !remittancesError;
   const insertPeriod = useSupabaseInsert("claims_settlement_periods");
   const updatePeriod = useSupabaseUpdate("claims_settlement_periods");
   const [form, setForm] = useState(emptyForm);
