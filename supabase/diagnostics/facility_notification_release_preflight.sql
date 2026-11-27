@@ -110,6 +110,51 @@ WITH checks AS (
     'Audit log reads must remain permission-scoped'
 
   UNION ALL
+  SELECT 'Claim diagnosis draft persistence',
+    CASE WHEN to_regclass('public.claim_diagnosis_drafts') IS NOT NULL
+      THEN 'PASS' ELSE 'BLOCKED' END,
+    'The saved-draft relation must exist before draft persistence is enabled'
+
+  UNION ALL
+  SELECT 'Settlement and claim-case schema',
+    CASE WHEN to_regclass('public.settlement_exceptions') IS NOT NULL
+           AND to_regclass('public.claim_cases') IS NOT NULL
+           AND to_regclass('public.claim_case_events') IS NOT NULL
+           AND to_regclass('public.claims_settlement_remittances') IS NOT NULL
+           AND to_regclass('public.claims_settlement_receipt_months') IS NOT NULL
+      THEN 'PASS' ELSE 'BLOCKED' END,
+    'Exception, case, remittance and receipt-month objects must be present'
+
+  UNION ALL
+  SELECT 'Settlement advice columns',
+    CASE WHEN (
+      SELECT count(*) = 2
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'claims_settlement_periods'
+        AND column_name = ANY(ARRAY['approved_gross_amount','actual_receipt_date'])
+    ) THEN 'PASS' ELSE 'BLOCKED' END,
+    'approved_gross_amount and actual_receipt_date must both exist'
+
+  UNION ALL
+  SELECT 'Claims officer settlement permissions',
+    CASE WHEN (
+      SELECT count(DISTINCT ap.permission_key) = 2
+      FROM public.app_permissions ap
+      JOIN public.role_permissions rp ON rp.permission_key = ap.permission_key
+      WHERE ap.permission_key = ANY(ARRAY['claims.settlement.read','claims.settlement.write'])
+        AND rp.role = 'claims_officer'::public.app_role
+    ) THEN 'PASS' ELSE 'BLOCKED' END,
+    'claims_officer must have scoped claims.settlement.read and claims.settlement.write grants'
+
+  UNION ALL
+  SELECT 'Pre-authorization finalizer relation',
+    CASE WHEN to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)') IS NOT NULL
+           AND position('public.pre_auth_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) = 0
+           AND position('public.preauth_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) > 0
+      THEN 'PASS' ELSE 'BLOCKED' END,
+    'The private finalizer must reference canonical public.preauth_submissions, not the absent pre_auth_submissions'
+
+  UNION ALL
   SELECT 'Facility test environment readiness',
     CASE WHEN to_regclass('public.facilities') IS NOT NULL
            AND to_regclass('public.facility_memberships') IS NOT NULL
