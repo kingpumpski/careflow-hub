@@ -81,7 +81,19 @@ BEGIN
       WHEN NEW.table_name = 'facilities' THEN coalesce(NEW.record_id, v_payload->>'id')
     END
   );
-  IF v_facility_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+  IF v_facility_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    v_facility_id := v_facility_text::uuid;
+  END IF;
+  IF v_facility_id IS NULL AND NEW.table_name = 'preauth_items'
+     AND v_payload->>'preauth_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'pre_authorizations' AND column_name = 'facility_id'
+     ) THEN
+    EXECUTE 'SELECT facility_id FROM public.pre_authorizations WHERE id = $1'
+      INTO v_facility_id USING (v_payload->>'preauth_id')::uuid;
+  END IF;
+
   v_target_text := coalesce(
     v_payload->>'user_id',
     v_payload->>'created_by',
