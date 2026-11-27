@@ -474,3 +474,48 @@ The newer repository migrations for settlement exceptions, remittance events/rev
 - The complete semantic migration crosswalk remains unresolved.
 - No production DDL, data changes, migration-ledger repairs, permission grants, Auth changes or Edge Function deployments were made.
 - Do not run `supabase db push --linked` or apply the new migrations until the backup/restore and source-history gates are complete.
+
+
+## Read-only release-gate refresh — 2026-11-27
+
+This section records a fresh read-only check of the owner-confirmed Supabase project `jajfdgknctzqypdtvmxo`. It supersedes older production status snapshots above where dates or observations conflict.
+
+### Live database state
+
+- Migration ledger: **74 rows**; latest version `20260921160938`.
+- `public.facilities`: **0 rows**; `public.facility_memberships`: **0 rows**.
+- Missing relations: `public.settlement_exceptions`, `public.settlement_exception_audit_events`, `public.claims_settlement_remittances`, `public.claim_cases`, and canonical `public.preauthorization_submissions`.
+- Legacy `public.preauth_submissions` remains present; misspelled `public.pre_auth_submissions` remains absent.
+- `claims_settlement_periods` still lacks `approved_gross_amount` and `actual_receipt_date`.
+- Scoped permission catalogue rows for `claims.settlement.read/write`: **0**; claims-officer scoped grants: **0**. Accounts-officer `payments.read/write` grants: **2** (both present).
+
+The source migrations and repository fixes are not deployed merely because their PRs have merged. No production DDL, data, grants, migration ledger, Auth configuration or Edge Functions were changed during this check.
+
+### Current security advisor
+
+The 2026-11-27 Supabase Security Advisor reports:
+
+- One INFO finding: `public.role_permissions` has RLS enabled and no policies. Preserve deny-by-default behavior; do not add a broad client-read policy to silence the warning.
+- Five WARN findings for authenticated-callable SECURITY DEFINER functions: `current_user_has_any_role`, `current_user_has_permission`, `finalize_preauthorization_handoff`, `get_my_permissions`, and `user_has_facility_access`. All five have an empty `search_path`, authenticated EXECUTE and anon denied in the live catalog. The finalizer remains SECURITY DEFINER in production because PR #124 has not been deployed. Review each caller contract and authorization logic individually in a restored copy before any coordinated schema/function release.
+- One WARN finding: leaked-password protection is disabled. This requires an owner-approved Auth setting change and user-impact review; it has not been changed.
+
+The performance advisor reports 76 unused-index INFO findings. They are workload-dependent candidates only; do not drop indexes without workload, query-plan and schema reconciliation evidence.
+
+### Repository changes merged after the prior snapshot
+
+- PR #124: public Pre-Authorization finalizer wrapper hardening to SECURITY INVOKER and private helper ACL tightening.
+- PR #125: production preflight aligned with the SECURITY INVOKER wrapper contract.
+- PR #126: Pre-Authorization source/production drift record refreshed.
+
+These merges do not apply SQL to production. The prepared-handoff migration remains pending production deployment.
+
+### Release blockers, in safe order
+
+1. Configure the owner-managed backup secrets and age recipient; run and verify the first encrypted full-system backup, including R2 read-back and manifest checks.
+2. Download, decrypt and verify the archive offline; rehearse database, Auth and Storage restoration in a separate replacement project, then run login/RLS/application smoke tests.
+3. Recover the authoritative historical migration SQL where possible and complete the semantic mapping of all 74 live ledger rows to the repository migration sequence. Resolve the three duplicate source version groups without rewriting applied history.
+4. Replay and test the complete intended release against the restored copy, including settlement/remittance/reversal/receipt-month behavior, claim cases, scoped permissions and prepared-only Pre-Authorization handoff.
+5. Re-run the read-only production preflight and Security Advisor; review each remaining finding and obtain explicit owner approval for a coordinated deployment.
+6. Only then consider production migration and matching Edge Function deployment through the protected release workflow.
+
+**Hard stop:** no `supabase db push --linked`, direct production DDL, migration-ledger repair, manual role grant, Auth change or Edge Function deployment before the backup/restore and migration-crosswalk gates pass.

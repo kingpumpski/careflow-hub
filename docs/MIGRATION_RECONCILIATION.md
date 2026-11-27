@@ -638,3 +638,14 @@ The repository includes the newer migrations:
 These source migrations have passed the repository's disposable migration replay and SQL contract suite on the merged PR #122 head, but that test does not prove production ledger equivalence. Before any production deployment, compare their exact effects with a verified restored copy, including the monthly aggregate-vs-individual claim fallback, approved gross/rejection variance, provisional-vs-actual WHT replacement, multi-remittance totals, reversal exclusion, receipt-month grouping, facility RLS and role permissions.
 
 No production migration, data, permission or ledger changes were performed during this cross-check.
+
+
+## Read-only production refresh — 2026-11-27
+
+A fresh SELECT-only check against project `jajfdgknctzqypdtvmxo` reconfirmed a 74-row migration ledger with latest version `20260921160938`. The repository now includes the merged prepared-handoff correction and SECURITY INVOKER wrapper hardening, but production still lacks `public.preauthorization_submissions`; the legacy `public.preauth_submissions` relation remains present. This is repository/production drift, not evidence that the source migration has been deployed.
+
+The live schema also still lacks settlement exception tables, remittance ledger, claim-case tables, and the two settlement-period advice columns `approved_gross_amount` / `actual_receipt_date`. The `claims.settlement.read/write` permission catalogue entries and claims-officer grants remain absent. `facilities` and `facility_memberships` both contain zero rows.
+
+The source migration chain passes the disposable CI replay, but the disposable job temporarily normalizes the three documented duplicate prefixes. That validates the normalized test sequence; it does not reconcile the original production migration history or prove equivalence of historical SQL bodies. Continue to treat the complete semantic crosswalk and verified restore replay as mandatory.
+
+No production schema, data, grants, Auth settings, Edge Functions or migration ledger were changed during this check.
