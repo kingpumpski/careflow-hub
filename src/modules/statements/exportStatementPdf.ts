@@ -123,8 +123,8 @@ export async function exportCompanyStatementPDF(
 
   const ledgerFinalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y;
   let reconciliationY = ledgerFinalY + 10;
-  const pageHeight = doc.internal.pageSize.getHeight();
-  if (reconciliationY > pageHeight - 48) {
+  const reconciliationPageHeight = doc.internal.pageSize.getHeight();
+  if (reconciliationY > reconciliationPageHeight - 48) {
     doc.addPage();
     reconciliationY = 20;
   }
