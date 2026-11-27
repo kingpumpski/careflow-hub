@@ -106,8 +106,8 @@ export function formatStatementAmount(amount: number): string {
 }
 
 export type StatementClaimsPeriod = {
-  period_year: number;
-  period_month: number;
+  period_year: number | null;
+  period_month: number | null;
   rejected_amount: number | string | null;
   provisional_withholding_tax_amount: number | string | null;
   actual_withholding_tax_amount: number | string | null;
@@ -144,6 +144,10 @@ export function buildStatementReconciliation(
     throw new Error("Enter a valid statement period for claims and tax totals.");
   }
   const selected = rows
+    .filter((row): row is StatementClaimsPeriod & { period_year: number; period_month: number } =>
+      row.period_year !== null && row.period_month !== null
+      && Number.isInteger(row.period_year) && Number.isInteger(row.period_month)
+      && row.period_month >= 1 && row.period_month <= 12)
     .filter((row) => {
       const monthStart = `${row.period_year}-${String(row.period_month).padStart(2, "0")}-01`;
       const monthEnd = new Date(Date.UTC(row.period_year, row.period_month, 0)).toISOString().slice(0, 10);
