@@ -1001,6 +1001,7 @@ export type Database = {
           created_at: string
           id: string
           insurance_company_id: string
+          is_actual: boolean
           month: number
           tax_amount: number | null
           tax_rate: number | null
@@ -1011,6 +1012,7 @@ export type Database = {
           created_at?: string
           id?: string
           insurance_company_id: string
+          is_actual?: boolean
           month: number
           tax_amount?: number | null
           tax_rate?: number | null
@@ -1021,6 +1023,7 @@ export type Database = {
           created_at?: string
           id?: string
           insurance_company_id?: string
+          is_actual?: boolean
           month?: number
           tax_amount?: number | null
           tax_rate?: number | null
@@ -1036,9 +1039,107 @@ export type Database = {
           },
         ]
       }
+      claims_settlement_periods: {
+        Row: {
+          actual_receipt_date: string | null
+          actual_withholding_tax: number | null
+          approved_gross_amount: number | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          created_by: string
+          facility_id: string
+          id: string
+          insurance_company_id: string
+          payment_advice_date: string | null
+          payment_advice_reference: string | null
+          payment_received: number | null
+          period_end: string
+          period_start: string
+          period_type: string
+          provisional_withholding_tax: number
+          rejection_amount: number | null
+          settlement_status: string
+          total_claims_submitted: number
+          updated_at: string
+          withholding_tax_rate: number
+          withholding_tax_variance: number | null
+        }
+        Insert: {
+          actual_receipt_date?: string | null
+          actual_withholding_tax?: number | null
+          approved_gross_amount?: number | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string
+          facility_id: string
+          id?: string
+          insurance_company_id: string
+          payment_advice_date?: string | null
+          payment_advice_reference?: string | null
+          payment_received?: number | null
+          period_end: string
+          period_start: string
+          period_type?: string
+          provisional_withholding_tax?: number
+          rejection_amount?: number | null
+          settlement_status?: string
+          total_claims_submitted?: number
+          updated_at?: string
+          withholding_tax_rate?: number
+          withholding_tax_variance?: number | null
+        }
+        Update: {
+          actual_receipt_date?: string | null
+          actual_withholding_tax?: number | null
+          approved_gross_amount?: number | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string
+          facility_id?: string
+          id?: string
+          insurance_company_id?: string
+          payment_advice_date?: string | null
+          payment_advice_reference?: string | null
+          payment_received?: number | null
+          period_end?: string
+          period_start?: string
+          period_type?: string
+          provisional_withholding_tax?: number
+          rejection_amount?: number | null
+          settlement_status?: string
+          total_claims_submitted?: number
+          updated_at?: string
+          withholding_tax_rate?: number
+          withholding_tax_variance?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      claims_outstanding_periods: {
+        Row: {
+          actual_withholding_tax_amount: number | null
+          approved_gross_amount: number | null
+          approval_variance: number | null
+          net_claim_amount: number | null
+          outstanding_amount: number | null
+          outstanding_status: string | null
+          paid_amount: number | null
+          payment_entry_count: number | null
+          period_month: number | null
+          period_year: number | null
+          provisional_withholding_tax_amount: number | null
+          rejected_amount: number | null
+          submitted_amount: number | null
+          withholding_tax_amount: number | null
+          withholding_tax_entry_count: number | null
+          insurance_company_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_report_letterhead_settings: {
