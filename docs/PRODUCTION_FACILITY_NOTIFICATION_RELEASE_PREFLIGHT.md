@@ -87,7 +87,13 @@ The live security advisor reported:
 - leaked-password protection disabled;
 - `role_permissions` RLS enabled with no policy (currently deny-by-default).
 
-These findings must be reviewed against the intended client RPC contract and the actual production function bodies. Do not blindly revoke a function required by RLS or the UI, and do not add a broad `role_permissions` policy. The pre-authorization finalizer is especially sensitive because production/source function-body drift was previously identified.
+A fresh read-only function-definition and policy-reference inspection narrowed these warnings:
+
+- `current_user_has_any_role`, `current_user_has_permission` and `user_has_facility_access` all derive the subject from `auth.uid()`, use a fixed empty search path, and return only a boolean for the caller's own role/permission/facility access. Existing RLS policies still call these public wrappers on legacy tables; revoking them blindly can break reads/writes or silently deny legitimate operations. The private `security_internal` helpers are also used directly by newer policies.
+- `get_my_permissions()` returns only the caller's permission keys based on `auth.uid()`; the UI and the security-audit-log policy use it. It is an intended authenticated RPC, not a general permission-catalog dump.
+- `finalize_preauthorization_handoff` is a public wrapper around a private SECURITY DEFINER function. The private function checks authentication, `preauth.write`, facility access, idempotency, snapshot type and cost consistency. However, the live private function still references the absent `public.pre_auth_submissions` relation, while production has `public.preauth_submissions`. This is a real execution blocker, not a reason to revoke the whole wrapper. The source migration `20261126150000_restore_prepared_preauthorization_handoff_contract.sql` uses the canonical relation; it must be validated in the restored migration rehearsal.
+
+Do not blindly revoke a function required by RLS or the UI, and do not add a broad `role_permissions` policy. The leaked-password protection setting should be enabled only after confirming the intended password policy and testing the login/password-reset flow; this inspection did not change Auth settings.
 
 ## Required release gates
 
