@@ -9,14 +9,16 @@ const appSourcePath = resolve(process.cwd(), "src/App.tsx");
 const authClientPath = resolve(process.cwd(), "src/integrations/supabase/client.ts");
 const authPagePath = resolve(process.cwd(), "src/pages/AuthPage.tsx");
 const userMenuPath = resolve(process.cwd(), "src/components/layout/UserMenu.tsx");
+const sidebarSourcePath = resolve(process.cwd(), "src/components/layout/Sidebar.tsx");
 
-const [indexHtml, legacyFallback, appSource, authClient, authPage, userMenu, assetNames] = await Promise.all([
+const [indexHtml, legacyFallback, appSource, authClient, authPage, userMenu, sidebarSource, assetNames] = await Promise.all([
   readFile(indexPath, "utf8"),
   readFile(legacyFallbackPath, "utf8"),
   readFile(appSourcePath, "utf8"),
   readFile(authClientPath, "utf8"),
   readFile(authPagePath, "utf8"),
   readFile(userMenuPath, "utf8"),
+  readFile(sidebarSourcePath, "utf8"),
   readdir(resolve(distDir, "assets")),
 ]);
 
@@ -31,6 +33,16 @@ if (legacyFallback.includes("cf_route")) {
 }
 if (!appSource.includes("HashRouter") || appSource.includes("BrowserRouter")) {
   throw new Error("Application source must use HashRouter rather than BrowserRouter.");
+}
+const routePaths = new Set(Array.from(appSource.matchAll(/<Route\s+path="([^"]+)"/g), (match) => match[1]));
+const navigationSource = sidebarSource.split("export default function Sidebar")[0];
+const navigationPaths = Array.from(navigationSource.matchAll(/path:\s*"([^"]+)"/g), (match) => match[1]);
+const missingNavigationRoutes = [...new Set(navigationPaths)].filter((route) => !routePaths.has(route));
+if (missingNavigationRoutes.length) {
+  throw new Error("Sidebar links without application routes: " + missingNavigationRoutes.join(", "));
+}
+if (!routePaths.has("/statements-of-account") || !navigationPaths.includes("/statements-of-account")) {
+  throw new Error("Statements of Account must be registered in both the application router and primary navigation.");
 }
 if (!authClient.includes("flowType: 'pkce'")) {
   throw new Error("Supabase auth must use PKCE so callback codes do not conflict with the router fragment.");
