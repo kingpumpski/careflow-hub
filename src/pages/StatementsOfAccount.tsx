@@ -18,7 +18,8 @@ const today = new Date().toISOString().slice(0, 10);
 const yearStart = `${new Date().getFullYear()}-01-01`;
 const money = (amount: number) => `GH¢ ${formatStatementAmount(amount)}`;
 const dateLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-type CompanyOption = { id: string; company_name: string; address?: string | null; phone?: string | null; email?: string | null; contact_person?: string | null };\ntype SettingRow = { key: string; value?: string | null };
+type CompanyOption = { id: string; company_name: string; address?: string | null; phone?: string | null; email?: string | null; contact_person?: string | null };
+type SettingRow = { key: string; value?: string | null };
 
 export default function StatementsOfAccount() {
   const { can, loading: permissionsLoading } = usePermissions();
