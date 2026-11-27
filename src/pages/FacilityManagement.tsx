@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
+import { assertDatabaseCapabilityAvailable } from "@/config/databaseTableCapabilities";
 import { getStoredFacilityId, storeFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,8 +36,10 @@ type MembershipRow = {
 type ProfileRow = { id: string; full_name: string; email: string | null };
 type RpcResult = { data: unknown; error: { message: string } | null };
 
-const callFacilityRpc = (name: string, args: Record<string, unknown>): Promise<RpcResult> =>
-  (supabase.rpc as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<RpcResult>)(name, args);
+const callFacilityRpc = (name: string, args: Record<string, unknown>): Promise<RpcResult> => {
+  assertDatabaseCapabilityAvailable(name);
+  return (supabase.rpc as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<RpcResult>)(name, args);
+};
 
 export default function FacilityManagement() {
   const offline = getCareFlowDataMode() === "offline";
