@@ -4,9 +4,9 @@
 WITH checks AS (
   SELECT
     'Migration ledger head' AS check_name,
-    CASE WHEN (SELECT max(version) FROM supabase_migrations.schema_migrations) >= '20261127170000'
+    CASE WHEN (SELECT max(version) FROM supabase_migrations.schema_migrations) >= '20261127180000'
       THEN 'PASS' ELSE 'BLOCKED' END AS status,
-    coalesce((SELECT max(version) || ' / ' || name FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1), 'No migration rows') AS detail
+    coalesce((SELECT version || ' / ' || name FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1), 'No migration rows') AS detail
 
   UNION ALL
   SELECT 'Facility base tables',
@@ -34,7 +34,7 @@ WITH checks AS (
   UNION ALL
   SELECT 'Notification schema',
     CASE WHEN (
-      SELECT count(*) = 7
+      SELECT count(*) = 9
       FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'notifications'
         AND column_name = ANY(ARRAY[
