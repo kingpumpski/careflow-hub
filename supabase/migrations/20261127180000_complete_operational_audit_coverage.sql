@@ -33,6 +33,9 @@ BEGIN
       concat_ws(':', coalesce(v_new->>'user_id', v_old->>'user_id'),
                      coalesce(v_new->>'permission_key', v_old->>'permission_key'))
     END,
+    CASE WHEN TG_TABLE_NAME = 'user_roles' THEN
+      coalesce(v_new->>'user_id', v_old->>'user_id')
+    END,
     v_new->>'permission_key',
     v_old->>'permission_key'
   );
