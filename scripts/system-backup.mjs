@@ -50,7 +50,7 @@ const databaseEnvironment = {
   PGPORT: databaseUri.port || "5432",
   PGUSER: decodeURIComponent(databaseUri.username),
   PGPASSWORD: decodeURIComponent(databaseUri.password),
-  PGDATABASE: decodeURIComponent(databaseUri.pathname.replace(/^\\//, "")) || "postgres",
+  PGDATABASE: decodeURIComponent(databaseUri.pathname.slice(1)) || "postgres",
   PGSSLMODE: databaseUri.searchParams.get("sslmode") || "require",
 };
 if (databaseEnvironment.PGSSLMODE !== "require" && databaseEnvironment.PGSSLMODE !== "verify-ca" && databaseEnvironment.PGSSLMODE !== "verify-full") {
