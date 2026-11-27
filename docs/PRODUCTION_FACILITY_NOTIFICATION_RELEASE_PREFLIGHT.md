@@ -124,7 +124,7 @@ The GitHub Pages workflow reads these repository variables:
 - `CARE_FLOW_SETTLEMENT_EXCEPTIONS_ENABLED`
 - `CARE_FLOW_SETTLEMENT_REMITTANCES_ENABLED`
 
-Keep each optional capability false until its corresponding production objects and permissions have been verified. A successful frontend deployment is not proof that database migrations are deployed.
+Keep each optional capability false until its corresponding production objects and permissions have been verified. When the notification migration is released, enable `CARE_FLOW_NOTIFICATION_EVENTS_ENABLED` in the same release window as the database change; the client uses that flag to avoid duplicating the legacy pre-authorization notification fallback. A successful frontend deployment is not proof that database migrations are deployed.
 
 ## Change boundary
 
