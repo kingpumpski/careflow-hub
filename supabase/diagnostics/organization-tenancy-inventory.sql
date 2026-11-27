@@ -110,6 +110,8 @@ SELECT
   l.lanname AS language,
   p.prosecdef AS security_definer,
   p.proconfig AS function_settings,
+  has_schema_privilege('anon', n.oid, 'USAGE') AS anon_schema_usage,
+  has_schema_privilege('authenticated', n.oid, 'USAGE') AS authenticated_schema_usage,
   has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_can_execute,
   has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_can_execute,
   pg_get_functiondef(p.oid) AS definition
