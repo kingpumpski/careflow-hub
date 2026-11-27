@@ -53,7 +53,10 @@ BEGIN
      OR position('recipient_id' in v_notify_definition) = 0
      OR position('/chat' in v_notify_definition) = 0
      OR position('/profile' in v_notify_definition) = 0
-     OR position('r.user_id = v_target_user_id' in v_notify_definition) = 0 THEN
+     OR position('r.user_id = v_target_user_id' in v_notify_definition) = 0
+     OR position('claim_diagnosis_assistant' in v_notify_definition) = 0
+     OR position('update_provisional_wht_rate' in v_notify_definition) = 0
+     OR position('upsert' in v_notify_definition) = 0 THEN
     RAISE EXCEPTION 'Audit notifications must route membership, permission and chat events to affected users';
   END IF;
 
