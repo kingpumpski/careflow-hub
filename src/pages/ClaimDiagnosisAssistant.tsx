@@ -348,7 +348,7 @@ export default function ClaimDiagnosisAssistant() {
   const exportSavedDraftPdf = (draft: Record<string, unknown>) => {
     const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
       .find((insurer) => insurer.id === draft.insurance_company_id)?.company_name;
-    exportDraftPdf({ ...draft, insurer_name: insurerName } as ClaimDiagnosisPdfData);
+    void exportDraftPdf({ ...draft, insurer_name: insurerName } as ClaimDiagnosisPdfData);
   };
 
   const exportCurrentDraftPdf = () => {
@@ -371,7 +371,7 @@ export default function ClaimDiagnosisAssistant() {
         }));
     const insurerName = ((insurers ?? []) as Array<Record<string, unknown>>)
       .find((insurer) => insurer.id === manualClaim.insurance_company_id)?.company_name;
-    exportDraftPdf({
+    void exportDraftPdf({
       id: analysis.analysis_id,
       workflow_type: workflowType,
       patient_name: manualClaim.patient_name || analysis.patient_name,
