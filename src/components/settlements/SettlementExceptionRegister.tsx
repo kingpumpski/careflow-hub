@@ -87,7 +87,6 @@ export default function SettlementExceptionRegister({ periods }: { periods: Sett
         await syncOfflineSettlementExceptions(periods, new Date(), user?.id ?? null);
         setOfflineExceptions(await listOfflineSettlementExceptions());
       } else if (!databaseCapabilities.settlementExceptions) {
-        setError("Online settlement exceptions are disabled until their production tables and atomic RPCs pass the approved database release checks.");
         return;
       } else if (onlineQuery.error) {
         throw onlineQuery.error;
