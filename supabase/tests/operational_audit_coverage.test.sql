@@ -42,7 +42,8 @@ BEGIN
      OR position('claim_number' in v_audit_definition) = 0
      OR position('snapshot' in v_audit_definition) = 0
      OR position('diagnoses' in v_audit_definition) = 0
-     OR position('permission_key' in v_audit_definition) = 0 THEN
+     OR position('permission_key' in v_audit_definition) = 0
+     OR position('concat_ws' in v_audit_definition) = 0 THEN
     RAISE EXCEPTION 'Audit function must use a fixed search path, redact sensitive fields and support composite keys';
   END IF;
 
