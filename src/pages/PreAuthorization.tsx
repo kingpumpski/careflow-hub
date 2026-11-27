@@ -49,7 +49,7 @@ export default function PreAuthorization() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: procedures } = useSupabaseQuery("procedures");
   const { data: doctors } = useSupabaseQuery("doctors");
-  const { data: letterheadSettings } = useDocumentLetterheadSettings();
+  const { data: letterheadSettings } = useDocumentLetterheadSettings({ canReadDocument: can("preauth.read"), canManageSettings: can("settings.manage") });
   const updateMutation = useSupabaseUpdate("pre_authorizations");
   const insertNotif = useSupabaseInsert("notifications");
 
