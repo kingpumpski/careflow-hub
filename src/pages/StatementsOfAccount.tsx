@@ -24,7 +24,30 @@ export default function StatementsOfAccount() {
   const canRead = can("ledger.read");
   const canManageSettings = can("settings.manage");
   const { data: companies, isLoading: companiesLoading } = useSupabaseQuery("insurance_companies", { enabled: canRead && !permissionsLoading });
-  const { data: ledger, isLoading: ledgerLoading, error: ledgerError } = useSupabaseQuery("ledger_entries", { enabled: canRead && !permissionsLoading });
+  const { data: ledger, isLoading: ledgerLoading, error: ledgerError } = useQuery({
+    queryKey: ["company-statement-ledger", companyId],
+    enabled: canRead && !permissionsLoading && Boolean(companyId),
+    queryFn: async () => {
+      const pageSize = 1000;
+      const rows: StatementLedgerEntry[] = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from("ledger_entries")
+          .select("id, entry_date, created_at, entry_type, account_debit, account_credit, amount, insurance_company_id, reference, description")
+          .eq("insurance_company_id", companyId)
+          .order("entry_date", { ascending: true })
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        const batch = (data || []) as unknown as StatementLedgerEntry[];
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      return rows;
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
   const [companyId, setCompanyId] = useState("");
   const [startDate, setStartDate] = useState(yearStart);
   const [endDate, setEndDate] = useState(today);
@@ -97,7 +120,7 @@ export default function StatementsOfAccount() {
       </section>
 
       {ledgerError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Ledger records could not be loaded. Statement generation is disabled to prevent an incomplete financial document.</div>}
-      {statementError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{statementError}</div>}
+      {statementError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{statementError}</div>\n      {ledgerLoading && companyId && <div className="text-sm text-muted-foreground">Loading the company ledger history…</div>}
 
       {!companyId ? <div className="stat-card flex min-h-48 flex-col items-center justify-center text-center"><FileText className="mb-3 h-9 w-9 text-muted-foreground" /><h2 className="font-semibold">Choose a company to begin</h2><p className="mt-1 text-sm text-muted-foreground">Select an insurance company and reporting period to preview its statement.</p></div> : !statement ? <div className="stat-card"><Skeleton className="h-40 w-full" /></div> : (
         <>
