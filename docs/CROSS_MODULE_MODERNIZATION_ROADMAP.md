@@ -16,7 +16,7 @@ This is a staged programme. A capability is not considered complete because a sc
 | Settlement and WHT | Authoritative claim-period and receipt-month reporting views; actual and provisional WHT are distinguished | Complete exception lifecycle, partial/multiple remittance allocation, reversals, and end-to-end month-to-month reconciliation tests |
 | Platform configuration | Country, currency, locale and time-zone defaults are centralized | Complete organization-level configuration and eliminate country/currency assumptions from remaining domain services |
 | Financial precision | Database financial fields use fixed-precision numeric types in the intended model | Audit JavaScript calculations and exports for binary floating-point rounding; centralize currency-aware decimal arithmetic before expanding financial workflows |
-| Authorization | Role/permission model, RLS, server-side privileged operations and facility scoping | Implement organization-level tenancy and cross-tenant negative tests; continue reducing unnecessary SECURITY DEFINER exposure |
+| Authorization and modules | Role/permission model, RLS, server-side privileged operations, facility scoping and global release kill switches | Implement organization-level tenancy, per-organization module entitlements, cross-tenant negative tests and reduce unnecessary SECURITY DEFINER exposure |
 | Offline operations | Durable offline storage and synchronization queue exist for supported workflows | Add deterministic conflict resolution, idempotent replay, retry/backoff, dead-letter visibility and operator recovery |
 | AI assistance | Server-side provider abstraction and human-review policy | Add auditable recommendation provenance, confidence/limitations, data minimization and explicit confirmation for consequential actions |
 
@@ -50,6 +50,8 @@ This is a staged programme. A capability is not considered complete because a sc
 ### Phase 4 — Organization tenancy and security
 
 - Introduce organization identity and active-organization context separately from facility membership.
+- Add a platform-managed module catalogue and organization-level module entitlements/audit events. Keep global build-time switches as release/kill switches only; they are not tenant entitlements.
+- Separate module entitlement from user role/permission and record workflow state.
 - Add organization scope to business records, server-side authorization and RLS policies.
 - Test cross-organization reads, writes, exports, realtime events, offline replay and AI retrieval as negative cases.
 - Keep superuser facility administration distinct from organization administrators and ordinary operational users.
@@ -94,5 +96,8 @@ A module or workflow is complete only when all applicable items are satisfied:
 10. Documentation, release gates and rollback/recovery notes are updated.
 
 ## Release boundary
+
+PR #129 (Statement of Account reconciliation totals), PR #130 (production-compatible payment-month reporting and route verification), and PR #131 (production schema capability gates) are merged. These source merges do not deploy their missing schema objects to the connected production Supabase project. The current global capability flags are a temporary environment-level safety gate, not a per-organization module system. See [Organization Tenancy Design](ORGANIZATION_TENANCY_DESIGN.md) for the module entitlement target and 2026-11-27 production audit.
+
 
 PR #84 is a bounded release slice for financial reporting and superuser-only facility administration. It does not complete the cross-module programme. Organization tenancy, decimal-safe calculation centralization, full settlement-exception lifecycle, individual claim-case production rollout, broad performance work and restore rehearsal remain separate gates. No production database deployment is implied by this roadmap or by an open pull request.
