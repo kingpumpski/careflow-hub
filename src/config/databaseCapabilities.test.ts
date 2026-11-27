@@ -11,6 +11,7 @@ describe("resolveDatabaseCapabilities", () => {
       facilityAdministration: false,
       claimDiagnosisDrafts: false,
       notificationEvents: false,
+      documentLetterheadSettings: false,
     });
   });
 
@@ -23,6 +24,7 @@ describe("resolveDatabaseCapabilities", () => {
       VITE_CAREFLOW_FACILITY_ADMIN_ENABLED: "false",
       VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED: "true",
       VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED: "true",
+      VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED: "true",
     })).toEqual({
       preAuthPreparedHandoff: true,
       individualClaimCases: false,
@@ -31,6 +33,7 @@ describe("resolveDatabaseCapabilities", () => {
       facilityAdministration: false,
       claimDiagnosisDrafts: true,
       notificationEvents: true,
+      documentLetterheadSettings: true,
     });
   });
 });
