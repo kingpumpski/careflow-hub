@@ -174,7 +174,8 @@ export default function StatementsOfAccount() {
 
       {ledgerError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Ledger records could not be loaded. Statement generation is disabled to prevent an incomplete financial document.</div>}
       {statementError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{statementError}</div>}
-      {(ledgerLoading || claimsPeriodsLoading) && companyId && <div className="text-sm text-muted-foreground">Loading the complete company ledger and claims/tax reconciliation…</div>}\n      {claimsPeriodsError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Claims and withholding-tax totals could not be loaded. PDF generation is disabled so the statement cannot omit these figures.</div>}
+      {(ledgerLoading || claimsPeriodsLoading) && companyId && <div className="text-sm text-muted-foreground">Loading the complete company ledger and claims/tax reconciliation…</div>}
+      {claimsPeriodsError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Claims and withholding-tax totals could not be loaded. PDF generation is disabled so the statement cannot omit these figures.</div>}
 
       {!companyId ? (
         <div className="stat-card flex min-h-48 flex-col items-center justify-center text-center">
