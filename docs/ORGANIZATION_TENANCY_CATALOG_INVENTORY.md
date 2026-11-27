@@ -54,3 +54,42 @@ The connected production project has no `organizations`, `organization_membershi
 - Encrypted backup and separate-project restore evidence is complete before any structural migration is released.
 
 Until these criteria are met, this script is diagnostic only. It does not enable multi-tenancy and is not a production migration.
+
+
+## Targeted live baseline — 2026-11-27
+
+The connected project `claims tracker` (`jajfdgknctzqypdtvmxo`, PostgreSQL 17.11, ACTIVE_HEALTHY) was inspected with read-only catalogue queries. This is a targeted baseline of the core claims, finance, facility and pre-authorization relationships, not a substitute for running and retaining every result set from the full inventory script.
+
+### Organization and scope keys
+
+- `organizations`, `organization_memberships`, and `organization_module_entitlements` are absent.
+- `facilities` has no `organization_id`.
+- `facility_memberships` contains `facility_id` and `user_id`, with foreign keys to `facilities.id` and `auth.users.id`.
+- `claims_settlement_periods` has a required `facility_id`, plus insurer and actor references.
+- `pre_authorizations` has a nullable `facility_id`; its patient, insurer, doctor and procedure references are ordinary single-column foreign keys.
+
+### Core financial ownership gaps
+
+The inspected `claims`, `payments`, `patients`, and `ledger_entries` relations have no `organization_id` or `facility_id` column. Current foreign-key paths include:
+
+- `payments.claim_id → claims.id`
+- `claims.preauth_id → pre_authorizations.id`
+- `claims.insurance_company_id → insurance_companies.id`
+- `patients.client_company_id → client_companies.id`
+- `patients.insurance_company_id → insurance_companies.id`
+- `ledger_entries.insurance_company_id → insurance_companies.id`
+
+These are valid referential links, but they do not establish a tenant boundary. The ownership crosswalk must determine whether monthly aggregate claims and ledger data belong to an organization, whether patients are organization-shared across facilities, and how shared insurer/reference catalogues are classified. Tenant-aware composite foreign keys are required where records from separate organizations must not be linked.
+
+### RLS and reporting observations
+
+- RLS is enabled on the inspected base tables, but `claims`, `payments`, `patients`, and `ledger_entries` currently have permission-oriented policies rather than organization-membership predicates. RLS being enabled is therefore not evidence of multi-tenant isolation.
+- `pre_authorizations` policies include facility access checks and require a non-null facility for normal access; this is a lower-level facility boundary, not an organization boundary.
+- `claims_settlement_periods` policies use facility access, while the core financial tables above do not share that same facility scope.
+- `claims_outstanding_periods` is configured with `security_invoker=true`, which is appropriate for preserving underlying table access checks. Its underlying claims, payments and withholding-tax sources still need tenant-aware policies before the view can be considered tenant-isolated.
+
+### Pre-authorization finalizer discrepancy
+
+The live public `finalize_preauthorization_handoff(uuid, jsonb, numeric, jsonb, jsonb, text, text, text)` wrapper remains `SECURITY DEFINER`, with an empty search path, authenticated execution and no anonymous execution. The merged source contract in `20261126160000_harden_prepared_preauth_wrapper_security.sql` expects a `SECURITY INVOKER` public wrapper delegating to the guarded private implementation. Keep the prepared-document handoff capability disabled until the production function definition, grants and private helper authorization are reconciled and verified. This function records an internal prepared handoff only; insurer submission and approval remain external.
+
+No production schema, data, grants, Auth configuration, Storage objects or Edge Functions were changed during this inspection.
