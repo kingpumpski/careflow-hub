@@ -147,10 +147,15 @@ BEGIN
     WHEN 'withholding_tax' THEN 'Withholding-tax record'
     WHEN 'claims_settlement_periods' THEN 'Settlement period'
     WHEN 'claims_settlement_remittances' THEN 'Settlement remittance'
+    WHEN 'claims_settlement_receipt_months' THEN 'Settlement receipt month'
+    WHEN 'settlement_exception_audit_events' THEN 'Settlement exception event'
+    WHEN 'claim_case_events' THEN 'Claim case event'
     WHEN 'settlement_exceptions' THEN 'Settlement exception'
     WHEN 'claim_cases' THEN 'Claim case'
     WHEN 'pre_authorizations' THEN 'Pre-authorization'
     WHEN 'preauthorization_submissions' THEN 'Prepared pre-authorization document'
+    WHEN 'preauth_items' THEN 'Pre-authorization item'
+    WHEN 'preauth_document_registry' THEN 'Pre-authorization document'
     WHEN 'claim_diagnosis_drafts' THEN 'Claim diagnosis draft'
     WHEN 'patients' THEN 'Patient record'
     WHEN 'insurance_companies' THEN 'Insurance company'
@@ -176,16 +181,16 @@ BEGIN
 
   v_category := CASE
     WHEN NEW.table_name IN ('claims', 'claim_cases', 'settlement_exceptions', 'pre_authorizations', 'preauthorization_submissions', 'claim_diagnosis_drafts') THEN 'claims'
-    WHEN NEW.table_name IN ('payments', 'withholding_tax', 'claims_settlement_periods', 'claims_settlement_remittances', 'ledger_entries') THEN 'finance'
+    WHEN NEW.table_name IN ('payments', 'withholding_tax', 'claims_settlement_periods', 'claims_settlement_remittances', 'claims_settlement_receipt_months', 'ledger_entries') THEN 'finance'
     WHEN NEW.table_name IN ('facilities', 'facility_memberships', 'system_settings', 'user_roles', 'user_permission_overrides') THEN 'administration'
     ELSE 'activity'
   END;
 
   v_action_url := CASE
-    WHEN NEW.table_name IN ('claims', 'claim_cases') THEN '/claims'
-    WHEN NEW.table_name IN ('payments', 'claims_settlement_periods', 'claims_settlement_remittances', 'settlement_exceptions') THEN '/claims/settlements'
+    WHEN NEW.table_name IN ('claims', 'claim_cases', 'claim_case_events') THEN '/claims'
+    WHEN NEW.table_name IN ('payments', 'claims_settlement_periods', 'claims_settlement_remittances', 'claims_settlement_receipt_months', 'settlement_exceptions', 'settlement_exception_audit_events') THEN '/claims/settlements'
     WHEN NEW.table_name = 'withholding_tax' THEN '/withholding-tax'
-    WHEN NEW.table_name IN ('pre_authorizations', 'preauthorization_submissions') THEN '/pre-auth'
+    WHEN NEW.table_name IN ('pre_authorizations', 'preauthorization_submissions', 'preauth_items', 'preauth_document_registry') THEN '/pre-auth'
     WHEN NEW.table_name = 'claim_diagnosis_drafts' THEN '/claims/diagnosis-assistant'
     WHEN NEW.table_name IN ('patients', 'doctors', 'procedures', 'client_companies') THEN '/clients'
     WHEN NEW.table_name = 'insurance_companies' THEN '/insurance'
