@@ -2,6 +2,7 @@
 DO $test$
 DECLARE
   v_notify regprocedure := 'security_internal.notify_from_audit_log()'::regprocedure;
+  v_definition text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger
@@ -32,6 +33,21 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'read_at'
   ) THEN
     RAISE EXCEPTION 'Notification routing, idempotency and read timestamps must be available';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'notifications'
+      AND policyname = 'notifications_update_own' AND cmd = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'Notification updates must remain restricted to the recipient';
+  END IF;
+
+  v_definition := pg_get_functiondef(v_notify);
+  IF position('public.user_roles' in v_definition) = 0
+     OR position('claims_officer' in v_definition) = 0
+     OR position('accounts_officer' in v_definition) = 0 THEN
+    RAISE EXCEPTION 'Global events without facility scope must notify the affected operational roles';
   END IF;
 
   IF NOT EXISTS (
