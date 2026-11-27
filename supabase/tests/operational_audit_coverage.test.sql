@@ -42,6 +42,12 @@ BEGIN
      OR position('claim_number' in v_audit_definition) = 0
      OR position('snapshot' in v_audit_definition) = 0
      OR position('diagnoses' in v_audit_definition) = 0
+     OR position('resolution_note' in v_audit_definition) = 0
+     OR position('before_details' in v_audit_definition) = 0
+     OR position('idempotency_key' in v_audit_definition) = 0
+     OR position('source_patient_id' in v_audit_definition) = 0
+     OR position('change_note' in v_audit_definition) = 0
+     OR position('read_by' in v_audit_definition) = 0
      OR position('permission_key' in v_audit_definition) = 0
      OR position('concat_ws' in v_audit_definition) = 0 THEN
     RAISE EXCEPTION 'Audit function must use a fixed search path, redact sensitive fields and support composite keys';
