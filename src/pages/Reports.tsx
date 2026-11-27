@@ -11,6 +11,7 @@ import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWit
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
@@ -21,6 +22,7 @@ export default function Reports() {
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
+  const { can } = usePermissions();
 
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -28,7 +30,7 @@ export default function Reports() {
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
-  const { data: settings } = useDocumentLetterheadSettings();
+  const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
   const settlementViewHasSeparatedTaxFields = Boolean(outstandingPeriods?.some((period: any) =>
