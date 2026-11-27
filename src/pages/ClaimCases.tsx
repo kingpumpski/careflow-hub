@@ -199,7 +199,11 @@ export default function ClaimCases() {
     }
   };
 
-  if (!canRead && !permissionsLoading) {
+  if (permissionsLoading) {
+    return <div className="stat-card py-12 text-center text-sm text-muted-foreground">Checking claim-case access…</div>;
+  }
+
+  if (!canRead) {
     return <div className="stat-card py-12 text-center"><h1 className="text-lg font-semibold">Access restricted</h1><p className="text-sm text-muted-foreground mt-2">Claims read permission is required to view individual claim cases.</p></div>;
   }
 
