@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -22,7 +23,7 @@ export default function ScheduleGenerator() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
   const { data: payments } = useSupabaseQuery("payments");
-  const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: settings } = useDocumentLetterheadSettings();
 
   const currentYear = new Date().getFullYear();
   const [insurerId, setInsurerId] = useState("all");
