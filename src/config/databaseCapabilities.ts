@@ -6,6 +6,7 @@ export type DatabaseCapabilityEnvironment = {
   VITE_CAREFLOW_FACILITY_ADMIN_ENABLED?: string;
   VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED?: string;
   VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED?: string;
+  VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED?: string;
 };
 
 export type DatabaseCapabilities = {
@@ -16,6 +17,7 @@ export type DatabaseCapabilities = {
   facilityAdministration: boolean;
   claimDiagnosisDrafts: boolean;
   notificationEvents: boolean;
+  documentLetterheadSettings: boolean;
 };
 
 /**
@@ -37,6 +39,7 @@ export function resolveDatabaseCapabilities(
     facilityAdministration: environment.VITE_CAREFLOW_FACILITY_ADMIN_ENABLED === "true",
     claimDiagnosisDrafts: environment.VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED === "true",
     notificationEvents: environment.VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED === "true",
+    documentLetterheadSettings: environment.VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED === "true",
   });
 }
 
