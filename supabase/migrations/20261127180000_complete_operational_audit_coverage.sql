@@ -357,7 +357,12 @@ BEGIN
     NEW.record_id,
     v_facility_id,
     NEW.changed_by,
-    v_action_url,
+    CASE
+      WHEN NEW.table_name = 'facility_memberships' AND r.user_id = v_target_user_id THEN '/notifications'
+      WHEN NEW.table_name IN ('user_roles', 'user_permission_overrides') AND r.user_id = v_target_user_id THEN '/profile'
+      WHEN NEW.table_name = 'facilities' AND r.user_id <> NEW.changed_by THEN '/notifications'
+      ELSE v_action_url
+    END,
     jsonb_build_object('audit_action', NEW.action, 'audit_log_id', NEW.id),
     NEW.id
   FROM recipients r
