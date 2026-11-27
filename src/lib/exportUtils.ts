@@ -250,6 +250,10 @@ async function buildPreAuthDoc(preauth: any, items: any[], companyInfo: Letterhe
   };
   addLine("Patient:", preauth.patient_name || "—");
   addLine("Insurance:", preauth.insurance_name || "—");
+  if (preauth.insurance_address) addLine("Insurer address:", preauth.insurance_address);
+  if (preauth.insurance_contact_person) addLine("Insurer contact:", preauth.insurance_contact_person);
+  if (preauth.insurance_phone) addLine("Insurer telephone:", preauth.insurance_phone);
+  if (preauth.insurance_email) addLine("Insurer email:", preauth.insurance_email);
   addLine("Doctor:", preauth.doctor_name || "—");
   addLine("Diagnosis:", preauth.diagnosis || "—");
   addLine("Date:", preauth.procedure_date || "—");
