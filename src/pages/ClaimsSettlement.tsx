@@ -37,8 +37,8 @@ export default function ClaimsSettlement() {
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: settlementEnabled });
   const { data: facilities } = useSupabaseQuery("facilities", { enabled: settlementEnabled });
   const { data: periods, isLoading, error: periodsError } = useSupabaseQuery("claims_settlement_periods", { orderBy: "period_start", enabled: settlementEnabled, missingSchemaBehavior: "error" });
-  const { data: remittances, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled, missingSchemaBehavior: "error" });
-  const remittanceLedgerAvailable = !remittancesError;
+  const { data: remittances, isLoading: remittancesLoading, error: remittancesError } = useSupabaseQuery("claims_settlement_remittances", { orderBy: "created_at", enabled: settlementEnabled, missingSchemaBehavior: "error" });
+  const remittanceLedgerAvailable = !remittancesLoading && !remittancesError;
   const insertPeriod = useSupabaseInsert("claims_settlement_periods");
   const updatePeriod = useSupabaseUpdate("claims_settlement_periods");
   const [form, setForm] = useState(emptyForm);
