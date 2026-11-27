@@ -25,6 +25,10 @@ A fresh read-only Supabase inspection at 2026-11-27 15:41 UTC confirmed:
 | Existing notification RLS | User-scoped SELECT and UPDATE; INSERT is restricted to the user or privileged roles |
 | Audit log RLS | SELECT is permission-scoped through `audit.read` |
 | Letterhead settings RPC | Not present in the live migration state |
+| Claim diagnosis draft persistence | `claim_diagnosis_drafts` table absent |
+| Settlement/claim-case release | Exception, claim-case, remittance and receipt-month objects absent; approved gross and actual receipt-date columns absent |
+| Pre-authorization finalizer | Live private function still references absent `pre_auth_submissions`; canonical table is `preauth_submissions` |
+| Claims-officer settlement access | `claims.settlement.read/write` permission keys/grants absent |
 
 The live database has the facility base tables but not the reviewed onboarding/membership/WHT RPCs. The facility table count and membership count are both zero; this is a point-in-time read, not an instruction to seed or alter production.
 
@@ -78,7 +82,7 @@ It also:
 - sends security-audit notifications to the affected account and the administrative actor;
 - keeps trigger functions in the private security schema where appropriate and revokes client RPC execution.
 
-The audit log remains the source of truth for monitoring. Notifications are a user-facing delivery layer, not a substitute for the audit record. Notification delivery is idempotent per recipient/event.
+The audit log remains the source of truth for monitoring. Notifications are a user-facing delivery layer, not a substitute for the audit record. Notification delivery is idempotent per recipient/event. Redaction applies to new audit snapshots only; this migration does not rewrite historical audit rows.
 
 ## Security-advisor findings to review
 
