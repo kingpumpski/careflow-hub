@@ -8,6 +8,7 @@ describe("resolveDatabaseCapabilities", () => {
       individualClaimCases: false,
       settlementExceptions: false,
       settlementRemittanceLedger: false,
+      facilityAdministration: false,
     });
   });
 
@@ -17,11 +18,13 @@ describe("resolveDatabaseCapabilities", () => {
       VITE_CAREFLOW_CLAIM_CASES_ENABLED: "TRUE",
       VITE_CAREFLOW_SETTLEMENT_EXCEPTIONS_ENABLED: "1",
       VITE_CAREFLOW_SETTLEMENT_REMITTANCES_ENABLED: "true",
+      VITE_CAREFLOW_FACILITY_ADMIN_ENABLED: "false",
     })).toEqual({
       preAuthPreparedHandoff: true,
       individualClaimCases: false,
       settlementExceptions: false,
       settlementRemittanceLedger: true,
+      facilityAdministration: false,
     });
   });
 });
