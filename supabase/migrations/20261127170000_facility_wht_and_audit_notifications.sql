@@ -73,7 +73,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  v_facility_text := coalesce(v_payload->>'facility_id', NEW.new_data->>'facility_id', NEW.old_data->>'facility_id');
+  v_facility_text := coalesce(
+    v_payload->>'facility_id',
+    NEW.new_data->>'facility_id',
+    NEW.old_data->>'facility_id',
+    CASE
+      WHEN NEW.table_name = 'facilities' THEN coalesce(NEW.record_id, v_payload->>'id')
+    END
+  );
   IF v_facility_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
     v_facility_id := v_facility_text::uuid;
   END IF;
@@ -137,6 +144,7 @@ BEGIN
     WHEN NEW.table_name IN ('payments', 'claims_settlement_periods', 'claims_settlement_remittances', 'settlement_exceptions') THEN '/claims/settlements'
     WHEN NEW.table_name = 'withholding_tax' THEN '/withholding-tax'
     WHEN NEW.table_name IN ('pre_authorizations', 'preauthorization_submissions') THEN '/pre-auth'
+    WHEN NEW.table_name = 'claim_diagnosis_drafts' THEN '/claims/diagnosis-assistant'
     WHEN NEW.table_name IN ('patients', 'doctors', 'procedures', 'client_companies') THEN '/clients'
     WHEN NEW.table_name = 'insurance_companies' THEN '/insurance'
     WHEN NEW.table_name = 'ledger_entries' THEN '/ledger'
