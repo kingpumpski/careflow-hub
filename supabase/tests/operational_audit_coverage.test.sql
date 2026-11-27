@@ -49,6 +49,8 @@ BEGIN
      OR position('change_note' in v_audit_definition) = 0
      OR position('read_by' in v_audit_definition) = 0
      OR position('diagnosis_ids' in v_audit_definition) = 0
+     OR position('request_number' in v_audit_definition) = 0
+     OR position('preauth_id' in v_audit_definition) = 0
      OR position('provider_message' in v_audit_definition) = 0
      OR position('document_name' in v_audit_definition) = 0
      OR position('denial_notes' in v_audit_definition) = 0
