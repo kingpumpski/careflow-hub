@@ -10,7 +10,7 @@ import { usePermissions } from "@/modules/security/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
-import { buildCompanyStatement, formatStatementAmount, type StatementLedgerEntry } from "@/modules/statements/statementOfAccount";
+import { buildCompanyStatement, buildStatementReconciliation, formatStatementAmount, type StatementClaimsPeriod, type StatementLedgerEntry } from "@/modules/statements/statementOfAccount";
 import { exportCompanyStatementPDF } from "@/modules/statements/exportStatementPdf";
 import { toast } from "@/hooks/use-toast";
 
@@ -60,6 +60,30 @@ export default function StatementsOfAccount() {
     retry: 1,
   });
 
+  const { data: claimsPeriods, isLoading: claimsPeriodsLoading, error: claimsPeriodsError } = useQuery({
+    queryKey: ["company-statement-claims-periods", companyId],
+    enabled: canRead && !permissionsLoading && Boolean(companyId),
+    queryFn: async () => {
+      const pageSize = 1000;
+      const rows: StatementClaimsPeriod[] = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from("claims_outstanding_periods")
+          .select("period_year, period_month, rejected_amount, provisional_withholding_tax_amount, actual_withholding_tax_amount, withholding_tax_amount")
+          .eq("insurance_company_id", companyId)
+          .order("period_year", { ascending: true })
+          .order("period_month", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        const batch = (data || []) as StatementClaimsPeriod[];
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      return rows;
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
+
   const { data: settings } = useQuery({
     queryKey: ["statement-letterhead-settings", canManageSettings],
     queryFn: async () => {
@@ -79,26 +103,29 @@ export default function StatementsOfAccount() {
   const letterhead = buildLetterheadConfig((key: string) => settingRows.find((row) => row.key === key)?.value || "");
   const selectedCompany = companyRows.find((company) => company.id === companyId);
   const statementResult = useMemo(() => {
-    if (!companyId || !ledger) return { statement: null, error: null as string | null };
+    if (!companyId || !ledger || !claimsPeriods) return { statement: null, reconciliation: null, error: null as string | null };
     try {
       return {
         statement: buildCompanyStatement(ledger, companyId, startDate, endDate),
+        reconciliation: buildStatementReconciliation(claimsPeriods, startDate, endDate),
         error: null as string | null,
       };
     } catch (error) {
       return {
         statement: null,
+        reconciliation: null,
         error: error instanceof Error ? error.message : "The statement could not be calculated.",
       };
     }
-  }, [ledger, companyId, startDate, endDate]);
+  }, [ledger, claimsPeriods, companyId, startDate, endDate]);
   const statement = statementResult.statement;
+  const reconciliation = statementResult.reconciliation;
   const statementError = statementResult.error;
 
   const generatePdf = async () => {
-    if (!selectedCompany || !statement || statementError) return;
+    if (!selectedCompany || !statement || !reconciliation || statementError) return;
     try {
-      await exportCompanyStatementPDF(selectedCompany, statement, startDate, endDate, new Date(), letterhead);
+      await exportCompanyStatementPDF(selectedCompany, statement, reconciliation, startDate, endDate, new Date(), letterhead);
       toast({ title: "Statement generated", description: "The company statement PDF has been downloaded." });
     } catch (error) {
       toast({
@@ -123,7 +150,7 @@ export default function StatementsOfAccount() {
           <h1 className="page-title flex items-center gap-2"><FileText className="h-6 w-6 text-primary" />Statement of Account</h1>
           <p className="page-description">Generate a detailed Accounts Receivable statement for an insurance company and reporting period.</p>
         </div>
-        <Button onClick={generatePdf} disabled={!statement || !!statementError || ledgerLoading || !selectedCompany}>
+        <Button onClick={generatePdf} disabled={!statement || !reconciliation || !!statementError || ledgerLoading || claimsPeriodsLoading || !!claimsPeriodsError || !selectedCompany}>
           <Download className="mr-2 h-4 w-4" />Generate Statement PDF
         </Button>
       </div>
@@ -147,7 +174,7 @@ export default function StatementsOfAccount() {
 
       {ledgerError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Ledger records could not be loaded. Statement generation is disabled to prevent an incomplete financial document.</div>}
       {statementError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{statementError}</div>}
-      {ledgerLoading && companyId && <div className="text-sm text-muted-foreground">Loading the complete company ledger history…</div>}
+      {(ledgerLoading || claimsPeriodsLoading) && companyId && <div className="text-sm text-muted-foreground">Loading the complete company ledger and claims/tax reconciliation…</div>}\n      {claimsPeriodsError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Claims and withholding-tax totals could not be loaded. PDF generation is disabled so the statement cannot omit these figures.</div>}
 
       {!companyId ? (
         <div className="stat-card flex min-h-48 flex-col items-center justify-center text-center">
@@ -155,7 +182,7 @@ export default function StatementsOfAccount() {
           <h2 className="font-semibold">Choose a company to begin</h2>
           <p className="mt-1 text-sm text-muted-foreground">Select an insurance company and reporting period to preview its statement.</p>
         </div>
-      ) : ledgerError ? null : ledgerLoading || !statement ? (
+      ) : ledgerError || claimsPeriodsError ? null : ledgerLoading || claimsPeriodsLoading || !statement || !reconciliation ? (
         <div className="stat-card"><Skeleton className="h-40 w-full" /></div>
       ) : (
         <>
@@ -164,6 +191,29 @@ export default function StatementsOfAccount() {
             <div className="stat-card"><p className="text-xs uppercase tracking-wide text-muted-foreground">Total debits</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.totalDebit)}</p><p className="text-xs text-muted-foreground">Period transactions</p></div>
             <div className="stat-card"><p className="text-xs uppercase tracking-wide text-muted-foreground">Total credits</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.totalCredit)}</p><p className="text-xs text-muted-foreground">Period transactions</p></div>
             <div className="stat-card border-primary/30"><p className="text-xs uppercase tracking-wide text-muted-foreground">Closing balance</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.closingBalance)}</p><p className="text-xs font-semibold">{statement.closingSide === "debit" ? "DEBIT — company owes facility" : statement.closingSide === "credit" ? "CREDIT — facility owes company" : "BALANCED — no amount outstanding"}</p></div>
+          </section>
+
+          <section className="stat-card space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Claims &amp; withholding-tax reconciliation</h2>
+              <p className="text-xs text-muted-foreground">Monthly claims-period totals overlapping the selected dates. Actual WHT replaces provisional WHT when confirmed; these two figures are not added together.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Rejected claims</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.rejectedClaimsTotal)}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provisional WHT</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.provisionalWhtTotal)}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Actual WHT confirmed</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.actualWhtTotal)}</p></div>
+              <div className="rounded-lg border border-primary/30 p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">WHT applied to reconciliation</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.effectiveWhtTotal)}</p><p className="text-xs text-muted-foreground">Actual where confirmed; otherwise provisional</p></div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="data-table min-w-[650px]">
+                <thead><tr><th>Claims month</th><th className="text-right">Rejected claims (GH¢)</th><th className="text-right">Provisional WHT (GH¢)</th><th className="text-right">Actual WHT (GH¢)</th><th className="text-right">WHT applied (GH¢)</th></tr></thead>
+                <tbody>
+                  {reconciliation.monthlyBreakdown.map((row) => <tr key={`${row.year}-${row.month}`}><td>{new Date(row.year, row.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</td><td className="text-right tabular-nums">{money(row.rejected)}</td><td className="text-right tabular-nums">{money(row.provisionalWht)}</td><td className="text-right tabular-nums">{money(row.actualWht)}</td><td className="text-right tabular-nums font-medium">{money(row.effectiveWht)}</td></tr>)}
+                  {reconciliation.monthlyBreakdown.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-muted-foreground">No claims or tax period totals overlap the selected dates.</td></tr>}
+                </tbody>
+                <tfoot><tr className="font-semibold"><td>Period totals</td><td className="text-right">{money(reconciliation.rejectedClaimsTotal)}</td><td className="text-right">{money(reconciliation.provisionalWhtTotal)}</td><td className="text-right">{money(reconciliation.actualWhtTotal)}</td><td className="text-right">{money(reconciliation.effectiveWhtTotal)}</td></tr></tfoot>
+              </table>
+            </div>
           </section>
 
           <section className="stat-card space-y-4">
