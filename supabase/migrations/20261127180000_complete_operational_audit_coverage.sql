@@ -98,6 +98,8 @@ REVOKE ALL ON FUNCTION public.audit_trigger_fn() FROM PUBLIC, anon, authenticate
 DO $audit_coverage$
 DECLARE
   v_table text;
+  v_relkind "char";
+  v_table_oid oid;
   v_tables text[] := ARRAY[
     'claims', 'payments', 'withholding_tax', 'insurance_companies',
     'client_companies', 'doctors', 'procedures', 'patients',
@@ -107,7 +109,7 @@ DECLARE
     'preauth_submissions', 'preauth_versions', 'preauthorization_versions',
     'preauthorization_submissions', 'procedure_templates', 'diagnosis_codes',
     'ledger_entries', 'claims_settlement_periods', 'claims_settlement_remittances',
-    'claims_settlement_receipt_months', 'settlement_exceptions',
+    'settlement_exceptions',
     'settlement_exception_audit_events', 'claim_cases', 'claim_case_events',
     'claim_diagnosis_drafts', 'facilities', 'facility_memberships',
     'profiles', 'system_settings', 'user_roles', 'user_permission_overrides',
@@ -115,13 +117,20 @@ DECLARE
   ];
 BEGIN
   FOREACH v_table IN ARRAY v_tables LOOP
-    IF to_regclass(format('public.%I', v_table)) IS NULL THEN
+    v_table_oid := to_regclass(format('public.%I', v_table));
+    IF v_table_oid IS NULL THEN
+      CONTINUE;
+    END IF;
+    SELECT c.relkind INTO v_relkind FROM pg_catalog.pg_class c WHERE c.oid = v_table_oid;
+    -- Row-level triggers are valid only on ordinary/partitioned tables; views
+    -- such as claims_settlement_receipt_months are deliberately skipped.
+    IF v_relkind NOT IN ('r', 'p') THEN
       CONTINUE;
     END IF;
     IF EXISTS (
       SELECT 1
         FROM pg_catalog.pg_trigger t
-       WHERE t.tgrelid = to_regclass(format('public.%I', v_table))
+       WHERE t.tgrelid = v_table_oid
          AND NOT t.tgisinternal
          AND t.tgfoid = 'public.audit_trigger_fn()'::regprocedure
     ) THEN
