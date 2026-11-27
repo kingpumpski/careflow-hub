@@ -34,6 +34,7 @@ export function useNotifications(limit = 10) {
     queryKey,
     enabled: canQuery,
     staleTime: 15_000,
+    refetchInterval: 30_000,
     queryFn: async () => {
       if (!user?.id) return [] as CareFlowNotification[];
       const fields = enhanced
@@ -54,13 +55,14 @@ export function useNotifications(limit = 10) {
     queryKey: ["notifications", user?.id, "unread-count"],
     enabled: canQuery,
     staleTime: 15_000,
+    refetchInterval: 30_000,
     queryFn: async () => {
       if (!user?.id) return 0;
       const { count, error } = await supabase
         .from("notifications")
         .select("id", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .eq("read", false);
+        .or("read.eq.false,read.is.null");
       if (error) throw error;
       return count ?? 0;
     },
@@ -113,7 +115,7 @@ export function useNotifications(limit = 10) {
       .from("notifications")
       .update(update)
       .eq("user_id", user.id)
-      .eq("read", false);
+      .or("read.eq.false,read.is.null");
     if (error) {
       toast.error("Could not mark notifications as read", { description: error.message });
       return;
