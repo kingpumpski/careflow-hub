@@ -13,9 +13,12 @@ export type DatabaseCapabilities = {
 };
 
 /**
- * Production capabilities are opt-in at build time. This prevents the app
- * from calling relations/RPCs that have not passed the production migration
- * and release checks. Only the exact string "true" enables a capability.
+ * These are environment-wide release/kill switches only. They prevent the
+ * app from calling relations/RPCs that have not passed production release
+ * checks. They are NOT organization entitlements or user permissions.
+ * Per-organization module availability must be resolved server-side from the
+ * organization entitlement model after organization tenancy is implemented.
+ * Only the exact string "true" enables a capability.
  */
 export function resolveDatabaseCapabilities(
   environment: DatabaseCapabilityEnvironment,

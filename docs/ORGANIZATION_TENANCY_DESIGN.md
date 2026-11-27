@@ -165,3 +165,84 @@ Avoid a global mutable database session variable as the sole tenant boundary. If
 - The initial organization mapping and ownership policy for shared insurer/reference data require explicit operator/product decisions.
 
 **Conclusion:** implement the tenant model only after backup/restore and migration-ledger gates are satisfied. The existing facility model is a useful lower-level boundary, not a substitute for organization tenancy.
+
+
+## 9. Optional modules and organization-level entitlements
+
+CareFlow should ship one shared, versioned application and one standard database schema. Optional capabilities are activated per organization; they are not provisioned as separate application forks or separate table sets. Creating a table makes a capability technically available, but does not by itself authorize every user to use it.
+
+### 9.1 Separate four different decisions
+
+1. **Platform release gate:** Is this capability safe and deployed in this environment? The existing `VITE_CAREFLOW_*_ENABLED` variables are temporary global release/kill switches only. They must never be treated as an organization's entitlement or a user's permission.
+2. **Organization entitlement:** Has this organization been granted access to the module, and is it enabled or suspended?
+3. **User authorization:** Does this member have the relevant role and action permission within the active organization and, where applicable, the selected facility?
+4. **Workflow state:** Is the specific record in a valid state for this action? A module being enabled does not bypass its server-side lifecycle rules.
+
+The backend must require all four checks for a protected operation. Navigation visibility and disabled buttons are usability controls, not security boundaries.
+
+### 9.2 Target module catalogue
+
+Introduce a platform-managed `module_catalog` with stable module keys, display metadata, release state, dependencies and configuration schema. Add an `organization_module_entitlements` relation keyed by organization and module, with an explicit state, grant source, configuration, activation/deactivation actor and timestamps. Add immutable `organization_module_events` for entitlement changes.
+
+Initial optional modules should include:
+
+- `individual_claim_cases` — patient/member-level claim case lifecycle, separate from the existing monthly aggregate claims ledger.
+- `settlement_reconciliation` — payment-advice capture, multi-remittance allocation, actual receipt dates, partial payments, reversals and claim-cycle matching.
+- `settlement_exceptions` — unmatched, short-paid, over-paid, duplicate and contradictory settlement exception workflows.
+- `preauth_document_preparation` — immutable document preparation, PDF generation, email drafting and internal officer handoff records only.
+- `advanced_financial_reporting` — enhanced statements, reconciliation schedules and organization-level financial analysis.
+
+The existing monthly aggregate claims and core access/security functions remain part of the base product. Module dependencies must be explicit; for example, settlement exceptions depend on settlement reconciliation being available. The initial catalogue and dependencies require product review before a migration is generated.
+
+### 9.3 Tenant and permission model
+
+- `organizations` is the top-level tenant. A single organization may contain multiple `facilities`; preserve facility IDs and facility-level access as the lower operational boundary.
+- `organization_memberships` determines which organizations a user may enter. Facility membership continues to restrict facility-specific records and actions.
+- A user may belong to multiple organizations with different roles. Active organization selection is client state only; every RPC, query, export, Storage operation, realtime subscription and offline replay must independently validate membership.
+- Organization module entitlements are distinct from `app_permissions`, `role_permissions` and per-user overrides. An enabled module does not grant a user permission to read or mutate its records.
+- Organization owners/admins may request or activate modules only within the platform's allowed entitlement policy. Platform support grants and suspensions are explicit and audited.
+- The module entitlement row is authoritative on the server. Do not use a client-supplied organization ID, local storage value or build-time environment variable as proof of entitlement.
+- Tenant-owned records must have a deterministic organization/facility ownership path. Use composite tenant-aware foreign keys where practical; RLS predicates must prevent cross-organization references and UPDATE tenant reassignment.
+- Query keys, caches, offline queues, exports and AI context must include the active organization. Clear or partition cached data on organization switch and revalidate membership before replaying offline writes.
+
+### 9.4 Pre-authorization boundary
+
+The `preauth_document_preparation` module must be described as an internal document-preparation capability. It may create immutable versions, PDFs, recipient/attachment manifests, email drafts and internal handoff/audit records. It must not claim to submit to, deliver to, receive acknowledgement from or obtain approval from an insurer. Those actions and statuses belong exclusively to the externally approved insurer system. The legacy `preauth_submissions` relation is not the canonical prepared-handoff register and must not be reused.
+
+### 9.5 Module enablement contract
+
+A module is usable only when:
+- its global release gate is enabled after the schema/RPC/RLS contract has been verified;
+- the organization has an active entitlement;
+- the user has the required organization and facility membership and action permission;
+- the record-level state transition is valid.
+
+If any condition fails, the UI should explain whether the module is not released, not enabled for the organization, or the member lacks permission. It must not silently show missing data as zero or issue repeated requests to absent relations.
+
+## 10. Dated production verification — 2026-11-27
+
+Read-only verification of project `jajfdgknctzqypdtvmxo` confirmed:
+
+- The project is `ACTIVE_HEALTHY`, on PostgreSQL 17.11, with 74 migration-ledger rows; latest applied version is `20260921160938`.
+- `organizations`, `organization_memberships` and `organization_module_entitlements` do not exist in production.
+- `facilities` and `facility_memberships` exist but contain zero rows. Exact counts: `user_roles` 1, `profiles` 1, `app_permissions` 15, `role_permissions` 59, and `user_permission_overrides` 0. This corrects earlier compact table-list output that appeared to show zero rows for all permission tables.
+- The canonical `preauthorization_submissions`, `claim_cases`, `claim_case_events`, `settlement_exceptions`, `settlement_exception_audit_events`, `claims_settlement_remittances` and `claims_settlement_receipt_months` are absent. The legacy `preauth_submissions` relation exists and must remain distinct.
+- `claims_settlement_periods` exists but lacks `approved_gross_amount` and `actual_receipt_date`.
+- The live public `finalize_preauthorization_handoff(...)` wrapper is still SECURITY DEFINER, while the merged source contract expects a SECURITY INVOKER wrapper. Do not enable the handoff capability until the full wrapper/private-function contract is deployed and verified.
+- The current Security Advisor reports the intentional no-policy configuration on `role_permissions` (do not add a broad read policy), five authenticated-callable SECURITY DEFINER functions for individual review, and leaked-password protection disabled.
+
+These are catalog observations only. No production schema, data, permissions, Auth configuration or Edge Functions were changed. The repository's merged migrations are not evidence that production has applied them.
+
+## 11. Release order for optional modules
+
+1. Complete encrypted full-system backup and a separate-project restoration rehearsal.
+2. Complete the semantic migration crosswalk and resolve duplicate migration versions without rewriting applied history.
+3. Implement and test the organization/membership foundation and an approved initial-organization provisioning path.
+4. Inventory and classify every table, view, function, trigger, Storage bucket/policy, Edge Function, import/export and offline queue by tenant ownership.
+5. Add the module catalogue, organization entitlements and immutable entitlement audit events.
+6. Add tenant-aware constraints, RLS, RPC checks and server-authoritative module gates; synchronize generated types and query contracts.
+7. Add organization switching and organization-aware query keys, caches, reports, exports, realtime, offline replay and AI context.
+8. Prove isolation with at least two organizations, multi-organization users, distinct roles, suspended memberships, disabled modules, cross-tenant foreign keys and negative RPC/Storage/export/offline tests.
+9. Only then prepare a reviewed forward-only production migration and controlled release with explicit owner approval.
+
+No production DDL, migration push, ledger repair, role mutation or feature enablement is authorized by this design update.
