@@ -170,8 +170,10 @@ BEGIN
   IF NEW.table_name IN (
     'notifications', 'audit_logs', 'preauth_versions',
     'preauthorization_versions', 'claim_case_events',
-    'settlement_exception_audit_events', 'preauth_email_log'
-  ) THEN
+    'settlement_exception_audit_events', 'preauth_email_log',
+    'claim_diagnosis_assistant'
+  ) OR (NEW.table_name = 'facilities' AND NEW.action IN ('create', 'update_provisional_wht_rate'))
+    OR (NEW.table_name = 'facility_memberships' AND NEW.action IN ('upsert', 'suspend')) THEN
     RETURN NEW;
   END IF;
 
