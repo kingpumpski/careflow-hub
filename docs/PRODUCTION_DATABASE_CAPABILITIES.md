@@ -17,7 +17,7 @@ The GitHub Pages build therefore uses explicit, build-time capability flags. All
 
 The latest read-only audit of Supabase project `jajfdgknctzqypdtvmxo` found a 74-row migration ledger with latest version `20260921160938`. The production database is missing the objects listed above, and `claims_settlement_periods` does not yet contain `approved_gross_amount` or `actual_receipt_date`. The canonical prepared-handoff relation `preauthorization_submissions` is absent; the legacy `preauth_submissions` relation must not be reused. The live prepared-handoff finalizer still references the misspelled `pre_auth_submissions` relation.
 
-The individual claim-case and online settlement-exception schemas/RPCs are also absent. Facility and facility-membership tables exist but currently have no rows. Facility-administration RPCs (`create_facility_with_owner`, `add_facility_member_by_email`, `deactivate_facility_member` and `set_facility_provisional_wht_rate`) are absent. The live RBAC layout is the legacy-compatible shape: `app_permissions.permission_key`, `role_permissions.permission_key` without a `granted` column, and `user_permission_overrides.allowed`. The `claims.settlement.read` and `claims.settlement.write` catalogue entries and role grants are absent.
+The individual claim-case and online settlement-exception schemas/RPCs are also absent. Facility and facility-membership tables exist but currently have no rows. Facility-administration RPCs (`create_facility_with_owner`, `add_facility_member_by_email`, `deactivate_facility_member` and `set_facility_provisional_wht_rate`) are absent. The additive notification event metadata, audit fan-out trigger and notification routing columns are also not deployed; existing legacy notifications remain available. The live RBAC layout is the legacy-compatible shape: `app_permissions.permission_key`, `role_permissions.permission_key` without a `granted` column, and `user_permission_overrides.allowed`. The `claims.settlement.read` and `claims.settlement.write` catalogue entries and role grants are absent.
 
 ## Enabling a capability after release approval
 
@@ -27,4 +27,4 @@ The individual claim-case and online settlement-exception schemas/RPCs are also 
 4. In GitHub, open **Settings → Secrets and variables → Actions → Variables** and set only the variable for the fully verified capability to `true`.
 5. Rebuild and deploy. Enable each capability independently; do not turn on all flags just because one migration succeeded.
 
-These are feature flags, not secrets. Never put Supabase keys or credentials in them. Do not enable any of the five flags for the current production schema.
+These are feature flags, not secrets. Never put Supabase keys or credentials in them. Do not enable any of the six flags for the current production schema.
