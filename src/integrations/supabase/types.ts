@@ -1038,7 +1038,27 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      claims_outstanding_periods: {
+        Row: {
+          actual_withholding_tax_amount: number | null
+          approved_gross_amount: number | null
+          approval_variance: number | null
+          net_claim_amount: number | null
+          outstanding_amount: number | null
+          outstanding_status: string | null
+          paid_amount: number | null
+          payment_entry_count: number | null
+          period_month: number | null
+          period_year: number | null
+          provisional_withholding_tax_amount: number | null
+          rejected_amount: number | null
+          submitted_amount: number | null
+          withholding_tax_amount: number | null
+          withholding_tax_entry_count: number | null
+          insurance_company_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_report_letterhead_settings: {
