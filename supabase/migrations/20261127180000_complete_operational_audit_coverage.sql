@@ -56,6 +56,7 @@ BEGIN
     WHEN 'pre_authorizations' THEN ARRAY['patient_id','diagnosis','clinical_notes','approval_notes','custom_diagnoses','document_payload']
     WHEN 'preauth_client_suggestions' THEN ARRAY['normalized_name','client_name','date_of_birth','phone','email','address','identifier','membership_number']
     WHEN 'preauth_email_log' THEN ARRAY['to_email','cc_emails','subject','provider_response','error_message']
+    WHEN 'preauth_submissions' THEN ARRAY['recipient','external_reference','provider_message']
     WHEN 'preauth_handoff_log' THEN ARRAY['recipients','subject','message_body','attachment_name']
     WHEN 'chat_messages' THEN ARRAY['subject','body']
     WHEN 'system_settings' THEN ARRAY['value']
@@ -98,7 +99,7 @@ REVOKE ALL ON FUNCTION public.audit_trigger_fn() FROM PUBLIC, anon, authenticate
 DO $audit_coverage$
 DECLARE
   v_table text;
-  v_relkind "char";
+  v_relkind text;
   v_table_oid oid;
   v_tables text[] := ARRAY[
     'claims', 'payments', 'withholding_tax', 'insurance_companies',
@@ -121,7 +122,7 @@ BEGIN
     IF v_table_oid IS NULL THEN
       CONTINUE;
     END IF;
-    SELECT c.relkind INTO v_relkind FROM pg_catalog.pg_class c WHERE c.oid = v_table_oid;
+    SELECT c.relkind::text INTO v_relkind FROM pg_catalog.pg_class c WHERE c.oid = v_table_oid;
     -- Row-level triggers are valid only on ordinary/partitioned tables; views
     -- such as claims_settlement_receipt_months are deliberately skipped.
     IF v_relkind NOT IN ('r', 'p') THEN
