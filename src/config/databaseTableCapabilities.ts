@@ -27,7 +27,9 @@ const RPC_CAPABILITIES: Readonly<Record<string, DatabaseCapabilityKey>> = Object
 });
 
 export function getDatabaseCapabilityForResource(resource: string): DatabaseCapabilityKey | null {
-  return TABLE_CAPABILITIES[resource] ?? RPC_CAPABILITIES[resource] ?? null;
+  if (Object.prototype.hasOwnProperty.call(TABLE_CAPABILITIES, resource)) return TABLE_CAPABILITIES[resource];
+  if (Object.prototype.hasOwnProperty.call(RPC_CAPABILITIES, resource)) return RPC_CAPABILITIES[resource];
+  return null;
 }
 
 export function isDatabaseCapabilityAvailable(
