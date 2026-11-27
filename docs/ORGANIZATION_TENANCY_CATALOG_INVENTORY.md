@@ -60,6 +60,8 @@ Until these criteria are met, this script is diagnostic only. It does not enable
 
 The connected project `claims tracker` (`jajfdgknctzqypdtvmxo`, PostgreSQL 17.11, ACTIVE_HEALTHY) was inspected with read-only catalogue queries. This is a targeted baseline of the core claims, finance, facility and pre-authorization relationships, not a substitute for running and retaining every result set from the full inventory script.
 
+The complete seven-section inventory SQL was also executed successfully against that confirmed project. It returned 89 relations, 86 foreign-key constraints, 109 RLS policies, 4 views/materialized views, 38 application or privileged Storage functions, 21 non-internal triggers, and 10 object-presence checks. These are catalogue-object counts, not business-row counts. The outputs should be retained as the baseline artifact for the semantic crosswalk.
+
 ### Organization and scope keys
 
 - `organizations`, `organization_memberships`, and `organization_module_entitlements` are absent.
