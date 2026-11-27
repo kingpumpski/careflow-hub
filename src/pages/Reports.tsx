@@ -305,7 +305,15 @@ export default function Reports() {
       data = sortedReport.map(row => [row.company, row.submitted, row.rejected, row.approvedGross ?? "—", row.approvalVariance ?? "—", row.paid, row.provisionalTax, row.actualTax, row.tax, row.outstanding]);
       data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
     }
-    exportReportPDF(title, data, columns, companyInfo);
+    const selectedCompany = selectedCompanyId === "all" ? undefined : (insurers || []).find((company: any) => company.id === selectedCompanyId);
+    const counterparty = selectedCompany ? {
+      name: selectedCompany.company_name,
+      address: selectedCompany.address,
+      phone: selectedCompany.phone,
+      email: selectedCompany.email,
+      contactPerson: selectedCompany.contact_person,
+    } : undefined;
+    exportReportPDF(title, data, columns, companyInfo, counterparty);
   };
 
   const handleExportExcel = () => {
