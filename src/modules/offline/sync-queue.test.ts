@@ -58,6 +58,7 @@ describe("database capability-aware offline sync", () => {
       individualClaimCases: false,
       settlementExceptions: false,
       settlementRemittanceLedger: false,
+      facilityAdministration: false,
     };
     expect(isDatabaseCapabilityAvailable("settlement_exceptions", disabled)).toBe(false);
     expect(isDatabaseCapabilityAvailable("settlement_exception_audit_events", disabled)).toBe(false);
