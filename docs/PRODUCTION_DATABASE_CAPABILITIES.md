@@ -11,6 +11,7 @@ The GitHub Pages build therefore uses explicit, build-time capability flags. All
 | `CARE_FLOW_SETTLEMENT_EXCEPTIONS_ENABLED` | Online settlement exception register | `settlement_exceptions`, `settlement_exception_audit_events`, record/transition RPCs, RLS/grants, and exception SQL contracts |
 | `CARE_FLOW_SETTLEMENT_REMITTANCES_ENABLED` | Payment-advice remittance history, reversals and reconciliation | `claims_settlement_remittances`, `claims_settlement_receipt_months`, `approved_gross_amount`, `actual_receipt_date`, remittance/reversal RPCs, scoped permissions, RLS/grants, and remittance SQL contracts |
 | `CARE_FLOW_FACILITY_ADMIN_ENABLED` | Facility creation, owner/member onboarding, suspension and facility WHT-rate administration | `create_facility_with_owner`, `add_facility_member_by_email`, `deactivate_facility_member`, `set_facility_provisional_wht_rate`, superuser-only wrappers, private helpers, RLS/grants and onboarding SQL contract tests |
+| `CARE_FLOW_NOTIFICATION_EVENTS_ENABLED` | Audit-driven notification routing, event metadata and read timestamps | Additive notification metadata columns, audit-to-notification fan-out trigger, recipient/idempotency indexes, RLS/grants and notification delivery contract tests |
 
 ## Current production release state
 
