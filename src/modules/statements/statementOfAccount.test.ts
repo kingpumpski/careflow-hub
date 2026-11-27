@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyStatement } from "./statementOfAccount";
+import { buildCompanyStatement, buildStatementReconciliation } from "./statementOfAccount";
 
 const rows = [
   { id: "1", insurance_company_id: "ins-a", entry_date: "2026-01-02", entry_type: "claim_submission", account_debit: "Accounts Receivable", account_credit: "Claims Revenue", amount: 1000, description: "January claims", reference: "CLM-001" },
@@ -43,5 +43,34 @@ describe("company statement of account", () => {
     expect(() => buildCompanyStatement([
       { id: "x", insurance_company_id: "ins-a", entry_date: "2026-01-01", entry_type: "x", account_debit: "Accounts Receivable", account_credit: "Accounts Receivable", amount: 10 },
     ], "ins-a", "2026-01-01", "2026-01-31")).toThrow();
+  });
+});
+
+describe("company statement claims and tax reconciliation", () => {
+  const periods = [
+    { period_year: 2026, period_month: 1, rejected_amount: 125, provisional_withholding_tax_amount: 50, actual_withholding_tax_amount: 45, withholding_tax_amount: 45 },
+    { period_year: 2026, period_month: 2, rejected_amount: 75, provisional_withholding_tax_amount: 30, actual_withholding_tax_amount: 0, withholding_tax_amount: 30 },
+    { period_year: 2026, period_month: 3, rejected_amount: 20, provisional_withholding_tax_amount: 10, actual_withholding_tax_amount: 0, withholding_tax_amount: 10 },
+  ];
+
+  it("totals rejected claims and reports provisional, actual and effective WHT without double counting", () => {
+    const result = buildStatementReconciliation(periods, "2026-01-15", "2026-02-10");
+    expect(result.rejectedClaimsTotal).toBe(200);
+    expect(result.provisionalWhtTotal).toBe(80);
+    expect(result.actualWhtTotal).toBe(45);
+    expect(result.effectiveWhtTotal).toBe(75);
+    expect(result.monthlyBreakdown).toHaveLength(2);
+  });
+
+  it("includes months that overlap a partial date range and excludes months outside it", () => {
+    const result = buildStatementReconciliation(periods, "2026-02-28", "2026-03-01");
+    expect(result.rejectedClaimsTotal).toBe(95);
+    expect(result.monthlyBreakdown.map((row) => row.month)).toEqual([2, 3]);
+  });
+
+  it("rejects negative or non-finite tax and rejection totals", () => {
+    expect(() => buildStatementReconciliation([
+      { ...periods[0], rejected_amount: -1 },
+    ], "2026-01-01", "2026-01-31")).toThrow(/invalid amount/i);
   });
 });
