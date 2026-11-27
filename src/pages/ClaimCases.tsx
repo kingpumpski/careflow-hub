@@ -15,6 +15,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 
 type ClaimCase = {
   id: string;
@@ -67,7 +68,7 @@ export default function ClaimCases() {
   const { data: cases, isLoading, error: casesError } = useSupabaseQuery("claim_cases", {
     orderBy: "created_at",
     filters: facilityId ? { facility_id: facilityId } : undefined,
-    enabled: !offline && Boolean(facilityId) && canRead,
+    enabled: !offline && databaseCapabilities.individualClaimCases && Boolean(facilityId) && canRead,
     missingSchemaBehavior: "error",
   });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: !offline && canRead });
@@ -80,7 +81,7 @@ export default function ClaimCases() {
   const { data: events, isLoading: eventsLoading, error: eventsError } = useSupabaseQuery("claim_case_events", {
     orderBy: "created_at",
     filters: selectedCaseId ? { claim_case_id: selectedCaseId } : undefined,
-    enabled: !offline && Boolean(selectedCaseId) && canRead,
+    enabled: !offline && databaseCapabilities.individualClaimCases && Boolean(selectedCaseId) && canRead,
     missingSchemaBehavior: "error",
   });
   const [showCreate, setShowCreate] = useState(false);
@@ -200,6 +201,10 @@ export default function ClaimCases() {
 
   if (!canRead && !permissionsLoading) {
     return <div className="stat-card py-12 text-center"><h1 className="text-lg font-semibold">Access restricted</h1><p className="text-sm text-muted-foreground mt-2">Claims read permission is required to view individual claim cases.</p></div>;
+  }
+
+  if (!offline && !databaseCapabilities.individualClaimCases) {
+    return <div className="stat-card space-y-2 p-6" role="status"><h1 className="text-lg font-semibold">Individual claim cases are not released in this database</h1><p className="text-sm text-muted-foreground">The production database does not yet contain the claim-case tables and lifecycle RPCs. This feature is disabled until the approved migration and access-control checks are complete. Monthly claims entry remains available and is not affected.</p></div>;
   }
 
   return <div className="space-y-6 min-w-0">
