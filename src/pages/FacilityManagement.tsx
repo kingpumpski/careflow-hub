@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Building2, UserPlus, Users, ShieldCheck, RefreshCw, Ban } from "lucide-react";
+import { Building2, UserPlus, Users, ShieldCheck, RefreshCw, Ban, FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,7 +204,7 @@ export default function FacilityManagement() {
     {!offline && !databaseCapabilities.facilityAdministration && <div role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm"><p className="font-semibold">Facility onboarding is not yet released to this database</p><p className="mt-1">The production project has the facility tables but not the reviewed superuser-only onboarding, membership and WHT-rate RPCs. Create, add-member, suspend and rate changes are disabled until the approved migration and permission checks are deployed. Existing facility data is not changed.</p></div>}
 
     <section className="stat-card space-y-4">
-      <div className="flex items-center gap-2"><Building2 className="h-5 w-5" /><h2 className="font-semibold">Create a facility</h2></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><Building2 className="h-5 w-5" /><h2 className="font-semibold">Create a facility</h2></div><Button type="button" size="sm" variant="outline" onClick={() => setFacilityForm({ code: "TEST-HOSPITAL-01", name: "CareFlow Test Hospital", country_code: "GH", timezone: "Africa/Accra", default_currency: "GHS", date_format: "DD/MM/YYYY" })}><FlaskConical className="mr-2 h-4 w-4" />Use test hospital template</Button></div>
       <p className="text-sm text-muted-foreground">Creating a facility automatically adds your administrator account as its first active owner. No facility is created until you submit this form.</p>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => void createFacility(event)}>
         <div className="space-y-2"><Label htmlFor="facility-code">Facility code *</Label><Input id="facility-code" required maxLength={20} value={facilityForm.code} onChange={(event) => setFacilityForm((old) => ({ ...old, code: event.target.value.toUpperCase() }))} placeholder="e.g. HOSPITAL-01" /></div>
