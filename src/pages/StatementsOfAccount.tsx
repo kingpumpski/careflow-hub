@@ -65,7 +65,7 @@ export default function StatementsOfAccount() {
     enabled: canRead && !permissionsLoading && Boolean(companyId),
     queryFn: async () => {
       const pageSize = 1000;
-      const fetchAll = async <T,>(loadPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>) => {
+      const fetchAll = async <T,>(loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) => {
         const rows: T[] = [];
         for (let offset = 0; ; offset += pageSize) {
           const { data, error } = await loadPage(offset, offset + pageSize - 1);
