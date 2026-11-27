@@ -1,7 +1,7 @@
 -- Contract checks for audit-driven in-app notification delivery.
 DO $test$
 DECLARE
-  v_notify regprocedure := 'public.notify_from_audit_log()'::regprocedure;
+  v_notify regprocedure := 'security_internal.notify_from_audit_log()'::regprocedure;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger
