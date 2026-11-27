@@ -17,7 +17,7 @@ import { toast } from "@/hooks/use-toast";
 const today = new Date().toISOString().slice(0, 10);
 const yearStart = `${new Date().getFullYear()}-01-01`;
 const money = (amount: number) => `GH¢ ${formatStatementAmount(amount)}`;
-const dateLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const dateLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });\ntype CompanyOption = { id: string; company_name: string; address?: string | null; phone?: string | null; email?: string | null; contact_person?: string | null };\ntype SettingRow = { key: string; value?: string | null };
 
 export default function StatementsOfAccount() {
   const { can, loading: permissionsLoading } = usePermissions();
@@ -131,7 +131,7 @@ export default function StatementsOfAccount() {
             <Label htmlFor="statement-company">Select company</Label>
             <select id="statement-company" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
               <option value="">Choose an insurance company…</option>
-              {(companies || []).map((company: any) => <option key={company.id} value={company.id}>{company.company_name}</option>)}
+              {companyRows.map((company) => <option key={company.id} value={company.id}>{company.company_name}</option>)}
             </select>
           </div>
           <div className="space-y-1.5"><Label htmlFor="statement-start">From date</Label><Input id="statement-start" type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></div>
