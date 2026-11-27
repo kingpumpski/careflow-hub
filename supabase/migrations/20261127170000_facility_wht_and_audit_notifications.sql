@@ -186,6 +186,7 @@ BEGIN
     jsonb_build_object('audit_action', NEW.action, 'audit_log_id', NEW.id),
     NEW.id
   FROM recipients r
+  JOIN auth.users u ON u.id = r.user_id
   WHERE r.user_id IS NOT NULL
   ON CONFLICT (user_id, source_audit_log_id)
     WHERE source_audit_log_id IS NOT NULL
