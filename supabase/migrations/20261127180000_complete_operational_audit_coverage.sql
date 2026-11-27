@@ -25,8 +25,6 @@ BEGIN
   v_record_id := coalesce(
     v_new->>'id',
     v_old->>'id',
-    v_new->>'permission_key',
-    v_old->>'permission_key',
     CASE WHEN TG_TABLE_NAME = 'role_permissions' THEN
       concat_ws(':', coalesce(v_new->>'role', v_old->>'role'),
                      coalesce(v_new->>'permission_key', v_old->>'permission_key'))
@@ -34,7 +32,9 @@ BEGIN
     CASE WHEN TG_TABLE_NAME = 'user_permission_overrides' THEN
       concat_ws(':', coalesce(v_new->>'user_id', v_old->>'user_id'),
                      coalesce(v_new->>'permission_key', v_old->>'permission_key'))
-    END
+    END,
+    v_new->>'permission_key',
+    v_old->>'permission_key'
   );
 
   -- Keep routing/ownership keys but do not duplicate clinical, identity,
