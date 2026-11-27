@@ -280,18 +280,25 @@ BEGIN
   END;
 
   v_action_url := CASE
-    WHEN NEW.table_name IN ('claims', 'claim_cases') THEN '/claims'
+    WHEN NEW.table_name = 'claims' THEN '/claims'
+    WHEN NEW.table_name = 'claim_cases' THEN '/claims/cases'
     WHEN NEW.table_name IN (
       'payments', 'claims_settlement_periods', 'claims_settlement_remittances',
       'claims_settlement_receipt_months', 'settlement_exceptions'
     ) THEN '/claims/settlements'
     WHEN NEW.table_name = 'withholding_tax' THEN '/withholding-tax'
     WHEN NEW.table_name IN (
-      'pre_authorizations', 'preauthorization_submissions',
+      'pre_authorizations', 'preauthorization_submissions', 'preauth_submissions',
       'preauth_items', 'preauth_document_registry', 'preauth_handoff_log'
     ) THEN '/pre-auth'
     WHEN NEW.table_name = 'claim_diagnosis_drafts' THEN '/claims/diagnosis-assistant'
-    WHEN NEW.table_name IN ('patients', 'doctors', 'client_companies') THEN '/clients'
+    WHEN NEW.table_name IN ('patients', 'client_companies', 'preauth_client_suggestions') THEN '/clients'
+    WHEN NEW.table_name = 'doctors' THEN '/doctors'
+    WHEN NEW.table_name = 'procedures' THEN '/procedures'
+    WHEN NEW.table_name = 'diagnosis_codes' THEN '/diagnosis-codes'
+    WHEN NEW.table_name = 'preauth_catalog_items' THEN '/catalog'
+    WHEN NEW.table_name = 'procedure_templates' THEN '/templates'
+    WHEN NEW.table_name = 'preauth_insurer_tariffs' THEN '/insurance'
     WHEN NEW.table_name = 'insurance_companies' THEN '/insurance'
     WHEN NEW.table_name = 'ledger_entries' THEN '/ledger'
     WHEN NEW.table_name IN ('facilities', 'facility_memberships') THEN '/facilities'
