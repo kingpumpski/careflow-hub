@@ -13,12 +13,14 @@ const disabled: DatabaseCapabilities = {
   individualClaimCases: false,
   settlementExceptions: false,
   settlementRemittanceLedger: false,
+  facilityAdministration: false,
 };
 const enabled: DatabaseCapabilities = {
   preAuthPreparedHandoff: true,
   individualClaimCases: true,
   settlementExceptions: true,
   settlementRemittanceLedger: true,
+  facilityAdministration: true,
 };
 
 describe("database table and RPC capability contracts", () => {
@@ -40,6 +42,10 @@ describe("database table and RPC capability contracts", () => {
     expect(getDatabaseCapabilityForResource("transition_settlement_exception_atomic")).toBe("settlementExceptions");
     expect(getDatabaseCapabilityForResource("record_claims_settlement_remittance")).toBe("settlementRemittanceLedger");
     expect(getDatabaseCapabilityForResource("reverse_claims_settlement_remittance")).toBe("settlementRemittanceLedger");
+    expect(getDatabaseCapabilityForResource("create_facility_with_owner")).toBe("facilityAdministration");
+    expect(getDatabaseCapabilityForResource("add_facility_member_by_email")).toBe("facilityAdministration");
+    expect(getDatabaseCapabilityForResource("deactivate_facility_member")).toBe("facilityAdministration");
+    expect(getDatabaseCapabilityForResource("set_facility_provisional_wht_rate")).toBe("facilityAdministration");
   });
 
   it("keeps base tables available while optional database capabilities are disabled", () => {
@@ -48,6 +54,7 @@ describe("database table and RPC capability contracts", () => {
     expect(isDatabaseCapabilityAvailable("payments", disabled)).toBe(true);
     expect(isDatabaseCapabilityAvailable("claim_cases", disabled)).toBe(false);
     expect(isDatabaseCapabilityAvailable("settlement_exceptions", disabled)).toBe(false);
+    expect(isDatabaseCapabilityAvailable("create_facility_with_owner", disabled)).toBe(false);
   });
 
   it("throws a typed error instead of permitting an unreleased mutation", () => {
