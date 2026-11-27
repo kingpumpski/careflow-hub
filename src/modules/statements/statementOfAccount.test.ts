@@ -47,30 +47,46 @@ describe("company statement of account", () => {
 });
 
 describe("company statement claims and tax reconciliation", () => {
-  const periods = [
-    { period_year: 2026, period_month: 1, rejected_amount: 125, provisional_withholding_tax_amount: 50, actual_withholding_tax_amount: 45, withholding_tax_amount: 45 },
-    { period_year: 2026, period_month: 2, rejected_amount: 75, provisional_withholding_tax_amount: 30, actual_withholding_tax_amount: 0, withholding_tax_amount: 30 },
-    { period_year: 2026, period_month: 3, rejected_amount: 20, provisional_withholding_tax_amount: 10, actual_withholding_tax_amount: 0, withholding_tax_amount: 10 },
+  const claims = [
+    { claim_year: 2026, claim_month: 1, claim_amount: 125, status: "rejected" },
+    { claim_year: 2026, claim_month: 2, claim_amount: 75, status: "rejected" },
+    { claim_year: 2026, claim_month: 3, claim_amount: 20, status: "rejected" },
+  ];
+  const taxes = [
+    { year: 2026, month: 1, tax_amount: 50, is_actual: false },
+    { year: 2026, month: 1, tax_amount: 45, is_actual: true },
+    { year: 2026, month: 2, tax_amount: 30, is_actual: false },
+    { year: 2026, month: 3, tax_amount: 10, is_actual: false },
+  ];
+  const settlements = [
+    { period_start: "2026-01-01", period_end: "2026-01-31", period_type: "month", rejection_amount: 130, provisional_withholding_tax: 50, actual_withholding_tax: 45, settlement_status: "payment_advice_received" },
   ];
 
-  it("totals rejected claims and reports provisional, actual and effective WHT without double counting", () => {
-    const result = buildStatementReconciliation(periods, "2026-01-15", "2026-02-10");
-    expect(result.rejectedClaimsTotal).toBe(200);
+  it("uses monthly settlement totals where present and actual WHT replaces provisional", () => {
+    const result = buildStatementReconciliation(claims, taxes, settlements, "2026-01-15", "2026-02-10");
+    expect(result.rejectedClaimsTotal).toBe(205);
     expect(result.provisionalWhtTotal).toBe(80);
     expect(result.actualWhtTotal).toBe(45);
     expect(result.effectiveWhtTotal).toBe(75);
     expect(result.monthlyBreakdown).toHaveLength(2);
+    expect(result.monthlyBreakdown[0].rejected).toBe(130);
   });
 
-  it("includes months that overlap a partial date range and excludes months outside it", () => {
-    const result = buildStatementReconciliation(periods, "2026-02-28", "2026-03-01");
+  it("includes all months overlapping a partial date range and excludes outside months", () => {
+    const result = buildStatementReconciliation(claims, taxes, settlements, "2026-02-28", "2026-03-01");
     expect(result.rejectedClaimsTotal).toBe(95);
     expect(result.monthlyBreakdown.map((row) => row.month)).toEqual([2, 3]);
   });
 
+  it("uses settlement actual WHT only when payment advice is confirmed", () => {
+    const pending = [{ ...settlements[0], settlement_status: "awaiting_payment", actual_withholding_tax: 90 }];
+    const result = buildStatementReconciliation(claims, taxes, pending, "2026-01-01", "2026-01-31");
+    expect(result.actualWhtTotal).toBe(45);
+    expect(result.effectiveWhtTotal).toBe(45);
+  });
+
   it("rejects negative or non-finite tax and rejection totals", () => {
-    expect(() => buildStatementReconciliation([
-      { ...periods[0], rejected_amount: -1 },
-    ], "2026-01-01", "2026-01-31")).toThrow(/invalid amount/i);
+    const invalidTax = [{ year: 2026, month: 1, tax_amount: -1, is_actual: false }];
+    expect(() => buildStatementReconciliation(claims, invalidTax, [], "2026-01-01", "2026-01-31")).toThrow(/invalid amount/i);
   });
 });
