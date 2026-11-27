@@ -89,7 +89,7 @@ Avoid a global mutable database session variable as the sole tenant boundary. If
 
 ### Phase A — inventory and baseline
 
-- Export a complete schema-only snapshot from the connected project.
+- Export a complete schema-only snapshot from the connected project and run the repeatable read-only [catalogue inventory](ORGANIZATION_TENANCY_CATALOG_INVENTORY.md) to capture deployed relations, foreign keys, RLS policies, views, functions and triggers.
 - Enumerate all tenant-bearing and tenant-derived tables, views, RPCs, triggers, Storage buckets/policies, Edge Functions, and scheduled jobs.
 - Capture current RLS policies, grants, constraints, indexes, function definitions, and migration ledger.
 - Record row counts and orphan/reference-integrity checks without exporting patient-identifying data into development artifacts.
