@@ -20,6 +20,10 @@ const RPC_CAPABILITIES: Readonly<Record<string, DatabaseCapabilityKey>> = Object
   transition_settlement_exception_atomic: "settlementExceptions",
   record_claims_settlement_remittance: "settlementRemittanceLedger",
   reverse_claims_settlement_remittance: "settlementRemittanceLedger",
+  create_facility_with_owner: "facilityAdministration",
+  add_facility_member_by_email: "facilityAdministration",
+  deactivate_facility_member: "facilityAdministration",
+  set_facility_provisional_wht_rate: "facilityAdministration",
 });
 
 export function getDatabaseCapabilityForResource(resource: string): DatabaseCapabilityKey | null {
