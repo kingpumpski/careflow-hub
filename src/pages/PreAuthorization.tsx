@@ -19,6 +19,7 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { canPersistRemoteUserNotification } from "@/modules/offline/notificationGuard";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 
 const statusStyles: Record<string, string> = {
   Draft: "bg-muted text-muted-foreground border-border", PendingApproval: "bg-warning/10 text-warning border-warning/20", Approved: "bg-success/10 text-success border-success/20", Rejected: "bg-destructive/10 text-destructive border-destructive/20", Completed: "bg-info/10 text-info border-info/20",
@@ -48,7 +49,7 @@ export default function PreAuthorization() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: procedures } = useSupabaseQuery("procedures");
   const { data: doctors } = useSupabaseQuery("doctors");
-  const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: letterheadSettings } = useDocumentLetterheadSettings();
   const updateMutation = useSupabaseUpdate("pre_authorizations");
   const insertNotif = useSupabaseInsert("notifications");
 
@@ -58,7 +59,7 @@ export default function PreAuthorization() {
   const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
   const getProcedureName = (id: string) => (procedures || []).find((p: any) => p.id === id)?.procedure_name || "—";
   const getDoctorName = (id: string) => (doctors || []).find((d: any) => d.id === id)?.doctor_name || "—";
-  const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
+  const getS = (k: string) => letterheadSettings?.find?.((s: any) => s.key === k)?.value || "";
   const companyInfo = buildLetterheadConfig(getS);
 
   const notifyTransition = async (pa: any, newState: string, note?: string) => {
