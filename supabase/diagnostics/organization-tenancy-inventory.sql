@@ -118,8 +118,11 @@ SELECT
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 JOIN pg_language l ON l.oid = p.prolang
-WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-  AND p.prokind IN ('f', 'p')
+WHERE p.prokind IN ('f', 'p')
+  AND (
+    n.nspname IN ('public', 'security_internal')
+    OR (n.nspname = 'storage' AND p.prosecdef)
+  )
 ORDER BY n.nspname, p.proname, identity_arguments;
 
 -- 6. Non-internal triggers and their definitions.
