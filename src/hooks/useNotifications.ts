@@ -69,7 +69,7 @@ export function useNotifications(limit = 10) {
   });
 
   useEffect(() => {
-    if (!canQuery || !user?.id) return;
+    if (!canQuery || !user?.id || !enhanced) return;
     const channel = supabase
       .channel(`careflow-notifications-${user.id}`)
       .on(
@@ -83,7 +83,7 @@ export function useNotifications(limit = 10) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [canQuery, queryClient, user?.id]);
+  }, [canQuery, enhanced, queryClient, user?.id]);
 
   const invalidate = async () => {
     if (!user?.id) return;
