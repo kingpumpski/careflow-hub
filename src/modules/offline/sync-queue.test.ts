@@ -49,3 +49,18 @@ describe("offline sync payload normalization", () => {
     expect(payload).not.toHaveProperty("baseVersion");
   });
 });
+
+describe("database capability-aware offline sync", () => {
+  it("recognizes missing optional relations without disabling base settlement periods", async () => {
+    const { isDatabaseCapabilityAvailable } = await import("@/config/databaseTableCapabilities");
+    const disabled = {
+      preAuthPreparedHandoff: false,
+      individualClaimCases: false,
+      settlementExceptions: false,
+      settlementRemittanceLedger: false,
+    };
+    expect(isDatabaseCapabilityAvailable("settlement_exceptions", disabled)).toBe(false);
+    expect(isDatabaseCapabilityAvailable("settlement_exception_audit_events", disabled)).toBe(false);
+    expect(isDatabaseCapabilityAvailable("claims_settlement_periods", disabled)).toBe(true);
+  });
+});
