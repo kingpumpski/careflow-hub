@@ -56,12 +56,6 @@ export function useDocumentLetterheadSettings({
       if (!isMissingLetterheadSettingsRpc(error)) throw error;
       return loadAdminFallback();
 
-      /*const fallback = await supabase
-        .from("system_settings")
-        .select("key, value")
-        .in("key", [...LETTERHEAD_SETTING_KEYS]);
-      if (fallback.error) throw fallback.error;
-      return (fallback.data ?? []) as DocumentLetterheadSetting[];*/
     },
     staleTime: 5 * 60 * 1000,
     retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
