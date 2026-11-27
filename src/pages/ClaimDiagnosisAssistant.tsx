@@ -98,7 +98,7 @@ export default function ClaimDiagnosisAssistant() {
   const { data: diagnosisRows } = useSupabaseQuery("diagnosis_codes");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: savedDrafts } = useSupabaseQuery("claim_diagnosis_drafts", { limit: 10 });
-  const { data: letterheadSettings } = useDocumentLetterheadSettings();
+  const { data: letterheadSettings } = useDocumentLetterheadSettings({ canReadDocument: can("claims.read"), canManageSettings: can("settings.manage") });
   const letterhead = buildLetterheadConfig((key) => (letterheadSettings || []).find((row) => row.key === key)?.value || "");
   const canSaveDrafts = databaseCapabilities.claimDiagnosisDrafts;
   const [workflowType, setWorkflowType] = useState<ClaimWorkflowType>("new_claim");
