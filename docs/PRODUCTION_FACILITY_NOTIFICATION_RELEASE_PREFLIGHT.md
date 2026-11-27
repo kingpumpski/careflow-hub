@@ -34,7 +34,7 @@ The live database has the facility base tables but not the reviewed onboarding/m
 
 ## Repository migrations after the live ledger head
 
-At the start of this follow-up, the current main branch had 30 migration files whose version prefixes were later than the live latest version. This branch adds the 31st proposed follow-up migration, `20261127180000_complete_operational_audit_coverage.sql`. The full list below therefore contains 31 entries for this branch. They must be treated as **unreconciled candidates**, not automatically as unapplied migrations. The live ledger records names/versions, not the original SQL bytes/checksums.
+At the start of this follow-up, the current main branch had 30 migration files whose version prefixes were later than the live latest version. This branch adds two proposed follow-up migrations: `20261127180000_complete_operational_audit_coverage.sql` and `20261127190000_allow_document_readers_letterhead.sql`. The full list below therefore contains 32 entries for this branch. They must be treated as **unreconciled candidates**, not automatically as unapplied migrations. The live ledger records names/versions, not the original SQL bytes/checksums.
 
 1. `20260921161000_fix_facility_rls_runtime_recursion.sql`
 2. `20261104085000_claim_diagnosis_assistant.sql`
@@ -67,6 +67,7 @@ At the start of this follow-up, the current main branch had 30 migration files w
 29. `20261126160000_harden_prepared_preauth_wrapper_security.sql`
 30. `20261127170000_facility_wht_and_audit_notifications.sql`
 31. `20261127180000_complete_operational_audit_coverage.sql`
+32. `20261127190000_allow_document_readers_letterhead.sql`
 
 Do not replay only the last two facility/notification migrations. Several preceding migrations establish permission grants, facility scoping, settlement schema, WHT semantics and function hardening that the later migrations depend on.
 
@@ -81,6 +82,8 @@ It also:
 - routes chat messages to sender/recipient, membership changes to the target member and actor, facility-scoped changes to active facility members, and global records to users in relevant operational roles;
 - sends security-audit notifications to the affected account and the administrative actor;
 - keeps trigger functions in the private security schema where appropriate and revokes client RPC execution.
+
+The new `20261127190000_allow_document_readers_letterhead.sql` extends the least-privilege letterhead reader to users with `reports.read`, `ledger.read`, `claims.read` or `preauth.read`. A shared client hook now uses that RPC from Reports, Statements of Account, Schedule Generator, Claim Diagnosis Assistant and Pre-Authorization. If the RPC is not deployed, only `settings.manage` users can use a narrow branding-key fallback; ordinary operational users do not receive broad `system_settings` access.
 
 The audit log remains the source of truth for monitoring. Notifications are a user-facing delivery layer, not a substitute for the audit record. Notification delivery is idempotent per recipient/event. Redaction applies to new audit snapshots only; this migration does not rewrite historical audit rows.
 
