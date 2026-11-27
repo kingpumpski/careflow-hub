@@ -235,6 +235,35 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Membership creation must emit an audit record';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.user_id = v_member_id
+      AND n.facility_id = v_facility_id
+      AND n.entity_type = 'facility_memberships'
+      AND n.source_audit_log_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'A newly added facility member must receive a notification from the row audit event';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM public.notifications n
+    WHERE n.user_id = v_member_id
+      AND n.facility_id = v_facility_id
+      AND n.entity_type = 'facility_memberships'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'One membership mutation must produce exactly one notification per affected user';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.user_id = v_admin_id
+      AND n.entity_type = 'facilities'
+      AND n.facility_id = v_facility_id
+      AND n.source_audit_log_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'The facility creator must receive a facility creation notification';
+  END IF;
 END;
 $persisted_state$;
 
