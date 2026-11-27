@@ -2,6 +2,7 @@ import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
+import { assertDatabaseCapabilityAvailable } from "@/config/databaseTableCapabilities";
 
 export type ClaimWorkflowType = "new_claim" | "rejected_claim";
 export type ClaimEntryMode = "upload" | "manual";
@@ -258,6 +259,7 @@ export async function saveClaimDiagnosisDraft(
   if (getCareFlowDataMode() === "offline") {
     throw new Error("Connect to the database before saving a claim update draft.");
   }
+  assertDatabaseCapabilityAvailable("claim_diagnosis_drafts");
   const facilityId = getStoredFacilityId();
   if (!facilityId) {
     throw new Error("Select a facility before saving a claim update draft.");
