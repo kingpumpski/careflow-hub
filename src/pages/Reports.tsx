@@ -1,6 +1,4 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Download, Printer, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
-import { usePermissions } from "@/modules/security/usePermissions";
-import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
@@ -24,8 +21,6 @@ export default function Reports() {
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
-  const { can } = usePermissions();
-  const canManageSettings = can("settings.manage");
 
   const { data: claims } = useSupabaseQuery("claims");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
@@ -33,24 +28,7 @@ export default function Reports() {
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
-  const { data: settings } = useQuery({
-    queryKey: ["report-letterhead-settings", canManageSettings],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
-      if (!error) return data ?? [];
-
-      // Older production databases do not have the least-privilege report RPC yet.
-      // Preserve the existing letterhead for settings administrators only; never
-      // fall back to broad system_settings reads for ordinary report users.
-      if (!isMissingLetterheadSettingsRpc(error)) throw error;
-      if (!canManageSettings) return [];
-
-      const fallback = await supabase.from("system_settings").select("key, value");
-      if (fallback.error) throw fallback.error;
-      return fallback.data ?? [];
-    },
-    retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
-  });
+  const { data: settings } = useDocumentLetterheadSettings();
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
   const settlementViewHasSeparatedTaxFields = Boolean(outstandingPeriods?.some((period: any) =>
