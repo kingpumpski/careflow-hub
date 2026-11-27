@@ -28,6 +28,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
     { label: "Reports", path: "/reports", permission: "reports.read" },
     { label: "General Ledger", path: "/ledger", permission: "ledger.read" },
+    { label: "Statements of Account", path: "/statements-of-account", permission: "ledger.read" },
   ] },
   { label: "Pre-Authorization", icon: FileCheck, children: [
     { label: "Authorization Studio", path: "/pre-auth/studio", permission: "preauth.read" },
