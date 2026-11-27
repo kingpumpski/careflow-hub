@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { usePermissions } from "@/modules/security/usePermissions";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 
 const LETTERHEAD_SETTING_KEYS = [
@@ -27,19 +26,17 @@ export type DocumentLetterheadSetting = {
  * with settings.manage may use the narrow key allowlist fallback; ordinary
  * operational users never receive broad system_settings access.
  */
-export function useDocumentLetterheadSettings() {
-  const { can, loading } = usePermissions();
-  const canReadDocument = (
-    can("reports.read")
-    || can("ledger.read")
-    || can("claims.read")
-    || can("preauth.read")
-  );
-  const canManageSettings = can("settings.manage");
+export function useDocumentLetterheadSettings({
+  canReadDocument,
+  canManageSettings,
+}: {
+  canReadDocument: boolean;
+  canManageSettings: boolean;
+}) {
 
   return useQuery({
     queryKey: ["document-letterhead-settings", canReadDocument, canManageSettings],
-    enabled: !loading && canReadDocument,
+    enabled: canReadDocument,
     queryFn: async (): Promise<DocumentLetterheadSetting[]> => {
       const { data, error } = await supabase.rpc("get_report_letterhead_settings");
       if (!error) return (data ?? []) as DocumentLetterheadSetting[];
