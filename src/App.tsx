@@ -38,6 +38,7 @@ const InsuranceCompanies = lazy(() => import("@/pages/InsuranceCompanies"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const Ledger = lazy(() => import("@/pages/Ledger"));
+const StatementsOfAccount = lazy(() => import("@/pages/StatementsOfAccount"));
 const AuditTrail = lazy(() => import("@/pages/AuditTrail"));
 const ProviderPerformance = lazy(() => import("@/pages/ProviderPerformance"));
 const FraudAlerts = lazy(() => import("@/pages/FraudAlerts"));
@@ -114,6 +115,7 @@ function ProtectedRoutes() {
     <Route path="/insurance" element={<PermissionRoute permission="claims.read"><InsuranceCompanies /></PermissionRoute>} />
     <Route path="/users" element={<PermissionRoute permission="users.manage"><UsersPage /></PermissionRoute>} />
     <Route path="/ledger" element={<PermissionRoute permission="ledger.read"><Ledger /></PermissionRoute>} />
+    <Route path="/statements-of-account" element={<PermissionRoute permission="ledger.read"><StatementsOfAccount /></PermissionRoute>} />
     <Route path="/settings" element={<PermissionRoute permission="settings.manage"><SettingsPage /></PermissionRoute>} />
     <Route path="/audit-trail" element={<PermissionRoute permission="audit.read"><AuditTrail /></PermissionRoute>} />
     <Route path="/provider-performance" element={<PermissionRoute permission="analytics.read"><ProviderPerformance /></PermissionRoute>} />
