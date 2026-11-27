@@ -48,7 +48,6 @@ BEGIN
     WHEN 'preauth_email_log' THEN ARRAY['to_email','cc_emails','subject','provider_response','error_message']
     WHEN 'preauth_handoff_log' THEN ARRAY['recipients','subject','message_body','attachment_name']
     WHEN 'chat_messages' THEN ARRAY['subject','body']
-    WHEN 'profiles' THEN ARRAY['full_name','email','phone']
     WHEN 'system_settings' THEN ARRAY['value']
     WHEN 'insurance_companies' THEN ARRAY['email','phone','contact_person','additional_emails']
     WHEN 'client_companies' THEN ARRAY['contact_person','email','phone']
