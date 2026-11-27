@@ -7,6 +7,7 @@ import { listOffline, type OfflineEntity } from "@/modules/offline/offline-store
 import { enqueueSyncOperation } from "@/modules/offline/sync-queue";
 import { isFacilityInfrastructureAvailable, isMissingSchemaError, MissingSchemaError } from "@/lib/schemaFallback";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { assertDatabaseCapabilityAvailable, isDatabaseCapabilityAvailable } from "@/config/databaseTableCapabilities";
 import type { Permission } from "@/modules/security";
 
 type TableName = "insurance_companies" | "client_companies" | "doctors" | "procedures" | "patients" | "pre_authorizations" | "preauth_items" | "claims" | "payments" | "withholding_tax" | "notifications" | "profiles" | "user_roles" | "system_settings" | "diagnosis_codes" | "procedure_templates" | "ledger_entries" | "preauth_catalog_items" | "audit_logs" | "preauth_versions" | "preauth_email_log" | "chat_messages" | "claims_settlement_periods" | "claims_settlement_remittances" | "claims_settlement_receipt_months" | "settlement_exceptions" | "settlement_exception_audit_events" | "claims_outstanding_periods" | "claim_diagnosis_drafts" | "claim_cases" | "claim_case_events" | "facilities" | "facility_memberships";
@@ -71,7 +72,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
   const { can, loading: permissionsLoading } = usePermissions(); const enabled = options?.enabled ?? true;
   const requiredPermissions = READ_PERMISSIONS_BY_TABLE[table];
   const permissionAllowed = !requiredPermissions || requiredPermissions.some((permission) => can(permission));
-  const queryEnabled = enabled && !permissionsLoading && permissionAllowed;
+  const queryEnabled = enabled && !permissionsLoading && permissionAllowed && (offline || isDatabaseCapabilityAvailable(table));
   useEffect(() => {
     if (!queryEnabled || offline || !REALTIME_TABLES.includes(table)) return;
     const channel = supabase.channel(`realtime-${table}`).on("postgres_changes", { event: "*", schema: "public", table }, () => queryClient.invalidateQueries({ queryKey: [table] })).subscribe();
@@ -81,6 +82,7 @@ export function useSupabaseQuery(table: TableName, options?: { select?: string; 
     queryKey: [table, options?.select, options?.orderBy, options?.filters, options?.limit, options?.missingSchemaBehavior, offline, queryEnabled], enabled: queryEnabled,
     queryFn: async () => {
       if (offline) return listOfflineTable(table, options);
+      assertDatabaseCapabilityAvailable(table);
       let query = ((supabase as any).from(table)).select(options?.select || "*");
       if (options?.filters) Object.entries(options.filters).forEach(([key, value]) => { query = query.eq(key, value); });
       query = options?.orderBy ? query.order(options.orderBy, { ascending: false }) : table === "claims_settlement_receipt_months" ? query.order("receipt_month", { ascending: false }) : table === "claims_outstanding_periods" ? query.order("period_year", { ascending: false }).order("period_month", { ascending: false }) : table === "audit_logs" ? query.order("changed_at", { ascending: false }) : table === "system_settings" ? query.order("updated_at", { ascending: false }) : table === "preauth_items" ? query.order("id", { ascending: false }) : query.order("created_at", { ascending: false });
@@ -115,6 +117,7 @@ export function useSupabaseInsert(table: TableName) {
         const { putOffline } = await import("@/modules/offline/offline-store"); await putOffline(entity, record);
         await enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record }); return record;
       }
+      assertDatabaseCapabilityAvailable(table);
       const { data, error } = await ((supabase as any).from(table)).insert(scopeInsertValues(table, values)).select().single(); if (error) throw error; return data;
     }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
@@ -131,6 +134,7 @@ export function useSupabaseBulkInsert(table: TableName) {
         const scopedRows = rows.map((row) => ({ id: row.id || crypto.randomUUID(), ...scopeInsertValues(table, row) }));
         await putManyOffline(entity, scopedRows); await Promise.all(scopedRows.map((record) => enqueueSyncOperation({ table, type: "insert", recordId: record.id, payload: record }))); return scopedRows;
       }
+      assertDatabaseCapabilityAvailable(table);
       const { data, error } = await ((supabase as any).from(table)).insert(rows.map((row) => scopeInsertValues(table, row))).select(); if (error) throw error; return data;
     }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
@@ -177,6 +181,7 @@ export function useSupabaseUpdate(table: TableName) {
         const baseVersion = existing.updated_at ?? existing.updatedAt; const record = { ...existing, ...values, id, updated_at: new Date().toISOString() };
         await putOffline(entity, record); await enqueueSyncOperation({ table, type: "update", recordId: id, payload: record, ...(baseVersion != null ? { baseVersion } : {}) }); return record;
       }
+      assertDatabaseCapabilityAvailable(table);
       const { data, error } = await ((supabase as any).from(table)).update(values).eq("id", id).select().single(); if (error) throw error; return data;
     }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
@@ -193,6 +198,7 @@ export function useSupabaseDelete(table: TableName) {
         if (!existing) throw new Error(`Offline record ${id} was not found.`); const baseVersion = existing.updated_at ?? existing.updatedAt;
         await deleteOffline(entity, id); await enqueueSyncOperation({ table, type: "delete", recordId: id, payload: existing, ...(baseVersion != null ? { baseVersion } : {}) }); return;
       }
+      assertDatabaseCapabilityAvailable(table);
       const { error } = await ((supabase as any).from(table)).delete().eq("id", id); if (error) throw error;
     }, onSuccess: () => queryClient.invalidateQueries({ queryKey: [table] }),
   });
