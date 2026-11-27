@@ -12,6 +12,9 @@ export interface ClaimDiagnosisPdfData {
   date_of_service?: unknown;
   insurance_company_id?: unknown;
   insurer_name?: unknown;
+  insurer_address?: unknown;
+  insurer_phone?: unknown;
+  insurer_email?: unknown;
   rejection_reason?: unknown;
   clinical_notes?: unknown;
   authorization_code?: unknown;
@@ -45,11 +48,17 @@ export async function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData,
   doc.text(`${workflow} · Generated ${new Date().toLocaleString()}`, margin, headerY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text(`Insurer / Company: ${value(draft.insurer_name ?? (draft.insurance_company_id ? "Selected (name unavailable)" : "Not specified"))}`, margin, headerY + 7);
+  const insurerLines = [
+    `Insurer / Company: ${value(draft.insurer_name ?? (draft.insurance_company_id ? "Selected (name unavailable)" : "Not specified"))}`,
+    draft.insurer_address ? `Address: ${value(draft.insurer_address)}` : "",
+    draft.insurer_phone ? `Telephone: ${value(draft.insurer_phone)}` : "",
+    draft.insurer_email ? `Email: ${value(draft.insurer_email)}` : "",
+  ].filter(Boolean);
+  doc.text(insurerLines, margin, headerY + 7);
   doc.setFont("helvetica", "normal");
 
   autoTable(doc, {
-    startY: headerY + 12,
+    startY: headerY + 10 + insurerLines.length * 4,
     theme: "grid",
     styles: { fontSize: 9, cellPadding: 2.5, overflow: "linebreak" },
     head: [["Claim details", "Value", "Claim details", "Value"]],
