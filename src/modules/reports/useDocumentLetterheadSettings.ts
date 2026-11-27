@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 
 const LETTERHEAD_SETTING_KEYS = [
   "provider_name",
@@ -38,17 +39,29 @@ export function useDocumentLetterheadSettings({
     queryKey: ["document-letterhead-settings", canReadDocument, canManageSettings],
     enabled: canReadDocument,
     queryFn: async (): Promise<DocumentLetterheadSetting[]> => {
+      const loadAdminFallback = async () => {
+        if (!canManageSettings) return [];
+        const fallback = await supabase
+          .from("system_settings")
+          .select("key, value")
+          .in("key", [...LETTERHEAD_SETTING_KEYS]);
+        if (fallback.error) throw fallback.error;
+        return (fallback.data ?? []) as DocumentLetterheadSetting[];
+      };
+
+      if (!databaseCapabilities.documentLetterheadSettings) return loadAdminFallback();
+
       const { data, error } = await supabase.rpc("get_report_letterhead_settings");
       if (!error) return (data ?? []) as DocumentLetterheadSetting[];
       if (!isMissingLetterheadSettingsRpc(error)) throw error;
-      if (!canManageSettings) return [];
+      return loadAdminFallback();
 
-      const fallback = await supabase
+      /*const fallback = await supabase
         .from("system_settings")
         .select("key, value")
         .in("key", [...LETTERHEAD_SETTING_KEYS]);
       if (fallback.error) throw fallback.error;
-      return (fallback.data ?? []) as DocumentLetterheadSetting[];
+      return (fallback.data ?? []) as DocumentLetterheadSetting[];*/
     },
     staleTime: 5 * 60 * 1000,
     retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
