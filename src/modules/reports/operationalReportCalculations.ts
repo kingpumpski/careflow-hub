@@ -15,6 +15,9 @@ export type OperationalPayment = { claim_id?: string | null; insurance_company_i
 export type OperationalSettlementPeriod = {
   id: string; insurance_company_id: string; period_start: string; period_end: string;
   settlement_status: string; payment_advice_date?: string | null; actual_receipt_date?: string | null;
+  total_claims_submitted?: number | string | null;
+  rejection_amount?: number | string | null;
+  payment_received?: number | string | null;
 };
 export type OperationalOutstandingPeriod = {
   insurance_company_id: string; period_year: number; period_month: number;
@@ -75,15 +78,24 @@ export function buildOperationalReportData(input: {
     const claims = input.claims.filter((claim) => claim.insurance_company_id === insurer.id);
     const claimIds = new Set(claims.map((claim) => claim.id));
     const linkedPayments = input.payments.filter((payment) => payment.claim_id && claimIds.has(payment.claim_id));
-    const submitted = claims.reduce((sum, claim) => sum + number(claim.claim_amount), 0);
-    const rejected = claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
-      .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
+    const cycleRows = input.settlementPeriods.filter((period) => period.insurance_company_id === insurer.id);
+    const hasAggregateSubmission = cycleRows.some((period) => period.total_claims_submitted != null);
+    const submitted = hasAggregateSubmission
+      ? cycleRows.reduce((sum, period) => sum + number(period.total_claims_submitted), 0)
+      : claims.reduce((sum, claim) => sum + number(claim.claim_amount), 0);
+    const rejected = hasAggregateSubmission
+      ? cycleRows.reduce((sum, period) => sum + number(period.rejection_amount), 0)
+      : claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
+        .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
     const netClaim = submitted - rejected;
     const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
     const viewPaid = financialRows.some((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
       : null;
-    const paid = viewPaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
+    const cyclePaid = cycleRows.some((period) => period.payment_received != null)
+      ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
+      : null;
+    const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
     const outstanding = financialRows.length
       ? financialRows.reduce((sum, period) => sum + number(period.outstanding_amount), 0)
       : null;
