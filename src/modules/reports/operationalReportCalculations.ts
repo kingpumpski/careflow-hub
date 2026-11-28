@@ -119,6 +119,7 @@ export function buildOperationalReportData(input: {
     knownOutstandingInsurers.add(period.insurance_company_id);
     const daysOutstanding = daysBetween(period.period_end, today) ?? 0;
     return outstanding > 0 ? [{
+      insurerId: period.insurance_company_id,
       insurer: insurerNames.get(period.insurance_company_id) || "Unknown insurer",
       claimsMonth: period.period_start.slice(0, 7),
       outstanding,
@@ -138,6 +139,7 @@ export function buildOperationalReportData(input: {
       today,
     ) ?? 0;
     return outstanding > 0 ? [{
+      insurerId: period.insurance_company_id,
       insurer: insurerNames.get(period.insurance_company_id) || "Unknown insurer",
       claimsMonth: monthKey(period.period_year, period.period_month),
       outstanding,
@@ -172,7 +174,7 @@ export function buildOperationalReportData(input: {
       : null;
     const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
     const outstanding = knownOutstandingInsurers.has(insurer.id)
-      ? allOutstandingFollowUp.filter((row) => row.insurer === insurer.company_name).reduce((sum, row) => sum + row.outstanding, 0)
+      ? allOutstandingFollowUp.filter((row) => row.insurerId === insurer.id).reduce((sum, row) => sum + row.outstanding, 0)
       : null;
     const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
       .filter((days): days is number => days !== null);
