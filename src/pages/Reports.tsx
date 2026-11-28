@@ -226,14 +226,16 @@ export default function Reports() {
     const revenue = filteredLedger.filter((e: any) => e.account_credit === "Claims Revenue").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj - whtExp };
+    return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj };
   }, [ledger, selectedCompanyId, filterByPeriod]);
 
   const taxLiabilityData = useMemo(() => {
     const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
+    const taxCreditDebits = filteredLedger.filter((e: any) => e.account_debit === "Withholding Tax Receivable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+    const taxCreditCredits = filteredLedger.filter((e: any) => e.account_credit === "Withholding Tax Receivable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+    return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals, taxCreditReceivable: taxCreditDebits - taxCreditCredits };
   }, [ledger, selectedCompanyId, filterByPeriod]);
 
   // Aging uses the same authoritative outstanding-period view as the balance
@@ -327,7 +329,7 @@ export default function Reports() {
     let columns: string[] = [];
     if (activeReport === "income") {
       columns = ["Income Statement Line", "Amount (GHS)"];
-      data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Withholding Tax Expense", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
+      data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Provisional WHT Estimate (not an expense)", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
     } else if (activeReport === "receivables") {
       columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)", "Collected"];
       const receivables = sortedReport.filter((row) => row.outstanding > 0);
@@ -339,6 +341,7 @@ export default function Reports() {
         ["WHT Payable", "—", "—", "—", "—", "—", taxLiabilityData.whtPayable],
         ["WHT Reversals", "—", "—", "—", "—", "—", taxLiabilityData.whtReversals],
         ["Net Tax Liability", "—", "—", "—", "—", "—", taxLiabilityData.netLiability],
+        ["WHT Tax Credit Receivable", "Certificate-backed asset", "—", "—", "—", "—", taxLiabilityData.taxCreditReceivable],
         ...sortedReport.filter((row) => row.tax > 0).map((row) => [
           row.company,
           row.taxBasisLabel,
@@ -400,7 +403,7 @@ export default function Reports() {
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
-      rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Withholding Tax Expense", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
+      rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Provisional WHT Estimate (not an expense)", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
     } else if (activeReport === "receivables") {
       rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Applied": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
       rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Applied": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
@@ -409,6 +412,7 @@ export default function Reports() {
         { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtPayable },
         { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtReversals },
         { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.netLiability },
+        { "Company / Summary": "WHT Tax Credit Receivable", "WHT Basis": "Certificate-backed asset", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.taxCreditReceivable },
         ...sortedReport.filter((row) => row.tax > 0).map((row) => ({
           "Company / Summary": row.company,
           "WHT Basis": row.taxBasisLabel,
@@ -562,8 +566,8 @@ export default function Reports() {
                   <tr><td className="pl-8 text-destructive">Less: Revenue Adjustments (Rejections)</td><td className="text-right text-destructive">(GH¢ {incomeData.revAdj.toLocaleString()})</td></tr>
                   <tr className="font-bold border-t"><td className="pl-4">Net Revenue</td><td className="text-right">GH¢ {incomeData.netRevenue.toLocaleString()}</td></tr>
                   <tr><td colSpan={2}>&nbsp;</td></tr>
-                  <tr className="bg-muted/20"><td colSpan={2} className="font-bold">Expenses</td></tr>
-                  <tr><td className="pl-8 text-warning">Withholding Tax Expense</td><td className="text-right text-warning">GH¢ {incomeData.whtExp.toLocaleString()}</td></tr>
+                  <tr className="bg-muted/20"><td colSpan={2} className="font-bold">Tax information (not an expense)</td></tr>
+                  <tr><td className="pl-8 text-muted-foreground">Provisional WHT estimate — memo only</td><td className="text-right text-muted-foreground">GH¢ {incomeData.whtExp.toLocaleString()}</td></tr>
                   <tr><td colSpan={2}>&nbsp;</td></tr>
                   <tr className="font-bold text-lg border-t-2 bg-success/5"><td>Net Income</td><td className="text-right text-success">GH¢ {incomeData.netIncome.toLocaleString()}</td></tr>
                 </tbody>
@@ -599,10 +603,11 @@ export default function Reports() {
           <TabsContent value="tax">
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">{periodLabel} — Tax Liability Report</h3>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">GH¢ {taxLiabilityData.whtPayable.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Payable</p></div>
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">GH¢ {taxLiabilityData.whtReversals.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Reversals</p></div>
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {taxLiabilityData.netLiability.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Net Tax Liability</p></div>
+                <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-primary">GH¢ {taxLiabilityData.taxCreditReceivable.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Tax Credit Receivable</p></div>
               </div>
               <table className="data-table">
                 <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Applied (GHS)</th></tr></thead>
