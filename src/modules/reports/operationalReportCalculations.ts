@@ -102,14 +102,14 @@ export function buildOperationalReportData(input: {
     const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
       .filter((days): days is number => days !== null);
     return {
-      insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length,
+      insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length, periodCount: cycleRows.length,
       submitted, rejected, netClaim, paid, outstanding,
       denialRate: submitted > 0 ? rejected / submitted * 100 : null,
       recoveryRate: netClaim > 0 ? paid / netClaim * 100 : null,
       averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
       paidClaimCount: durations.length, linkedPaymentCount: linkedPayments.length,
     };
-  }).filter((row) => row.claimsCount > 0).sort((a, b) => b.submitted - a.submitted);
+  }).filter((row) => row.claimsCount > 0 || row.periodCount > 0).sort((a, b) => b.submitted - a.submitted);
 
   const settlementDelays = input.settlementPeriods.map((period) => {
     const daysPending = period.settlement_status === "awaiting_payment"
