@@ -56,7 +56,7 @@ export default function PreAuthorization() {
   const { data: doctors } = useSupabaseQuery("doctors");
   const { data: letterheadSettings } = useDocumentLetterheadSettings({ canReadDocument: can("preauth.read"), canManageSettings: can("settings.manage") });
 
-  const previewPreAuthPDF = async (preauth: any, items: any[]) => {
+  const previewPreAuthPDF = async (preauth: Record<string, unknown>, items: Array<Record<string, unknown>>) => {
     const result = await buildPreAuthPDFBlob(preauth, items, companyInfo);
     setPdfPreviewBlob(result.blob);
     setPdfPreviewFileName(result.fileName);
@@ -127,7 +127,7 @@ export default function PreAuthorization() {
 
   const handleSendEmail = async (pa: any) => { setSending(true); try { const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); const docMeta = { ...pa, patient_name: getPatientName(pa.patient_id), insurance_name: getInsurerName(pa.insurance_company_id), ...getInsurerDocumentDetails(pa.insurance_company_id), doctor_name: getDoctorName(pa.doctor_id) }; const { to, cc, subject, body } = buildEmailDraft(pa); await previewPreAuthPDF(docMeta, itemsData || []); window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank"); toast({ title: "Email draft opened", description: "Review and save the PDF from the preview, then attach it to the email draft. The request was not marked as completed." }); if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } finally { setSending(false); } };
   const handleView = async (pa: any) => { setViewPreauth(pa); const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); setViewItems(data || []); await reloadTimeline(pa.id); };
-  const handleExportPDF = async () => { if (!viewPreauth) return; try { await previewPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), ...getInsurerDocumentDetails(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems); } catch (err: any) { toast({ title: "PDF preview failed", description: err.message || "Unable to prepare the document.", variant: "destructive" }); } };
+  const handleExportPDF = async () => { if (!viewPreauth) return; try { await previewPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), ...getInsurerDocumentDetails(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems); } catch (err: unknown) { toast({ title: "PDF preview failed", description: err instanceof Error ? err.message : "Unable to prepare the document.", variant: "destructive" }); } };
   const handleStatusUpdate = async (e: React.FormEvent) => { e.preventDefault(); const pa = (preauths || []).find((p: any) => p.id === statusForm.id); if (!pa) return; const success = await handleTransition(pa, statusForm.status, statusForm.note); if (success) setStatusDialogOpen(false); };
 
   if (showForm || editingPreauth) { if (!canWrite) { setShowForm(false); setEditingPreauth(null); permissionDenied("create or edit pre-authorizations"); return null; } return <PreAuthForm onBack={() => { setShowForm(false); setEditingPreauth(null); }} editData={editingPreauth} />; }
