@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { BarChart3, Download, Printer, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ export default function Reports() {
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
   ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement";
-  const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
+  const filterByPeriod = useCallback((items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
     let filtered = items;
@@ -59,12 +59,12 @@ export default function Reports() {
       filtered = items.filter((i) => dateKey ? (new Date(i[dateKey]).getFullYear() === year && new Date(i[dateKey]).getMonth() + 1 >= half[0] && new Date(i[dateKey]).getMonth() + 1 <= half[1]) : (Number(i[yearKey]) === year && Number(i[monthKey]) >= half[0] && Number(i[monthKey]) <= half[1]));
     }
     return filtered;
-  };
+  }, [activePeriod, selectedYear, selectedMonth]);
 
   const settlementCycleSourceRows = useMemo(() => {
     const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
     return periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
-  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
   const settlementCycleRows = useMemo(
     () => buildSettlementReconciliationRows(settlementCycleSourceRows),
     [settlementCycleSourceRows],
@@ -180,7 +180,7 @@ export default function Reports() {
       return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, provisionalTax, actualTax, approvedGross, approvalVariance, outstanding, ...taxBasis, color: ins.color };
     }).filter((row) => row.submitted > 0 || row.paid > 0 || row.rejected > 0 || row.netClaim > 0 || row.outstanding > 0)
       .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
-  }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
 
   // Ledger-based reports
   const incomeData = useMemo(() => {
@@ -189,7 +189,7 @@ export default function Reports() {
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj - whtExp };
-  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
 
   const taxLiabilityData = useMemo(() => {
     const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
