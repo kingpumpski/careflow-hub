@@ -65,6 +65,23 @@ describe("operational report calculations", () => {
     });
   });
 
+  it("does not treat missing aggregate rejection amounts as zero", () => {
+    const report = buildOperationalReportData({
+      ...base,
+      claims: [],
+      settlementPeriods: [{
+        id: "cycle-no-rejection-advice", insurance_company_id: "ins-a",
+        period_start: "2026-09-01", period_end: "2026-09-30",
+        settlement_status: "reconciled", total_claims_submitted: 1000,
+        rejection_amount: null, payment_received: 877.5,
+      }],
+      outstandingPeriods: [],
+    });
+    expect(report.insurerPerformance[0]).toMatchObject({
+      submitted: 1000, rejected: null, netClaim: null, denialRate: null, recoveryRate: null,
+    });
+  });
+
   it("uses confirmed approved gross and actual WHT for cycle follow-up", () => {
     const report = buildOperationalReportData({
       ...base,
