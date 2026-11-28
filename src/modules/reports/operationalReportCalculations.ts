@@ -76,12 +76,19 @@ export function buildOperationalReportData(input: {
     const rejected = claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
       .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
     const netClaim = submitted - rejected;
-    const paid = linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
+    const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
+    const viewPaid = financialRows.length
+      ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
+      : null;
+    const paid = viewPaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
+    const outstanding = financialRows.length
+      ? financialRows.reduce((sum, period) => sum + number(period.outstanding_amount), 0)
+      : null;
     const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
       .filter((days): days is number => days !== null);
     return {
       insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length,
-      submitted, rejected, netClaim, paid, outstanding: netClaim - paid,
+      submitted, rejected, netClaim, paid, outstanding,
       denialRate: submitted > 0 ? rejected / submitted * 100 : null,
       recoveryRate: netClaim > 0 ? paid / netClaim * 100 : null,
       averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
@@ -118,7 +125,7 @@ export function buildOperationalReportData(input: {
       outstanding,
       daysOutstanding,
       ageBand: ageBand(daysOutstanding),
-      taxBasis: period.outstanding_status === "actual" ? "Actual WHT" : "Provisional WHT",
+      taxBasis: period.outstanding_status === "actual" ? "Actual WHT" : period.outstanding_status === "provisional" ? "Provisional WHT" : "Unknown WHT basis",
     };
   }).filter((row) => row.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding);
 
