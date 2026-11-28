@@ -20,6 +20,11 @@ export async function loadImageDataUrl(url?: string) {
   return loadImage(url);
 }
 
+export async function buildPreAuthPDFBlob(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+  const { buildPreAuthPDFBlob: buildPdfBlob } = await load();
+  return buildPdfBlob(preauth, items, companyInfo);
+}
+
 export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
   const { exportPreAuthPDF: exportPdf } = await load();
   return exportPdf(preauth, items, companyInfo);
