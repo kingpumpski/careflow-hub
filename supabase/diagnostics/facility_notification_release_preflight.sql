@@ -152,12 +152,23 @@ WITH checks AS (
     'claims_officer must have scoped claims.settlement.read and claims.settlement.write grants'
 
   UNION ALL
-  SELECT 'Pre-authorization finalizer relation',
-    CASE WHEN to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)') IS NOT NULL
+  SELECT 'Pre-authorization prepared-handoff contract',
+    CASE WHEN to_regclass('public.preauthorization_submissions') IS NOT NULL
+           AND to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)') IS NOT NULL
+           AND position('public.preauthorization_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) > 0
+           AND position('public.preauth_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) = 0
            AND position('public.pre_auth_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) = 0
-           AND position('public.preauth_submissions' in pg_get_functiondef(to_regprocedure('security_internal.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)'))) > 0
+           AND EXISTS (
+             SELECT 1
+             FROM pg_proc p
+             WHERE p.oid = to_regprocedure('public.finalize_preauthorization_handoff(uuid,jsonb,numeric,jsonb,jsonb,text,text,text)')
+               AND NOT p.prosecdef
+               AND coalesce(p.proconfig, ARRAY[]::text[]) @> ARRAY['search_path=""']::text[]
+               AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+               AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+           )
       THEN 'PASS' ELSE 'BLOCKED' END,
-    'The private finalizer must reference canonical public.preauth_submissions, not the absent pre_auth_submissions'
+    'Prepared-only finalization requires public.preauthorization_submissions, no legacy/misspelled relation references, and an authenticated SECURITY INVOKER wrapper with a fixed empty search_path'
 
   UNION ALL
   SELECT 'Facility test environment readiness',
