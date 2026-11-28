@@ -198,7 +198,7 @@ export function buildOperationalReportData(input: {
     if (log.table_name !== "claims" || !["insert", "update"].includes(log.action)) continue;
     const actorId = log.changed_by || "system";
     const current = staffActivityGroups.get(actorId) ?? {
-      actorId, staffName: actorId === "system" ? "System / unknown" : profileNames.get(actorId) || "Staff account",
+      actorId, staffName: actorId === "system" ? "System / unknown" : profileNames.get(actorId) || `Staff ${actorId.slice(0, 8)}`,
       inserts: 0, updates: 0, records: new Set<string>(), lastActivity: log.changed_at,
     };
     if (log.action === "insert") current.inserts += 1;
