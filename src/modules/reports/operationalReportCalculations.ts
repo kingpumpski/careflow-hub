@@ -84,7 +84,7 @@ export function buildOperationalReportData(input: {
     return {
       id: period.id,
       insurer: insurerNames.get(period.insurance_company_id) || "Unknown insurer",
-      claimsMonth: monthKey(Number(period.period_start.slice(0, 4)), Number(period.period_start.slice(5, 7))),
+      claimsPeriod: `${period.period_start} – ${period.period_end}`,
       status: period.settlement_status,
       daysPending,
       daysToAdvice: daysBetween(period.period_end, period.payment_advice_date),
