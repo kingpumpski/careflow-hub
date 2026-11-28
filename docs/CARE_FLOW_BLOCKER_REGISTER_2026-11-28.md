@@ -119,3 +119,26 @@ The current security-advisor snapshot reports one informational deny-by-default 
 PR #146 merged as `1f5f89e2bd4641b18c9767cdf848284df59867d9`. The company statement now displays each claims month's effective WHT as a separate credit line against Accounts Receivable, includes historical WHT credits in the brought-forward balance, and uses actual WHT in place of provisional WHT once advice is confirmed. It avoids duplicating WHT already credited to Accounts Receivable. The PDF explanation and statement calculation tests were updated. This is a statement presentation/allocation only; it does not create a second general-ledger posting or change production schema. Live-data verification remains pending because the connected production claims, insurer, payment, WHT and settlement-period tables currently have zero rows.
 
 PR #128 remains open and unmerged because backup development is paused and the restoration safety gate is not complete. No production migration, DDL, grant, Auth change or data write was performed.
+
+## Implementation tranche — insurer-paid WHT, statements, reports and document UX
+
+The following changes are implemented on branch `feat/wht-certificates-and-document-workflows` and await automated verification/release:
+
+- **Insurer-paid WHT certificates:** additive table and restricted RPC record certificate reference/date/received date/amount against confirmed monthly actual WHT. On the first certificate, the provisional Dr WHT Expense / Cr WHT Payable estimate is reversed once. Each certificate posts Dr Withholding Tax Receivable / Cr Accounts Receivable; no cash/bank posting is created. Receipt rows and related WHT journals are append-only. The UI is protected by `VITE_CAREFLOW_WHT_CERTIFICATE_RECEIPTS_ENABLED`, which remains disabled until the database release gate is passed.
+- **WHT rate source:** a facility-scoped read RPC now prefers the facility rate and falls back to the global `withholding_tax_rate` saved on the Settings page. Settlement capture displays the approved rate read-only and automatically applies it; the user does not type a tax amount/rate into the settlement form.
+- **Statement of Account:** removed the separate Claims & WHT Reconciliation panel from both screen and PDF. The statement is selected-company-only, fetches every ledger page, includes brought-forward balance and all selected-period Accounts Receivable transactions, and recognises WHT as a distinct credit only from the certificate-backed ledger posting. PDF generation opens a review preview before print/save.
+- **Claims Schedule:** removed the Claims count column; renamed Period to Claims Period; added confirmed WHT; outstanding now equals submitted (excluding rejected claims) less cash paid less confirmed actual WHT. Provisional WHT is not treated as a payment/settlement credit.
+- **Income Statement / Tax Liability:** provisional WHT is memo information, not an operating expense; certificate-backed WHT is shown as a tax-credit receivable asset.
+- **Document preview:** Reports, Claims Schedule and Statement PDF actions now open previews. The Reports Print action also opens a preview before invoking the browser print/save dialog.
+- **Letterhead Designer:** the existing editor has a focused `#/letterhead-designer` route and sidebar link, reusing the existing settings persistence and branding controls.
+- **Settlement capture UX:** New settlement period is a button opening a dialog instead of a permanent inline form.
+- **Navigation and form labels:** sidebar sections are grouped by function and only the active section stays expanded. Form labels wrap within their containers to prevent clipping.
+- **Reports permissions:** each report now requires the appropriate source permissions; missing permissions show an access warning and disable output rather than presenting misleading zero/partial financial values. No underlying RLS policy was broadened.
+
+The eight principal Reports tabs already exist; this tranche fixes their source-access behavior and accounting/presentation, not duplicate report tabs.
+
+### Production release status
+
+These migrations are tested only in the disposable PostgreSQL workflow. The connected production database still has the previously recorded 74-migration ledger, missing settlement/remittance/exception/case/draft objects and unresolved history reconciliation. Do not apply the new WHT receipt/rate migrations or enable the WHT certificate UI until the full migration chain is reconciled and the approved restore safety prerequisite is satisfied. No production DDL, data, permissions or Auth settings were changed in this tranche.
+
+Backup feature development remains explicitly on hold; PR #128 is not part of this implementation tranche.
