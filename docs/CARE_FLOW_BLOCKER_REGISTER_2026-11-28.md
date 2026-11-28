@@ -159,7 +159,7 @@ Other missing production objects remain:
 - Facility letterhead: `get_facility_letterhead_settings`, `save_facility_letterhead_settings` and the `facility-logos` storage bucket.
 - `claims_settlement_periods` lacks `approved_gross_amount` and `actual_receipt_date`.
 
-The live `claims_outstanding_periods` view still uses provisional WHT in the outstanding formula. PR #148 adds `20261128153000_correct_claims_outstanding_actual_wht.sql`: provisional WHT remains visible as an estimate, but only confirmed actual WHT reduces the outstanding receivable. This source correction is not deployed to production.
+The live `claims_outstanding_periods` view still uses provisional WHT in the outstanding formula. PR #148 adds `20261128153000_correct_claims_outstanding_actual_wht.sql`: provisional WHT and actual WHT per advice remain separately visible, but only the amount supported by a tax certificate received and recorded by the facility reduces Accounts Receivable and the outstanding balance. Partial certificates reduce the balance only by the certified amount. This source correction is not deployed to production.
 
 Security Advisor findings remain: `role_permissions` is deny-by-default with no direct client policy (intentional; do not expose the RBAC table), five authenticated-callable SECURITY DEFINER functions need their individual caller contracts preserved/reviewed, and Auth leaked-password protection remains disabled pending an owner-approved Auth setting change. No production DDL, grants, Auth settings or data writes were performed during this refresh.
 
