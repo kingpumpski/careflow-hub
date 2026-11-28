@@ -13,6 +13,7 @@ export default function OperationalPerformanceReport(props: {
   auditLogs: OperationalAuditLog[];
   profiles: OperationalProfile[];
   canReadAudit: boolean;
+  canReadClaims: boolean;
   settlementSourceUnavailable: boolean;
   outstandingSourceUnavailable: boolean;
   auditSourceUnavailable: boolean;
@@ -22,20 +23,21 @@ export default function OperationalPerformanceReport(props: {
     <p className="text-sm text-muted-foreground">Operational indicators help identify rejection causes, insurer payment patterns, overdue claims cycles and outstanding follow-up priorities. Staff activity is based on claim audit events, not assigned caseload or hours worked.</p>
     <section className="stat-card space-y-3">
       <h3 className="font-semibold">Rejection analysis by reason</h3>
-      <div className="overflow-x-auto"><table className="data-table min-w-[650px]">
+      {!props.canReadClaims ? <p className="text-sm text-muted-foreground">Claims read permission is required for rejection analysis.</p> : <div className="overflow-x-auto"><table className="data-table min-w-[650px]">
         <thead><tr><th>Category</th><th>Reason</th><th>Rejected claims</th><th>Rejected amount</th></tr></thead>
         <tbody>{report.rejectionReasons.map((row) => <tr key={row.category + row.reason}><td>{row.category}</td><td>{row.reason}</td><td>{row.count}</td><td className="text-destructive font-semibold">{money(row.amount)}</td></tr>)}
           {!report.rejectionReasons.length && <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">No rejected claims in the selected period.</td></tr>}</tbody>
-      </table></div>
+      </table></div>}
     </section>
     <section className="stat-card space-y-3">
       <h3 className="font-semibold">Insurer performance</h3>
-      <div className="overflow-x-auto"><table className="data-table min-w-[1000px]">
-        <thead><tr><th>Insurer</th><th>Claims</th><th>Submitted</th><th>Rejected</th><th>Net claim</th><th>Linked cash</th><th>Balance</th><th>Denial rate</th><th>Recovery rate</th><th>Avg. days to pay</th></tr></thead>
+      {!props.canReadClaims && <p className="text-sm text-muted-foreground">Claims read permission is required for insurer performance metrics.</p>}
+      <div className="overflow-x-auto"><table className="data-table min-w-[1100px]">
+        <thead><tr><th>Insurer</th><th>Claim records</th><th>Claims cycles</th><th>Submitted</th><th>Rejected</th><th>Net claim</th><th>Linked cash</th><th>Balance</th><th>Denial rate</th><th>Recovery rate</th><th>Avg. days to pay</th></tr></thead>
         <tbody>{report.insurerPerformance.map((row) => <tr key={row.insurerId}>
-          <td className="font-medium">{row.insurer}</td><td>{row.claimsCount}</td><td>{money(row.submitted)}</td><td>{money(row.rejected)}</td><td>{money(row.netClaim)}</td><td>{money(row.paid)}</td>
+          <td className="font-medium">{row.insurer}</td><td>{row.claimsCount}</td><td>{row.periodCount}</td><td>{money(row.submitted)}</td><td>{money(row.rejected)}</td><td>{money(row.netClaim)}</td><td>{money(row.paid)}</td>
           <td className={row.outstanding != null && row.outstanding > 0 ? "text-warning" : "text-success"}>{money(row.outstanding)}</td><td>{percent(row.denialRate)}</td><td>{percent(row.recoveryRate)}</td><td>{row.averageDaysToPay == null ? "—" : `${row.averageDaysToPay.toFixed(1)} days`}</td>
-        </tr>)}{!report.insurerPerformance.length && <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">No insurer activity in the selected period.</td></tr>}</tbody>
+        </tr>)}{!report.insurerPerformance.length && <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">No insurer activity in the selected period.</td></tr>}</tbody>
       </table></div>
       <p className="text-xs text-muted-foreground">Cash collected here is limited to payment entries linked to the selected claim records. Unlinked insurer-level receipts are not allocated to a claim and are excluded from this recovery measure.</p>
     </section>
@@ -49,7 +51,7 @@ export default function OperationalPerformanceReport(props: {
     </section>
     <section className="stat-card space-y-3">
       <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Outstanding claims follow-up</h3>{props.outstandingSourceUnavailable && <Badge variant="destructive">Source unavailable</Badge>}</div>
-      {props.outstandingSourceUnavailable ? <p className="text-sm text-destructive">Outstanding-period data could not be loaded. Follow-up balances are not shown as zero.</p> : <div className="overflow-x-auto"><table className="data-table min-w-[700px]">
+      {!props.canReadClaims ? <p className="text-sm text-muted-foreground">Claims read permission is required for outstanding follow-up balances.</p> : props.outstandingSourceUnavailable ? <p className="text-sm text-destructive">Outstanding-period data could not be loaded. Follow-up balances are not shown as zero.</p> : <div className="overflow-x-auto"><table className="data-table min-w-[700px]">
         <thead><tr><th>Insurer</th><th>Claims month</th><th>Outstanding</th><th>Age</th><th>Tax basis</th><th>Priority</th></tr></thead>
         <tbody>{report.outstandingFollowUp.map((row) => <tr key={row.insurer + row.claimsMonth}><td>{row.insurer}</td><td>{row.claimsMonth}</td><td className="font-semibold text-warning">{money(row.outstanding)}</td><td>{row.ageBand}</td><td>{row.taxBasis}</td><td><Badge variant={row.daysOutstanding > 90 ? "destructive" : row.daysOutstanding > 60 ? "secondary" : "outline"}>{row.daysOutstanding > 90 ? "Escalate" : row.daysOutstanding > 60 ? "Follow up" : "Monitor"}</Badge></td></tr>)}
           {!report.outstandingFollowUp.length && <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No outstanding balances in the selected period.</td></tr>}</tbody>
