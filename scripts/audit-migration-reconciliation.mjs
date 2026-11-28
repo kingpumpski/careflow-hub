@@ -5,7 +5,7 @@ import { auditMigrationSources } from "./migration-audit.mjs";
 
 export async function runMigrationAudit(root = process.cwd()) {
   const migrationsDir = join(root, "supabase", "migrations");
-  const snapshotPath = join(root, "docs", "MIGRATION_LEDGER_SNAPSHOT_2026-11-22.md");
+  const snapshotPath = join(root, "docs", "MIGRATION_LEDGER_SNAPSHOT_2026-11-28.md");
   const names = await readdir(migrationsDir);
   const migrationFiles = await Promise.all(
     names.filter((name) => name.endsWith(".sql")).map(async (name) => ({
