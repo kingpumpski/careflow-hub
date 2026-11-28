@@ -1,6 +1,6 @@
 # Facility, audit and notification production release preflight
 
-**Snapshot date:** 2026-11-27  
+**Snapshot date:** 2026-11-28  
 **Supabase project:** `jajfdgknctzqypdtvmxo` (`claims tracker`, `eu-west-1`)  
 **Release status:** BLOCKED — repository implementation is merged/deployed, but production schema is behind the source migration chain.
 
@@ -128,7 +128,7 @@ Keep each optional capability false until its corresponding production objects a
 
 ## Change boundary
 
-The 2026-11-27 inspections and source updates were read-only against production. No production DDL, data, migration ledger, Auth configuration, Edge Function or secret was changed. Existing facility rows remain untouched.
+The 2026-11-27 and 2026-11-28 inspections and source updates were read-only against production. No production DDL, data, migration ledger, Auth configuration, Edge Function or secret was changed. Existing facility rows remain untouched.
 
 
 ## Read-only refresh — 2026-11-28
@@ -150,3 +150,27 @@ A fresh catalog check against the same production project confirmed the followin
 | Notification recipient RLS/UPDATE isolation | Pass — existing policy is user-scoped |
 
 The read-only release diagnostic has been corrected to require the intended prepared-handoff relation, reject both noncanonical relation references, and verify that the public wrapper is SECURITY INVOKER with an empty search path, authenticated execution and no anonymous execution. The diagnostic remains SELECT-only. No production schema, records, migration ledger, grants, Auth settings or Edge Functions were changed.
+
+
+## 2026-11-28 consolidated blocker refresh
+
+The live migration API still reports **74 rows**, with latest version `20260921160938`. The refreshed repository inventory contains **146 SQL migration files**, **56 unique direct normalized-name matches**, **18 ledger rows without a unique direct source match**, **90 source files without a direct ledger-name match**, **32 files later than the live ledger head**, and the same **three duplicate version-prefix groups**. See [`MIGRATION_LEDGER_SNAPSHOT_2026-11-28.md`](MIGRATION_LEDGER_SNAPSHOT_2026-11-28.md) for the full current ledger and candidate inventory. These are provenance blockers; no migration was marked applied or replayed.
+
+A read-only catalog check on 2026-11-28 confirmed the following required relation states:
+
+| Relation | Expected kind | Live result |
+|---|---|---|
+| `preauthorization_submissions` | table | Missing |
+| `claim_cases` | table | Missing |
+| `claim_case_events` | table | Missing |
+| `settlement_exceptions` | table | Missing |
+| `settlement_exception_audit_events` | table | Missing |
+| `claims_settlement_remittances` | table | Missing |
+| `claims_settlement_receipt_months` | view | Missing |
+| `claim_diagnosis_drafts` | table | Missing |
+| `facilities`, `facility_memberships` | tables | Present |
+| `notifications`, `audit_logs`, `security_audit_log` | tables | Present |
+
+The report screen has also been extended in source to expose a dedicated cash-receipts-by-payment-month report and to show approved gross/approval variance plus separate provisional and actual WHT in the relevant on-screen tables. Cash receipts use the existing `payments.payment_date` and `amount_paid` source; they do not depend on the missing remittance view and do not infer actual-WHT receipt dates. This frontend work is being validated in a separate pull request; it does not enable any database capability flag.
+
+The remaining release blockers and their required dispositions are tracked in `docs/CARE_FLOW_BLOCKER_REGISTER_2026-11-28.md`. No production DDL, data writes, migration-ledger changes, grants, Auth changes, Edge Function deployments or secret changes were made during this refresh.
