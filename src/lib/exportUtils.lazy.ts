@@ -20,7 +20,7 @@ export async function loadImageDataUrl(url?: string) {
   return loadImage(url);
 }
 
-export async function buildPreAuthPDFBlob(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+export async function buildPreAuthPDFBlob(preauth: Record<string, unknown>, items: Array<Record<string, unknown>>, companyInfo: LetterheadConfig) {
   const { buildPreAuthPDFBlob: buildPdfBlob } = await load();
   return buildPdfBlob(preauth, items, companyInfo);
 }
