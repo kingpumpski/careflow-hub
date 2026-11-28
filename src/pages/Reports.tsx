@@ -33,6 +33,9 @@ export default function Reports() {
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
 
@@ -715,6 +718,7 @@ export default function Reports() {
         </div>
       </Tabs>
       <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
+      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
       <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
     </div>
   );
