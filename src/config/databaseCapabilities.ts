@@ -7,6 +7,7 @@ export type DatabaseCapabilityEnvironment = {
   VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED?: string;
   VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED?: string;
   VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED?: string;
+  VITE_CAREFLOW_WHT_CERTIFICATE_RECEIPTS_ENABLED?: string;
 };
 
 export type DatabaseCapabilities = {
@@ -18,6 +19,7 @@ export type DatabaseCapabilities = {
   claimDiagnosisDrafts: boolean;
   notificationEvents: boolean;
   documentLetterheadSettings: boolean;
+  withholdingTaxCertificateReceipts: boolean;
 };
 
 /**
@@ -40,6 +42,7 @@ export function resolveDatabaseCapabilities(
     claimDiagnosisDrafts: environment.VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED === "true",
     notificationEvents: environment.VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED === "true",
     documentLetterheadSettings: environment.VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED === "true",
+    withholdingTaxCertificateReceipts: environment.VITE_CAREFLOW_WHT_CERTIFICATE_RECEIPTS_ENABLED === "true",
   });
 }
 
