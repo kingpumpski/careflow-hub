@@ -41,6 +41,22 @@ const databaseUser = decodeURIComponent(databaseUri.username);
 if (databaseUri.hostname !== "db." + projectRef + ".supabase.co" && databaseUser !== "postgres." + projectRef) {
   throw new Error("SUPABASE_DB_URL must connect to the approved CareFlow project via its direct host or matching Session Pooler username.");
 }
+// Parse the URI once and pass libpq connection fields to the PostgreSQL
+// containers. Supplying the raw URI to psql/pg_dump is fragile when a
+// password contains URI-reserved characters such as @, :, /, # or %.
+const databaseEnvironment = {
+  ...process.env,
+  PGHOST: databaseUri.hostname,
+  PGPORT: databaseUri.port || "5432",
+  PGUSER: decodeURIComponent(databaseUri.username),
+  PGPASSWORD: decodeURIComponent(databaseUri.password),
+  PGDATABASE: decodeURIComponent(databaseUri.pathname.slice(1)) || "postgres",
+  PGSSLMODE: databaseUri.searchParams.get("sslmode") || "require",
+};
+if (databaseEnvironment.PGSSLMODE !== "require" && databaseEnvironment.PGSSLMODE !== "verify-ca" && databaseEnvironment.PGSSLMODE !== "verify-full") {
+  throw new Error("SUPABASE_DB_URL must require TLS with sslmode=require or a stricter verification mode.");
+}
+const postgresDockerEnv = ["-e", "PGHOST", "-e", "PGPORT", "-e", "PGUSER", "-e", "PGPASSWORD", "-e", "PGDATABASE", "-e", "PGSSLMODE"];
 if (!r2Endpoint.startsWith("https://")) throw new Error("BACKUP_R2_ENDPOINT must use HTTPS.");
 
 const backupId = new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "") + "-" + randomUUID().slice(0, 8);
@@ -57,9 +73,9 @@ async function sha256File(filePath) {
 
 async function downloadDatabaseBackup() {
   const versionProbe = await exec("docker", [
-    "run", "--rm", "-e", "DATABASE_URL", "postgres:19-alpine",
-    "sh", "-c", 'psql "$DATABASE_URL" -Atqc "SHOW server_version_num"',
-  ], { env: { ...process.env, DATABASE_URL: databaseUrl } });
+    "run", "--rm", ...postgresDockerEnv, "postgres:19-alpine",
+    "psql", "-X", "-w", "-Atqc", "SHOW server_version_num",
+  ], { env: databaseEnvironment });
   const serverVersionNum = Number(versionProbe.stdout.trim());
   const postgresMajor = Math.floor(serverVersionNum / 10000);
   if (!Number.isInteger(postgresMajor) || postgresMajor < 14 || postgresMajor > 19) {
@@ -71,12 +87,13 @@ async function downloadDatabaseBackup() {
   const target = path.join(databaseDir, "project-database.dump");
   try {
     await exec("docker", [
-      "run", "--rm", "--user", String(process.getuid()) + ":" + String(process.getgid()),
+      "run", "--rm", ...postgresDockerEnv,
+      "--user", String(process.getuid()) + ":" + String(process.getgid()),
       "-v", databaseDir + ":/backup",
       "postgres:" + postgresMajor + "-alpine",
-      "pg_dump", "--dbname", databaseUrl, "--format=custom", "--no-owner",
+      "pg_dump", "--no-password", "--format=custom", "--no-owner",
       "--file", "/backup/project-database.dump",
-    ]);
+    ], { env: databaseEnvironment });
   } catch {
     throw new Error("PostgreSQL logical dump failed. Check the Session Pooler connection, database privileges and server compatibility; connection details are suppressed.");
   }
