@@ -204,3 +204,8 @@ PR #143 was merged as `8c62f9710b7fa4c9bae47c1a4927496306ccf14e`. The claims-cyc
 ## Operational report data availability — 2026-11-28 (read-only)
 
 Current production row counts: 1 claim, 14 insurers, 1 payment, 0 claims-settlement-period rows, 1 outstanding-period view row, 26 audit-log rows and 1 profile. The settlement-cycle report will correctly show no cycles until settlement-period records exist. Staff claims activity is based on the single claim audit event currently recorded, not the total 26 audit events across all tables. No data was inserted or modified.
+
+
+## Operational performance report merge — 2026-11-28
+
+PR #144 merged as `42b0f5c0f23bf47acc878042b20aa976122c9a2a`. The frontend now includes rejection analysis, insurer performance, settlement delays, outstanding follow-up and permission-gated audit-based staff claims activity. This is source/frontend implementation only. It did not change the production schema, migration ledger, permissions, Auth settings, Edge Functions or data.
