@@ -44,7 +44,8 @@ import {
   type ManualClaimInput,
   type ManualClaimLine,
 } from "@/features/claims/services/claimDiagnosis.service";
-import { exportClaimDiagnosisDraftPdf, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
+import { buildClaimDiagnosisDraftPdfBlob, type ClaimDiagnosisPdfData } from "@/features/claims/services/claimDiagnosisPdf.service";
+import { PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { databaseCapabilities } from "@/config/databaseCapabilities";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
@@ -91,6 +92,9 @@ function asNumber(value: string, fallback = 0): number {
 export default function ClaimDiagnosisAssistant() {
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("claim-review.pdf");
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const { data: catalogRows } = useSupabaseQuery("preauth_catalog_items");
@@ -337,11 +341,13 @@ export default function ClaimDiagnosisAssistant() {
 
   const exportDraftPdf = async (draft: ClaimDiagnosisPdfData) => {
     try {
-      await exportClaimDiagnosisDraftPdf(draft, letterhead);
-      toast({ title: "Draft PDF downloaded" });
+      const { blob, fileName } = await buildClaimDiagnosisDraftPdfBlob(draft, letterhead);
+      setPdfPreviewBlob(blob);
+      setPdfPreviewFileName(fileName);
+      setPdfPreviewOpen(true);
     } catch (error) {
       toast({
-        title: "Could not export draft",
+        title: "Could not prepare draft preview",
         description: error instanceof Error ? error.message : "The PDF could not be generated.",
         variant: "destructive",
       });
@@ -700,7 +706,7 @@ export default function ClaimDiagnosisAssistant() {
             <div className="rounded-xl border bg-background p-3"><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Selected for Claim</h3><Badge variant="outline">{selectedCodes.length}</Badge></div>
               <div className="space-y-2">{selectedCodes.map((code) => <div key={code.code} className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-2 text-sm"><div><div className="flex items-center gap-2"><span className="font-mono font-semibold">{code.code}</span><Badge variant={code.source === "manual" ? "secondary" : "outline"}>{code.source === "manual" ? "Manual Override" : "AI Recommended"}</Badge></div><p className="mt-1 text-muted-foreground">{code.description}</p></div><Button type="button" size="icon" variant="ghost" aria-label={`Remove ${code.code}`} onClick={() => removeSelectedCode(code.code)}><X className="h-4 w-4" /></Button></div>)}{!selectedCodes.length && <p className="text-sm text-muted-foreground">Accept recommendations or add a code manually.</p>}</div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />Export Draft PDF</Button><Button type="button" variant="outline" onClick={() => void exportCurrentDraftPdf()}><Printer className="mr-2 h-4 w-4" /> Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : !canSaveDrafts ? "Draft saving unavailable" : "Prepare Claim Update"}</Button></div>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={exportCurrentDraftPdf}><Download className="mr-2 h-4 w-4" />Preview Draft PDF</Button><Button type="button" variant="outline" onClick={() => void exportCurrentDraftPdf()}><Printer className="mr-2 h-4 w-4" /> Preview / Print</Button><Button type="button" disabled={!canWrite || isSaving} onClick={prepareClaimUpdate}>{isSaving ? "Saving draft..." : !canSaveDrafts ? "Draft saving unavailable" : "Prepare Claim Update"}</Button></div>
             {!canWrite && <p className="text-right text-xs text-muted-foreground">Claims write permission is required to save a review draft.</p>}
           </Card>
 
@@ -712,6 +718,7 @@ export default function ClaimDiagnosisAssistant() {
           </Card>}
         </div>
       )}
+      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewFileName} title="Claim review draft preview" />
     </div>
   );
 }
