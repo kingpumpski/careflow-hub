@@ -13,6 +13,7 @@ describe("resolveDatabaseCapabilities", () => {
       notificationEvents: false,
       documentLetterheadSettings: false,
       withholdingTaxCertificateReceipts: false,
+      facilityLetterheadSettings: false,
     });
   });
 
@@ -27,6 +28,7 @@ describe("resolveDatabaseCapabilities", () => {
       VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED: "true",
       VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED: "true",
       VITE_CAREFLOW_WHT_CERTIFICATE_RECEIPTS_ENABLED: "true",
+      VITE_CAREFLOW_FACILITY_LETTERHEAD_ENABLED: "true",
     })).toEqual({
       preAuthPreparedHandoff: true,
       individualClaimCases: false,
@@ -37,6 +39,7 @@ describe("resolveDatabaseCapabilities", () => {
       notificationEvents: true,
       documentLetterheadSettings: true,
       withholdingTaxCertificateReceipts: true,
+      facilityLetterheadSettings: true,
     });
   });
 });
