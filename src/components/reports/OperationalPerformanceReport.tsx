@@ -57,6 +57,7 @@ export default function OperationalPerformanceReport(props: {
         <tbody>{report.outstandingFollowUp.map((row) => <tr key={row.insurerId + row.claimsMonth}><td>{row.insurer}</td><td>{row.claimsMonth}</td><td className="font-semibold text-warning">{money(row.outstanding)}</td><td>{row.ageBand}</td><td>{row.taxBasis}</td><td><Badge variant={row.daysOutstanding > 90 ? "destructive" : row.daysOutstanding > 60 ? "secondary" : "outline"}>{row.daysOutstanding > 90 ? "Escalate" : row.daysOutstanding > 60 ? "Follow up" : "Monitor"}</Badge></td></tr>)}
           {!report.outstandingFollowUp.length && <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No outstanding balances in the selected period.</td></tr>}</tbody>
       </table></div>}
+      <p className="text-xs text-muted-foreground">Pending cycles use the provisional WHT estimate. Advised cycles require recorded approved gross, actual WHT and cash received before an actual unpaid balance is calculated. Where approved gross is missing, the report leaves the actual balance unknown; legacy-view balances are labelled separately.</p>
     </section>
     <section className="stat-card space-y-3">
       <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Staff claims activity</h3>{!props.canReadAudit && <Badge variant="secondary">Audit permission required</Badge>}{props.auditSourceUnavailable && <Badge variant="destructive">Source unavailable</Badge>}</div>
