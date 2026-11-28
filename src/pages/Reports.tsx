@@ -12,6 +12,8 @@ import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 import { usePermissions } from "@/modules/security/usePermissions";
+import SettlementReconciliationReport from "@/components/reports/SettlementReconciliationReport";
+import { buildSettlementReconciliationRows } from "@/modules/reports/settlementReconciliationReport";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
@@ -29,6 +31,7 @@ export default function Reports() {
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
+  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: activeReport === "settlement", missingSchemaBehavior: "error" });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
@@ -39,7 +42,12 @@ export default function Reports() {
   const settlementReportUnavailable = (
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
-  ) && activeReport !== "income" && activeReport !== "receipts";
+  ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement";
+  const settlementCycleRows = useMemo(() => {
+    const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
+    return buildSettlementReconciliationRows(periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId));
+  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  const settlementCycleReportUnavailable = Boolean(settlementPeriodsError);
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
@@ -230,7 +238,7 @@ export default function Reports() {
     : null;
 
   const handlePrint = (title: string) => {
-    if (settlementReportUnavailable) return;
+    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const source = document.getElementById("report-content");
@@ -281,8 +289,8 @@ export default function Reports() {
   };
 
   const handleExportPDF = () => {
-    if (settlementReportUnavailable) return;
-    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : "Claim Aging";
+    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
     let columns: string[] = [];
@@ -310,6 +318,14 @@ export default function Reports() {
           row.tax,
         ]),
       ];
+    } else if (activeReport === "settlement") {
+      columns = ["Claims Cycle", "Insurer", "Status", "Submitted (GHS)", "Approved Gross (GHS)", "Rejected (GHS)", "Approval Variance (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "Cash Received (GHS)", "Approved Unpaid (GHS)", "Advice Reference", "Advice Date", "Receipt Date"];
+      data = settlementCycleRows.map((row) => [
+        row.periodStart, (insurers || []).find((ins: any) => ins.id === row.insuranceCompanyId)?.company_name || "Unknown insurer",
+        row.status, row.submitted, row.approvedGross ?? "—", row.rejected ?? "—", row.approvalVariance ?? "—",
+        row.provisionalWht, row.actualWht ?? "—", row.cashReceived ?? "—", row.approvedUnpaid ?? "—",
+        row.adviceReference || "—", row.adviceDate || "—", row.receiptDate || "—",
+      ]);
     } else if (activeReport === "receipts") {
       columns = ["Insurance Company", "Payment Month", "Cash Received (GHS)", "Payment Entries"];
       data = receiptMonthData.map((entry) => [
@@ -340,8 +356,8 @@ export default function Reports() {
   };
 
   const handleExportExcel = () => {
-    if (settlementReportUnavailable) return;
-    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
+    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
       rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Withholding Tax Expense", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
@@ -363,6 +379,23 @@ export default function Reports() {
           "WHT Applied (GHS)": row.tax,
         })),
       ];
+    } else if (activeReport === "settlement") {
+      rows = settlementCycleRows.map((row) => ({
+        "Claims Cycle": row.periodStart,
+        "Insurer": (insurers || []).find((ins: any) => ins.id === row.insuranceCompanyId)?.company_name || "Unknown insurer",
+        "Status": row.status,
+        "Submitted (GHS)": row.submitted,
+        "Approved Gross (GHS)": row.approvedGross,
+        "Rejected (GHS)": row.rejected,
+        "Approval Variance (GHS)": row.approvalVariance,
+        "Provisional WHT (GHS)": row.provisionalWht,
+        "Actual WHT (GHS)": row.actualWht,
+        "Cash Received (GHS)": row.cashReceived,
+        "Approved Unpaid (GHS)": row.approvedUnpaid,
+        "Advice Reference": row.adviceReference || "",
+        "Advice Date": row.adviceDate || "",
+        "Receipt Date": row.receiptDate || "",
+      }));
     } else if (activeReport === "receipts") {
       rows = receiptMonthData.map((entry) => ({
         "Insurance Company": (insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer",
@@ -394,9 +427,9 @@ export default function Reports() {
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial Reports</h1><p className="page-description">Generate comprehensive financial statements and reconciliation reports</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable} title={settlementReportUnavailable ? "The claims settlement source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
         </div>
       </div>
 
@@ -422,6 +455,7 @@ export default function Reports() {
           <TabsTrigger value="tax">Tax Liability</TabsTrigger>
           <TabsTrigger value="aging">Claim Aging</TabsTrigger>
           <TabsTrigger value="receipts">Cash Receipts by Month</TabsTrigger>
+          <TabsTrigger value="settlement">Settlement Reconciliation</TabsTrigger>
         </TabsList>
 
         <div id="report-content" className="mt-4">
@@ -542,6 +576,15 @@ export default function Reports() {
                   <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>—</td><td>—</td><td>—</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
                 )}
               </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="settlement">
+            <div className="stat-card space-y-4">
+              <h3 className="font-heading font-semibold">{periodLabel} — Claims-Cycle Settlement Reconciliation</h3>
+              {settlementCycleReportUnavailable
+                ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">The settlement-period database source is unavailable. No reconciliation totals are being represented as zero.</div>
+                : <SettlementReconciliationReport periods={settlementCycleRows as any} insurers={insurers || []} />}
             </div>
           </TabsContent>
 
