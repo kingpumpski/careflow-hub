@@ -357,7 +357,7 @@ export default function Reports() {
         ["WHT Reversals", "—", "—", "—", "—", "—", taxLiabilityData.whtReversals],
         ["Net Tax Liability", "—", "—", "—", "—", "—", taxLiabilityData.netLiability],
         ["WHT Tax Credit Receivable", "Certificate-backed asset", "—", "—", "—", "—", taxLiabilityData.taxCreditReceivable],
-        ...sortedReport.filter((row) => row.tax > 0).map((row) => [
+        ...sortedReport.filter((row) => row.provisionalTax > 0 || row.actualTax > 0).map((row) => [
           row.company,
           row.taxBasisLabel,
           row.taxBasisAmount ?? "—",
