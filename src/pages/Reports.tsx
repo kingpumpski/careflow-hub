@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
-import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
-import { HtmlPrintPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
+import { buildReportPDFBlob, exportReportExcel } from "@/lib/exportUtils";
+import { HtmlPrintPreviewDialog, PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
+import { toast } from "@/hooks/use-toast";
 import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
@@ -29,6 +30,9 @@ export default function Reports() {
   const [activeReport, setActiveReport] = useState("balance");
   const [printPreviewHtml, setPrintPreviewHtml] = useState("");
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
 
@@ -321,7 +325,7 @@ export default function Reports() {
     setPrintPreviewOpen(true);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
@@ -395,7 +399,14 @@ export default function Reports() {
       email: selectedCompany.email,
       contactPerson: selectedCompany.contact_person,
     } : undefined;
-    exportReportPDF(title, data, columns, companyInfo, counterparty);
+    try {
+      const blob = await buildReportPDFBlob(title, data, columns, companyInfo, counterparty);
+      setPdfPreviewBlob(blob);
+      setPdfPreviewName(`${title.toLowerCase().replace(/\\s+/g, "-")}.pdf`);
+      setPdfPreviewOpen(true);
+    } catch (error) {
+      toast({ title: "Unable to prepare PDF preview", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    }
   };
 
   const handleExportExcel = () => {
@@ -704,6 +715,7 @@ export default function Reports() {
         </div>
       </Tabs>
       <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
+      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
     </div>
   );
 }
