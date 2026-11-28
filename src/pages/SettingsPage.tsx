@@ -10,6 +10,9 @@ import { toast } from "@/hooks/use-toast";
 import { parseBankingPartners, LETTERHEAD_STYLES } from "@/lib/letterhead";
 import type { BankingPartner } from "@/lib/exportUtils";
 import BackupCenter from "@/components/settings/BackupCenter";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 
 const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string; hint: string }> = {
   gmail: { host: "smtp.gmail.com", port: "587", secure: "tls", hint: "Gmail requires 2-Step Verification and a 16-character App Password (not your normal password). Username is your full Gmail/Workspace address." },
@@ -19,10 +22,19 @@ const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string;
 };
 
 export default function SettingsPage({ letterheadOnly = false }: { letterheadOnly?: boolean } = {}) {
-  const { data: settings, refetch } = useSupabaseQuery("system_settings");
+  const { data: settings, refetch } = useSupabaseQuery("system_settings", {
+    enabled: !letterheadOnly || !databaseCapabilities.facilityLetterheadSettings,
+  });
+  const facilityId = getStoredFacilityId();
+  const { data: facilityLetterheadSettings, refetch: refetchFacilityLetterhead } = useDocumentLetterheadSettings({
+    canReadDocument: true,
+    canManageSettings: true,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getSetting = (key: string) => settings?.find?.((s: any) => s.key === key)?.value || "";
+  const getSetting = (key: string) => facilityLetterheadSettings?.find((row) => row.key === key)?.value
+    ?? settings?.find?.((row: any) => row.key === key)?.value
+    ?? "";
 
   const [providerName, setProviderName] = useState("");
   const [providerAddress, setProviderAddress] = useState("");
@@ -56,7 +68,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
   const [footerNote, setFooterNote] = useState("");
 
   useEffect(() => {
-    if (settings) {
+    if (settings || facilityLetterheadSettings) {
       setProviderName(getSetting("provider_name"));
       setProviderAddress(getSetting("provider_address"));
       setProviderPhone(getSetting("provider_phone"));
@@ -87,7 +99,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
         : host === "smtp.office365.com" ? "outlook" : "custom"
       );
     }
-  }, [settings]);
+  }, [settings, facilityLetterheadSettings]);
 
   const saveSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
     const updatedAt = new Date().toISOString();
@@ -107,6 +119,25 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
 
   const saveSetting = (key: string, value: string) => saveSettings([{ key, value }]);
 
+  const saveLetterheadSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
+    if (!databaseCapabilities.facilityLetterheadSettings) return saveSettings(entries);
+    if (!facilityId) {
+      toast({ title: "Facility selection required", description: "Select an active company/facility before saving its letterhead.", variant: "destructive" });
+      return false;
+    }
+    const p_settings = Object.fromEntries(entries.map(({ key, value }) => [key, value]));
+    const { error } = await supabase.rpc("save_facility_letterhead_settings", {
+      p_facility_id: facilityId,
+      p_settings,
+    });
+    if (error) {
+      toast({ title: "Letterhead was not saved", description: error.message || "The facility rejected the letterhead update.", variant: "destructive" });
+      return false;
+    }
+    await refetchFacilityLetterhead();
+    return true;
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -116,15 +147,19 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
     }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `company-logo.${ext}`;
-      // Remove old logo if exists
-      await supabase.storage.from("logos").remove([path]);
-      const { error } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
+      const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+      if (!allowedTypes.includes(file.type)) throw new Error("Use a PNG, JPG or WebP logo image.");
+      const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : "png";
+      const facilityScoped = databaseCapabilities.facilityLetterheadSettings;
+      if (facilityScoped && !facilityId) throw new Error("Select an active company/facility before uploading its logo.");
+      const bucket = facilityScoped ? "facility-logos" : "logos";
+      const path = facilityScoped ? `${facilityId}/company-logo.${ext}` : `company-logo.${ext}`;
+      await supabase.storage.from(bucket).remove([path]);
+      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
-      const { data: urlData } = supabase.storage.from("logos").getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
       const url = urlData.publicUrl + "?t=" + Date.now();
-      if (!(await saveSetting("logo_url", url))) return;
+      if (!(await saveLetterheadSettings([{ key: "logo_url", value: url }]))) return;
       setLogoUrl(url);
       toast({ title: "Logo uploaded successfully" });
     } catch (err: any) {
@@ -135,7 +170,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
   };
 
   const handleSaveProvider = async () => {
-    const saved = await saveSettings([
+    const saved = await saveLetterheadSettings([
       { key: "provider_name", value: providerName },
       { key: "provider_address", value: providerAddress },
       { key: "provider_phone", value: providerPhone },
