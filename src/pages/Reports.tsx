@@ -33,9 +33,6 @@ export default function Reports() {
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
-  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
-  const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
-  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
 
