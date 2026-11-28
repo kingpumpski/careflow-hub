@@ -187,12 +187,26 @@ tax_periods AS (
   FULL OUTER JOIN tax_table_periods tt
     USING (insurance_company_id, period_year, period_month)
 ),
+certified_tax_periods AS (
+  SELECT
+    p.insurance_company_id,
+    EXTRACT(YEAR FROM p.period_start)::integer AS period_year,
+    EXTRACT(MONTH FROM p.period_start)::integer AS period_month,
+    sum(r.tax_amount)::numeric AS certified_withholding_tax_amount,
+    count(*)::integer AS certificate_entry_count
+  FROM public.withholding_tax_receipts r
+  JOIN public.claims_settlement_periods p
+    ON p.id = r.settlement_period_id
+  GROUP BY p.insurance_company_id, EXTRACT(YEAR FROM p.period_start), EXTRACT(MONTH FROM p.period_start)
+),
 periods AS (
   SELECT insurance_company_id, period_year, period_month FROM claim_periods
   UNION
   SELECT insurance_company_id, period_year, period_month FROM payment_periods
   UNION
   SELECT insurance_company_id, period_year, period_month FROM tax_periods
+  UNION
+  SELECT insurance_company_id, period_year, period_month FROM certified_tax_periods
 ),
 period_values AS (
   SELECT
@@ -207,11 +221,14 @@ period_values AS (
     COALESCE(tp.actual_withholding_tax_amount, 0::numeric) AS actual_withholding_tax_amount,
     COALESCE(tp.actual_withholding_tax_entry_count, 0)::integer AS actual_withholding_tax_entry_count,
     COALESCE(tp.withholding_tax_entry_count, 0)::integer AS withholding_tax_entry_count,
-    COALESCE(pp.payment_entry_count, 0)::integer AS payment_entry_count
+    COALESCE(pp.payment_entry_count, 0)::integer AS payment_entry_count,
+    COALESCE(ct.certified_withholding_tax_amount, 0::numeric) AS certified_withholding_tax_amount,
+    COALESCE(ct.certificate_entry_count, 0)::integer AS certificate_entry_count
   FROM periods p
   LEFT JOIN claim_periods cp USING (insurance_company_id, period_year, period_month)
   LEFT JOIN payment_periods pp USING (insurance_company_id, period_year, period_month)
   LEFT JOIN tax_periods tp USING (insurance_company_id, period_year, period_month)
+  LEFT JOIN certified_tax_periods ct USING (insurance_company_id, period_year, period_month)
 )
 SELECT
   insurance_company_id,
@@ -221,18 +238,17 @@ SELECT
   rejected_amount::numeric AS rejected_amount,
   COALESCE(approved_gross_amount, GREATEST(submitted_amount - rejected_amount, 0::numeric))::numeric AS net_claim_amount,
   paid_amount::numeric AS paid_amount,
-  CASE
-    WHEN actual_withholding_tax_entry_count > 0 THEN actual_withholding_tax_amount
-    ELSE provisional_withholding_tax_amount
-  END::numeric AS withholding_tax_amount,
+  certified_withholding_tax_amount::numeric AS withholding_tax_amount,
   GREATEST(
     COALESCE(approved_gross_amount, submitted_amount - rejected_amount) - paid_amount
-      - actual_withholding_tax_amount,
+      - certified_withholding_tax_amount,
     0::numeric
   )::numeric AS outstanding_amount,
   CASE
-    WHEN payment_entry_count > 0 AND actual_withholding_tax_entry_count > 0
+    WHEN payment_entry_count > 0
+      AND (actual_withholding_tax_amount = 0 OR certified_withholding_tax_amount >= actual_withholding_tax_amount)
       THEN 'actual'::text
+    WHEN certified_withholding_tax_amount > 0 THEN 'partial'::text
     ELSE 'provisional'::text
   END AS outstanding_status,
   payment_entry_count,
@@ -244,12 +260,14 @@ SELECT
     ELSE round(submitted_amount - approved_gross_amount - rejected_amount, 2)
   END::numeric AS approval_variance,
   CASE WHEN approved_gross_amount IS NULL THEN NULL::numeric
-    ELSE round(approved_gross_amount - paid_amount - actual_withholding_tax_amount, 2)
-  END::numeric AS approved_unpaid_balance
+    ELSE round(approved_gross_amount - paid_amount - certified_withholding_tax_amount, 2)
+  END::numeric AS approved_unpaid_balance,
+  certificate_entry_count::integer AS certificate_entry_count,
+  certified_withholding_tax_amount::numeric AS certified_withholding_tax_amount
 FROM period_values;
 
 COMMENT ON VIEW public.claims_outstanding_periods IS
-  'Insurer-period outstanding balances. Provisional WHT is displayed as an estimate only and never reduces outstanding receivables. Only confirmed actual WHT from insurer payment advice reduces the outstanding balance. Monthly settlement-period advice is the preferred actual-WHT source for the monthly claims view.';
+  'Insurer-period outstanding balances. Provisional WHT and actual WHT on payment advice are displayed as separate tax figures. Only WHT supported by an insurer tax certificate received by the facility is credited to Accounts Receivable and reduces the outstanding balance. Partial certificate receipts reduce the balance only by the amount certified. Monthly settlement-period advice is the preferred actual-WHT source for the monthly claims view.';
 
 GRANT SELECT ON public.claims_outstanding_periods TO authenticated;
 
