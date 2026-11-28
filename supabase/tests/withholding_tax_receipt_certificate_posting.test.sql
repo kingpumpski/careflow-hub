@@ -25,6 +25,20 @@ BEGIN
   END IF;
 
   SELECT pg_get_functiondef(v_rpc) INTO v_definition;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgrelid = 'public.withholding_tax_receipts'::regclass
+       AND tgname = 'withholding_tax_receipts_immutable'
+       AND NOT tgisinternal
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgrelid = 'public.ledger_entries'::regclass
+       AND tgname = 'certified_wht_ledger_immutable'
+       AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'WHT certificate and related ledger entries must be immutable';
+  END IF;
+
   IF position('Withholding Tax Receivable' IN v_definition) = 0
      OR position('Accounts Receivable' IN v_definition) = 0
      OR position('WHT Payable' IN v_definition) = 0
