@@ -131,14 +131,14 @@ export default function ScheduleGenerator() {
           && Number(payment.claim_month) === m);
         const cashReceived = period.approved_gross_amount != null && period.payment_received != null
           ? Number(period.payment_received || 0)
-          : companyPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
+          : companyPayments.reduce((sum: number, payment) => sum + Number(payment.amount_paid || 0), 0);
         const companyTaxRows = monthlyTaxRows.filter((tax) => tax.insurance_company_id === period.insurance_company_id);
         const hasConfirmedAdvice = ["payment_advice_received", "reconciled"].includes(period.settlement_status)
           && period.actual_withholding_tax != null;
         const confirmedWht = hasConfirmedAdvice
           ? Number(period.actual_withholding_tax || 0)
-          : companyTaxRows.filter((tax: any) => tax.is_actual === true)
-            .reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
+          : companyTaxRows.filter((tax) => tax.is_actual === true)
+            .reduce((sum: number, tax) => sum + Number(tax.tax_amount || 0), 0);
         return { submittedGross, rejectedGross, approvedGross, cashReceived, confirmedWht };
       });
       const fallbackClaims = monthClaims.filter((claim) => !settledInsurers.has(claim.insurance_company_id));
@@ -150,8 +150,8 @@ export default function ScheduleGenerator() {
         && !settledInsurers.has(payment.insurance_company_id));
       const fallbackTax = monthlyTaxRows.filter((tax) =>
         !settledInsurers.has(tax.insurance_company_id) && tax.is_actual === true)
-        .reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
-      const fallbackPaid = fallbackPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
+        .reduce((sum: number, tax) => sum + Number(tax.tax_amount || 0), 0);
+      const fallbackPaid = fallbackPayments.reduce((sum: number, payment) => sum + Number(payment.amount_paid || 0), 0);
       const fallbackBalance = calculateClaimsScheduleBalance({
         submittedGross: fallbackTotals.submittedGross,
         rejectedGross: fallbackTotals.rejectedGross,
