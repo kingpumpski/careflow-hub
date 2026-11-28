@@ -15,7 +15,7 @@ describe("settlement reconciliation report", () => {
     expect(rows[0]).toMatchObject({
       periodStart: "2026-09-01", submitted: 1000, approvedGross: 900,
       rejected: 100, provisionalWht: 50, actualWht: 22.5,
-      cashReceived: 877.5, approvalVariance: -0,
+      cashReceived: 877.5, approvalVariance: 0,
       approvedUnpaid: 0, adviceReference: "ADV-SEP", receiptDate: "2026-10-14",
     });
     const summary = summarizeSettlementReconciliationRows(rows);
