@@ -66,7 +66,7 @@ export function buildSettlementReconciliationRows(
       cashReceived,
       approvalVariance: approvedGross === null || rejected === null
         ? null
-        : Math.round((submitted - approvedGross - rejected) * 100) / 100,
+        : (Math.round((submitted - approvedGross - rejected) * 100) || 0) / 100,
       approvedUnpaid: !hasConfirmedAdvice
         ? null
         : Math.round((approvedGross! - actualWht! - cashReceived!) * 100) / 100,
