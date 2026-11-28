@@ -18,6 +18,9 @@ export type OperationalSettlementPeriod = {
   total_claims_submitted?: number | string | null;
   rejection_amount?: number | string | null;
   payment_received?: number | string | null;
+  approved_gross_amount?: number | string | null;
+  provisional_withholding_tax?: number | string | null;
+  actual_withholding_tax?: number | string | null;
 };
 export type OperationalOutstandingPeriod = {
   insurance_company_id: string; period_year: number; period_month: number;
@@ -96,8 +99,8 @@ export function buildOperationalReportData(input: {
       ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
       : null;
     const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
-    const outstanding = financialRows.length
-      ? financialRows.reduce((sum, period) => sum + number(period.outstanding_amount), 0)
+    const outstanding = knownOutstandingInsurers.has(insurer.id)
+      ? allOutstandingFollowUp.filter((row) => row.insurer === insurer.company_name).reduce((sum, row) => sum + row.outstanding, 0)
       : null;
     const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
       .filter((days): days is number => days !== null);
@@ -128,21 +131,60 @@ export function buildOperationalReportData(input: {
     };
   }).sort((a, b) => (b.daysPending ?? -1) - (a.daysPending ?? -1));
 
-  const outstandingFollowUp = input.outstandingPeriods.map((period) => {
+  const cycleKeys = new Set(input.settlementPeriods.map((period) => `${period.insurance_company_id}:${period.period_start.slice(0, 7)}`));
+  const knownOutstandingInsurers = new Set<string>();
+  const outstandingFollowUp = input.settlementPeriods.flatMap((period) => {
+    const submitted = period.total_claims_submitted == null ? null : number(period.total_claims_submitted);
+    const rejected = period.rejection_amount == null ? null : number(period.rejection_amount);
+    const paymentReceived = period.payment_received == null
+      ? (period.settlement_status === "awaiting_payment" ? 0 : null)
+      : number(period.payment_received);
+    const approvedGross = period.approved_gross_amount == null ? null : number(period.approved_gross_amount);
+    const actualWht = period.actual_withholding_tax == null ? null : number(period.actual_withholding_tax);
+    const provisionalWht = period.provisional_withholding_tax == null ? null : number(period.provisional_withholding_tax);
+    let outstanding: number | null = null;
+    let taxBasis = "Unknown WHT basis";
+    if (approvedGross !== null && actualWht !== null && paymentReceived !== null) {
+      outstanding = approvedGross - actualWht - paymentReceived;
+      taxBasis = "Actual WHT";
+    } else if (period.settlement_status === "awaiting_payment"
+      && submitted !== null && rejected !== null && provisionalWht !== null && paymentReceived !== null) {
+      outstanding = submitted - rejected - provisionalWht - paymentReceived;
+      taxBasis = "Provisional WHT";
+    }
+    if (outstanding === null) return [];
+    knownOutstandingInsurers.add(period.insurance_company_id);
+    const daysOutstanding = daysBetween(period.period_end, today) ?? 0;
+    return outstanding > 0 ? [{
+      insurer: insurerNames.get(period.insurance_company_id) || "Unknown insurer",
+      claimsMonth: period.period_start.slice(0, 7),
+      outstanding,
+      daysOutstanding,
+      ageBand: ageBand(daysOutstanding),
+      taxBasis,
+    }] : [];
+  });
+
+  const legacyOutstandingFollowUp = input.outstandingPeriods.flatMap((period) => {
+    const key = `${period.insurance_company_id}:${monthKey(period.period_year, period.period_month)}`;
+    if (cycleKeys.has(key)) return [];
     const outstanding = number(period.outstanding_amount);
+    knownOutstandingInsurers.add(period.insurance_company_id);
     const daysOutstanding = daysBetween(
       new Date(Date.UTC(period.period_year, period.period_month, 0)).toISOString().slice(0, 10),
       today,
     ) ?? 0;
-    return {
+    return outstanding > 0 ? [{
       insurer: insurerNames.get(period.insurance_company_id) || "Unknown insurer",
       claimsMonth: monthKey(period.period_year, period.period_month),
       outstanding,
       daysOutstanding,
       ageBand: ageBand(daysOutstanding),
-      taxBasis: period.outstanding_status === "actual" ? "Actual WHT" : period.outstanding_status === "provisional" ? "Provisional WHT" : "Unknown WHT basis",
-    };
-  }).filter((row) => row.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding);
+      taxBasis: period.outstanding_status === "actual" ? "Actual WHT (legacy view)" : period.outstanding_status === "provisional" ? "Provisional WHT (legacy view)" : "Legacy view — basis unknown",
+    }] : [];
+  });
+  const allOutstandingFollowUp = [...outstandingFollowUp, ...legacyOutstandingFollowUp]
+    .sort((a, b) => b.outstanding - a.outstanding);
 
   const profileNames = new Map(input.profiles.map((profile) => [profile.id, profile.full_name?.trim() || "Staff account"]));
   const staffActivityGroups = new Map<string, { actorId: string; staffName: string; inserts: number; updates: number; records: Set<string>; lastActivity: string }>();
@@ -168,5 +210,5 @@ export function buildOperationalReportData(input: {
     lastActivity: row.lastActivity,
   })).sort((a, b) => (b.inserts + b.updates) - (a.inserts + a.updates));
 
-  return { rejectionReasons, insurerPerformance, settlementDelays, outstandingFollowUp, staffActivity };
+  return { rejectionReasons, insurerPerformance, settlementDelays, outstandingFollowUp: allOutstandingFollowUp, staffActivity };
 }
