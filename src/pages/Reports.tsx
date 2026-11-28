@@ -588,7 +588,7 @@ export default function Reports() {
               <h3 className="font-heading font-semibold">{periodLabel} — Claims-Cycle Settlement Reconciliation</h3>
               {settlementCycleReportUnavailable
                 ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">The settlement-period database source is unavailable. No reconciliation totals are being represented as zero.</div>
-                : <SettlementReconciliationReport periods={settlementCycleSourceRows as any} insurers={insurers || []} />}
+                : <SettlementReconciliationReport periods={settlementCycleSourceRows} insurers={insurers || []} />}
             </div>
           </TabsContent>
 
