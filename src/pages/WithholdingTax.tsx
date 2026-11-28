@@ -186,7 +186,7 @@ export default function WithholdingTax() {
           {receiptFeatureEnabled && canWriteReceipts && <Button onClick={() => setReceiptDialogOpen(true)} disabled={!receiptEligiblePeriods.length}>Record WHT certificate</Button>}
         </div>
         {!receiptFeatureEnabled ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Certificate capture is implemented but is not enabled in this environment until its database migration has passed release checks.</p>
-          : taxReceiptsError ? <p role="alert" className="text-sm text-destructive">WHT certificate history is unavailable: {taxReceiptsError.message}</p>
+          : taxReceiptsError ? <p role="alert" className="text-sm text-destructive">WHT certificate history is unavailable: {taxReceiptsError instanceof Error ? taxReceiptsError.message : "The certificate table could not be read."}</p>
           : <div className="table-scroll"><table className="data-table min-w-[850px]"><thead><tr><th>Claims period</th><th>Insurance company</th><th>Certificate reference</th><th>Certificate date</th><th>Date received</th><th className="text-right">Tax credit (GH¢)</th></tr></thead><tbody>
             {(taxReceipts || []).map((receipt: any) => {
               const period = receiptEligiblePeriods.find((row) => row.id === receipt.settlement_period_id);
