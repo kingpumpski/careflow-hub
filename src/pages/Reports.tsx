@@ -39,7 +39,7 @@ export default function Reports() {
   const settlementReportUnavailable = (
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
-  ) && activeReport !== "income";
+  ) && activeReport !== "income" && activeReport !== "receipts";
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
@@ -222,6 +222,12 @@ export default function Reports() {
   const grandPaid = reportData.reduce((s, r) => s + r.paid, 0);
   const grandTax = reportData.reduce((s, r) => s + r.tax, 0);
   const grandOutstanding = reportData.reduce((s, r) => s + r.outstanding, 0);
+  const grandApprovedGross = reportData.length > 0 && reportData.every((r) => r.approvedGross != null)
+    ? reportData.reduce((sum, r) => sum + Number(r.approvedGross || 0), 0)
+    : null;
+  const grandApprovalVariance = reportData.length > 0 && reportData.every((r) => r.approvalVariance != null)
+    ? reportData.reduce((sum, r) => sum + Number(r.approvalVariance || 0), 0)
+    : null;
 
   const handlePrint = (title: string) => {
     if (settlementReportUnavailable) return;
@@ -276,7 +282,7 @@ export default function Reports() {
 
   const handleExportPDF = () => {
     if (settlementReportUnavailable) return;
-    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : "Claim Aging";
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
     let columns: string[] = [];
@@ -304,6 +310,15 @@ export default function Reports() {
           row.tax,
         ]),
       ];
+    } else if (activeReport === "receipts") {
+      columns = ["Insurance Company", "Payment Month", "Cash Received (GHS)", "Payment Entries"];
+      data = receiptMonthData.map((entry) => [
+        (insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer",
+        `${monthNames[entry.receipt_month_number]} ${entry.receipt_year}`,
+        entry.net_cash_received,
+        entry.payment_count,
+      ]);
+      data.push(["Grand Total", "", receiptMonthData.reduce((sum, entry) => sum + entry.net_cash_received, 0), receiptMonthData.reduce((sum, entry) => sum + entry.payment_count, 0)]);
     } else if (activeReport === "aging") {
       columns = ["Aging Bucket", "Outstanding (GHS)"];
       data = [["0–30 days", agingData.b30], ["31–60 days", agingData.b60], ["61–90 days", agingData.b90], ["91–120 days", agingData.b120], ["120+ days", agingData.b120plus]];
@@ -348,6 +363,19 @@ export default function Reports() {
           "WHT Applied (GHS)": row.tax,
         })),
       ];
+    } else if (activeReport === "receipts") {
+      rows = receiptMonthData.map((entry) => ({
+        "Insurance Company": (insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer",
+        "Payment Month": `${monthNames[entry.receipt_month_number]} ${entry.receipt_year}`,
+        "Cash Received (GHS)": entry.net_cash_received,
+        "Payment Entries": entry.payment_count,
+      }));
+      rows.push({
+        "Insurance Company": "Grand Total",
+        "Payment Month": "",
+        "Cash Received (GHS)": receiptMonthData.reduce((sum, entry) => sum + entry.net_cash_received, 0),
+        "Payment Entries": receiptMonthData.reduce((sum, entry) => sum + entry.payment_count, 0),
+      });
     } else if (activeReport === "aging") {
       rows = [{ "Aging Bucket": "0–30 days", "Outstanding": agingData.b30 }, { "Aging Bucket": "31–60 days", "Outstanding": agingData.b60 }, { "Aging Bucket": "61–90 days", "Outstanding": agingData.b90 }, { "Aging Bucket": "91–120 days", "Outstanding": agingData.b120 }, { "Aging Bucket": "120+ days", "Outstanding": agingData.b120plus }];
       rows.push({ "Aging Bucket": "Total Outstanding", "Outstanding": Object.values(agingData).reduce((sum, value) => sum + value, 0) });
@@ -393,6 +421,7 @@ export default function Reports() {
           <TabsTrigger value="receivables">Outstanding Receivables</TabsTrigger>
           <TabsTrigger value="tax">Tax Liability</TabsTrigger>
           <TabsTrigger value="aging">Claim Aging</TabsTrigger>
+          <TabsTrigger value="receipts">Cash Receipts by Month</TabsTrigger>
         </TabsList>
 
         <div id="report-content" className="mt-4">
@@ -410,6 +439,8 @@ export default function Reports() {
                   <SortableHeader label="Company" sortKey="company" currentSort={sort} onSort={handleSort} />
                   <SortableHeader label="Submitted" sortKey="submitted" currentSort={sort} onSort={handleSort} />
                   <SortableHeader label="Rejected" sortKey="rejected" currentSort={sort} onSort={handleSort} />
+                  <th>Approved Gross</th>
+                  <th>Approval Variance</th>
                   <SortableHeader label="Net Claim" sortKey="netClaim" currentSort={sort} onSort={handleSort} />
                   <SortableHeader label="Paid" sortKey="paid" currentSort={sort} onSort={handleSort} />
                   <SortableHeader label="WHT" sortKey="tax" currentSort={sort} onSort={handleSort} />
@@ -421,16 +452,18 @@ export default function Reports() {
                       <td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color || "#3b82f6" }} />{r.company}</div></td>
                       <td>GH¢ {r.submitted.toLocaleString()}</td>
                       <td className="text-destructive">GH¢ {r.rejected.toLocaleString()}</td>
+                      <td>{r.approvedGross == null ? "—" : `GH¢ ${r.approvedGross.toLocaleString()}`}</td>
+                      <td>{r.approvalVariance == null ? "—" : `GH¢ ${r.approvalVariance.toLocaleString()}`}</td>
                       <td className="font-medium">GH¢ {r.netClaim.toLocaleString()}</td>
                       <td className="text-success">GH¢ {r.paid.toLocaleString()}</td>
                       <td className="text-warning">GH¢ {r.tax.toLocaleString()}</td>
                       <td className="text-destructive font-semibold">GH¢ {r.outstanding.toLocaleString()}</td>
                     </tr>
                   ))}
-                  {sortedReport.length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero balance." : "No data for selected period"}</td></tr>}
+                  {sortedReport.length === 0 && <tr><td colSpan={9} className="text-center text-muted-foreground py-8">{settlementReportUnavailable ? "Settlement data is unavailable; this is not a zero balance." : "No data for selected period"}</td></tr>}
                 </tbody>
                 {sortedReport.length > 0 && (
-                  <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>GH¢ {grandSubmitted.toLocaleString()}</td><td className="text-destructive">GH¢ {grandRejected.toLocaleString()}</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td></tr></tfoot>
+                  <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>GH¢ {grandSubmitted.toLocaleString()}</td><td className="text-destructive">GH¢ {grandRejected.toLocaleString()}</td><td>{grandApprovedGross == null ? "—" : `GH¢ ${grandApprovedGross.toLocaleString()}`}</td><td>{grandApprovalVariance == null ? "—" : `GH¢ ${grandApprovalVariance.toLocaleString()}`}</td><td>GH¢ {grandNet.toLocaleString()}</td><td className="text-success">GH¢ {grandPaid.toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td><td className="text-destructive">GH¢ {grandOutstanding.toLocaleString()}</td></tr></tfoot>
                 )}
               </table>
             </div>
@@ -489,23 +522,51 @@ export default function Reports() {
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {taxLiabilityData.netLiability.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Net Tax Liability</p></div>
               </div>
               <table className="data-table">
-                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>WHT Amount (GHS)</th></tr></thead>
+                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Applied (GHS)</th></tr></thead>
                 <tbody>
-                  {settlementReportUnavailable && <tr><td colSpan={5} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
+                  {settlementReportUnavailable && <tr><td colSpan={7} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
                     <tr key={r.company} className="hover:bg-muted/50 transition-colors">
                       <td className="font-medium"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color || "#3b82f6" }} />{r.company}</div></td>
                       <td>{r.taxBasisLabel}</td>
                       <td>{r.taxBasisAmount == null ? "—" : `GH¢ ${r.taxBasisAmount.toLocaleString()}`}</td>
                       <td>{r.taxRate == null ? "—" : `${(r.taxRate * 100).toFixed(2)}%`}</td>
+                      <td>GH¢ {r.provisionalTax.toLocaleString()}</td>
+                      <td>GH¢ {r.actualTax.toLocaleString()}</td>
                       <td className="font-semibold text-warning">GH¢ {r.tax.toLocaleString()}</td>
                     </tr>
                   ))}
-                  {!settlementReportUnavailable && sortedReport.filter(r => r.tax > 0).length === 0 && <tr><td colSpan={5} className="text-center text-muted-foreground py-6">No withholding tax data for the selected period.</td></tr>}
+                  {!settlementReportUnavailable && sortedReport.filter(r => r.tax > 0).length === 0 && <tr><td colSpan={7} className="text-center text-muted-foreground py-6">No withholding tax data for the selected period.</td></tr>}
                 </tbody>
                 {sortedReport.filter(r => r.tax > 0).length > 0 && (
-                  <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>—</td><td>—</td><td>—</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
+                  <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>—</td><td>—</td><td>—</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
                 )}
+              </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="receipts">
+            <div className="stat-card">
+              <h3 className="font-heading font-semibold mb-2">{periodLabel} — Cash Receipts by Payment Month</h3>
+              <p className="text-sm text-muted-foreground mb-4">Cash is grouped by the recorded payment date and insurer. This report does not infer claims-cycle settlement or actual WHT receipt dates.</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">GH¢ {receiptMonthData.reduce((sum, entry) => sum + entry.net_cash_received, 0).toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Cash Received</p></div>
+                <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">{receiptMonthData.reduce((sum, entry) => sum + entry.payment_count, 0).toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Payment Entries</p></div>
+              </div>
+              <table className="data-table">
+                <thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received (GHS)</th><th>Payment Entries</th></tr></thead>
+                <tbody>
+                  {receiptMonthData.map((entry) => (
+                    <tr key={`${entry.insurance_company_id}:${entry.receipt_month}`}>
+                      <td className="font-medium">{(insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer"}</td>
+                      <td>{monthNames[entry.receipt_month_number]} {entry.receipt_year}</td>
+                      <td className="text-success font-semibold">GH¢ {entry.net_cash_received.toLocaleString()}</td>
+                      <td>{entry.payment_count}</td>
+                    </tr>
+                  ))}
+                  {receiptMonthData.length === 0 && <tr><td colSpan={4} className="text-center text-muted-foreground py-8">No payment records for the selected period.</td></tr>}
+                </tbody>
+                {receiptMonthData.length > 0 && <tfoot><tr className="font-bold bg-muted/30"><td>Grand Total</td><td>—</td><td>GH¢ {receiptMonthData.reduce((sum, entry) => sum + entry.net_cash_received, 0).toLocaleString()}</td><td>{receiptMonthData.reduce((sum, entry) => sum + entry.payment_count, 0)}</td></tr></tfoot>}
               </table>
             </div>
           </TabsContent>
