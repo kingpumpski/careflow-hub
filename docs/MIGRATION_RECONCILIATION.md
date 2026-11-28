@@ -676,3 +676,8 @@ The reconciliation audit runner now defaults to `docs/MIGRATION_LEDGER_SNAPSHOT_
 ## Report source release update — 2026-11-28
 
 The claims-cycle Settlement Reconciliation report merged in PR #143 (`8c62f9710b7fa4c9bae47c1a4927496306ccf14e`). It uses the existing settlement-period source and does not add or apply a production migration. The current Operational Performance report branch is also source-only. No production schema, data, migration-ledger or permission changes were made.
+
+
+## Operational report merge — 2026-11-28
+
+PR #144 merged as `42b0f5c0f23bf47acc878042b20aa976122c9a2a`. It adds operational performance reporting against existing claims, payments, settlement-period, outstanding-period and audit-log sources. No production migration was added or applied. The production migration ledger and provenance blockers remain unchanged.
