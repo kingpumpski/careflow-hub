@@ -37,7 +37,7 @@ function safeFilename(value: string): string {
   return value.trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "claim";
 }
 
-export async function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData, letterhead: LetterheadConfig = {}): Promise<void> {
+export async function buildClaimDiagnosisDraftPdfBlob(draft: ClaimDiagnosisPdfData, letterhead: LetterheadConfig = {}): Promise<{ blob: Blob; fileName: string }> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 15;
   const workflow = draft.workflow_type === "rejected_claim" ? "Rejected claim response" : "Claim update";
@@ -141,5 +141,17 @@ export async function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData,
   }
 
   const reference = safeFilename(String(draft.claim_number || draft.id || "claim"));
-  doc.save(`claim-review-${reference}.pdf`);
+  return { blob: doc.output("blob"), fileName: `claim-review-${reference}.pdf` };
+}
+
+export async function exportClaimDiagnosisDraftPdf(draft: ClaimDiagnosisPdfData, letterhead: LetterheadConfig = {}): Promise<void> {
+  const { blob, fileName } = await buildClaimDiagnosisDraftPdfBlob(draft, letterhead);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
