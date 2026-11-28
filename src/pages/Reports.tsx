@@ -31,6 +31,7 @@ export default function Reports() {
 
   const { data: claims } = useSupabaseQuery("claims");
   const canReadAudit = can("audit.read");
+  const canReadClaims = can("claims.read");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
@@ -355,11 +356,11 @@ export default function Reports() {
     } else if (activeReport === "operations") {
       columns = ["Report Area", "Item", "Count / Days", "Amount (GHS)", "Details"];
       data = [
-        ...operationalReportData.rejectionReasons.map((row) => ["Rejection Analysis", row.category, row.count, row.amount, row.reason]),
-        ...operationalReportData.insurerPerformance.map((row) => ["Insurer Performance", row.insurer, row.claimsCount, row.submitted, `Rejected ${row.rejected}; linked cash ${row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}`]),
-        ...operationalReportData.settlementDelays.map((row) => ["Settlement Delays", `${row.insurer} — ${row.claimsMonth}`, row.daysPending ?? row.daysToAdvice ?? "—", "—", `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}`]),
-        ...operationalReportData.outstandingFollowUp.map((row) => ["Outstanding Follow-up", `${row.insurer} — ${row.claimsMonth}`, row.daysOutstanding, row.outstanding, `${row.ageBand}; ${row.taxBasis}`]),
-        ...(canReadAudit ? operationalReportData.staffActivity.map((row) => ["Staff Claims Activity", row.staffName, row.distinctClaimsTouched, "—", `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}`]) : []),
+        ...(canReadClaims ? operationalReportData.rejectionReasons.map((row) => ["Rejection Analysis", row.category, row.count, row.amount, row.reason]) : [["Rejection Analysis", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(canReadClaims ? operationalReportData.insurerPerformance.map((row) => ["Insurer Performance", row.insurer, row.claimsCount, row.submitted, `Claims cycles ${row.periodCount}; rejected ${row.rejected}; cash ${row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}`]) : [["Insurer Performance", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(settlementPeriodsError ? [["Settlement Delays", "Source unavailable", "—", "—", "Settlement-period source could not be loaded"]] : operationalReportData.settlementDelays.map((row) => ["Settlement Delays", `${row.insurer} — ${row.claimsMonth}`, row.daysPending ?? row.daysToAdvice ?? "—", "—", `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}`])),
+        ...(canReadClaims ? (outstandingPeriodsError ? [["Outstanding Follow-up", "Source unavailable", "—", "—", "Outstanding-period source could not be loaded"]] : operationalReportData.outstandingFollowUp.map((row) => ["Outstanding Follow-up", `${row.insurer} — ${row.claimsMonth}`, row.daysOutstanding, row.outstanding, `${row.ageBand}; ${row.taxBasis}`])) : [["Outstanding Follow-up", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(!canReadAudit ? [["Staff Claims Activity", "Access restricted", "—", "—", "Requires audit.read"]] : auditLogsError ? [["Staff Claims Activity", "Source unavailable", "—", "—", "Audit source could not be loaded"]] : operationalReportData.staffActivity.map((row) => ["Staff Claims Activity", row.staffName, row.distinctClaimsTouched, "—", `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}`])),
       ];
     } else if (activeReport === "settlement") {
       columns = ["Claims Cycle", "Insurer", "Status", "Submitted (GHS)", "Approved Gross (GHS)", "Rejected (GHS)", "Approval Variance (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "Cash Received (GHS)", "Approved Unpaid (GHS)", "Advice Reference", "Advice Date", "Receipt Date"];
@@ -424,11 +425,11 @@ export default function Reports() {
       ];
     } else if (activeReport === "operations") {
       rows = [
-        ...operationalReportData.rejectionReasons.map((row) => ({ "Report Area": "Rejection Analysis", "Item": row.category, "Count / Days": row.count, "Amount (GHS)": row.amount, "Details": row.reason })),
-        ...operationalReportData.insurerPerformance.map((row) => ({ "Report Area": "Insurer Performance", "Item": row.insurer, "Count / Days": row.claimsCount, "Amount (GHS)": row.submitted, "Details": `Rejected ${row.rejected}; linked cash ${row.paid}; balance ${row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}` })),
-        ...operationalReportData.settlementDelays.map((row) => ({ "Report Area": "Settlement Delays", "Item": `${row.insurer} — ${row.claimsMonth}`, "Count / Days": row.daysPending ?? row.daysToAdvice, "Amount (GHS)": null, "Details": `${row.status}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}` })),
-        ...operationalReportData.outstandingFollowUp.map((row) => ({ "Report Area": "Outstanding Follow-up", "Item": `${row.insurer} — ${row.claimsMonth}`, "Count / Days": row.daysOutstanding, "Amount (GHS)": row.outstanding, "Details": `${row.ageBand}; ${row.taxBasis}` })),
-        ...(canReadAudit ? operationalReportData.staffActivity.map((row) => ({ "Report Area": "Staff Claims Activity", "Item": row.staffName, "Count / Days": row.distinctClaimsTouched, "Amount (GHS)": null, "Details": `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}` })) : []),
+        ...(canReadClaims ? operationalReportData.rejectionReasons.map((row) => ({ "Report Area": "Rejection Analysis", "Item": row.category, "Count / Days": row.count, "Amount (GHS)": row.amount, "Details": row.reason })) : [{ "Report Area": "Rejection Analysis", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(canReadClaims ? operationalReportData.insurerPerformance.map((row) => ({ "Report Area": "Insurer Performance", "Item": row.insurer, "Count / Days": row.claimsCount, "Amount (GHS)": row.submitted, "Details": `Cycles ${row.periodCount}; rejected ${row.rejected}; cash ${row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}` })) : [{ "Report Area": "Insurer Performance", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(settlementPeriodsError ? [{ "Report Area": "Settlement Delays", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Settlement-period source could not be loaded" }] : operationalReportData.settlementDelays.map((row) => ({ "Report Area": "Settlement Delays", "Item": `${row.insurer} — ${row.claimsMonth}`, "Count / Days": row.daysPending ?? row.daysToAdvice, "Amount (GHS)": null, "Details": `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}` }))),
+        ...(canReadClaims ? (outstandingPeriodsError ? [{ "Report Area": "Outstanding Follow-up", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Outstanding-period source could not be loaded" }] : operationalReportData.outstandingFollowUp.map((row) => ({ "Report Area": "Outstanding Follow-up", "Item": `${row.insurer} — ${row.claimsMonth}`, "Count / Days": row.daysOutstanding, "Amount (GHS)": row.outstanding, "Details": `${row.ageBand}; ${row.taxBasis}` }))) : [{ "Report Area": "Outstanding Follow-up", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(!canReadAudit ? [{ "Report Area": "Staff Claims Activity", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires audit.read" }] : auditLogsError ? [{ "Report Area": "Staff Claims Activity", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Audit source could not be loaded" }] : operationalReportData.staffActivity.map((row) => ({ "Report Area": "Staff Claims Activity", "Item": row.staffName, "Count / Days": row.distinctClaimsTouched, "Amount (GHS)": null, "Details": `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}` }))),
       ];
     } else if (activeReport === "settlement") {
       rows = settlementCycleRows.map((row) => ({
@@ -643,7 +644,7 @@ export default function Reports() {
                 auditLogs={operationalAuditLogs}
                 profiles={profiles || []}
                 canReadAudit={canReadAudit}
-                canReadClaims={can("claims.read")}
+                canReadClaims={canReadClaims}
                 settlementSourceUnavailable={Boolean(settlementPeriodsError)}
                 outstandingSourceUnavailable={Boolean(outstandingPeriodsError)}
                 auditSourceUnavailable={Boolean(auditLogsError)}
