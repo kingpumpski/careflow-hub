@@ -49,6 +49,22 @@ export async function buildPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudio
 }
 
 export async function buildPreAuthPdfFromSnapshot(snapshot: PreAuthFrozenSnapshot) { return buildPreAuthPdf(preAuthPdfDataFromSnapshot(snapshot), frozenSnapshotItems(snapshot)); }
+
+function preAuthPdfFileName(data: PreAuthPdfData) {
+  const safe = (data.patientName || "request").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  return `${data.requestNumber || "preauth"}-${safe || "request"}.pdf`;
+}
+
+export async function buildPreAuthPdfBlob(data: PreAuthPdfData, items: PreAuthStudioItem[]) {
+  const doc = await buildPreAuthPdf(data, items);
+  return { blob: doc.output("blob"), fileName: preAuthPdfFileName(data) };
+}
+
+export async function buildPreAuthPdfBlobFromSnapshot(snapshot: PreAuthFrozenSnapshot) {
+  const data = preAuthPdfDataFromSnapshot(snapshot);
+  const doc = await buildPreAuthPdfFromSnapshot(snapshot);
+  return { blob: doc.output("blob"), fileName: preAuthPdfFileName(data) };
+}
 export async function downloadPreAuthPdf(data: PreAuthPdfData, items: PreAuthStudioItem[]) { const doc = await buildPreAuthPdf(data, items); const safe = (data.patientName || "request").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase(); doc.save(`${data.requestNumber || "preauth"}-${safe}.pdf`); }
 export async function downloadPreAuthPdfFromSnapshot(snapshot: PreAuthFrozenSnapshot) { const data = preAuthPdfDataFromSnapshot(snapshot); const doc = await buildPreAuthPdfFromSnapshot(snapshot); const safe = (data.patientName || "request").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase(); doc.save(`${data.requestNumber || "preauth"}-${safe}.pdf`); }
 export async function preAuthPdfDataUri(data: PreAuthPdfData, items: PreAuthStudioItem[]) { const doc = await buildPreAuthPdf(data, items); return doc.output("datauristring"); }
