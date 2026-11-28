@@ -246,6 +246,7 @@ SELECT
   )::numeric AS outstanding_amount,
   CASE
     WHEN payment_entry_count > 0
+      AND actual_withholding_tax_entry_count > 0
       AND (actual_withholding_tax_amount = 0 OR certified_withholding_tax_amount >= actual_withholding_tax_amount)
       THEN 'actual'::text
     WHEN certified_withholding_tax_amount > 0 THEN 'partial'::text
