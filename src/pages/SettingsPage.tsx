@@ -18,7 +18,7 @@ const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string;
   custom: { host: "", port: "587", secure: "tls", hint: "Enter your own mail server details." },
 };
 
-export default function SettingsPage() {
+export default function SettingsPage({ letterheadOnly = false }: { letterheadOnly?: boolean } = {}) {
   const { data: settings, refetch } = useSupabaseQuery("system_settings");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -210,21 +210,21 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="page-header">
-        <h1 className="page-title">System Settings</h1>
-        <p className="page-description">Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></p>
+        <h1 className="page-title">{letterheadOnly ? "Letterhead Designer" : "System Settings"}</h1>
+        <p className="page-description">{letterheadOnly ? "Design and preview the branding applied to company reports, statements and authorization documents." : <>Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></>}</p>
       </div>
 
       <Tabs defaultValue="provider">
-        <TabsList>
+        {!letterheadOnly && <TabsList>
           <TabsTrigger value="provider">Company &amp; Letterhead</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax Configuration</TabsTrigger>
           <TabsTrigger value="email">Email (SMTP)</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
-        </TabsList>
+        </TabsList>}
 
         <TabsContent value="provider" className="space-y-4 mt-4">
-          <div className="stat-card space-y-4">
+          <div className={letterheadOnly ? "hidden" : "stat-card space-y-4"}>
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <Building2 className="w-4 h-4 text-primary" />
               Provider / Company Information
@@ -239,7 +239,7 @@ export default function SettingsPage() {
             <Button size="sm" onClick={handleSaveProvider}>Save Provider Info</Button>
           </div>
 
-          <div className="stat-card space-y-4">
+          <div className={letterheadOnly ? "hidden" : "stat-card space-y-4"}>
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <Landmark className="w-4 h-4 text-primary" />
               Banking Partners
