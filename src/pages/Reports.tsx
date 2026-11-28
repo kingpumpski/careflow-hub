@@ -43,16 +43,6 @@ export default function Reports() {
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
   ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement";
-  const settlementCycleSourceRows = useMemo(() => {
-    const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
-    return periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
-  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
-  const settlementCycleRows = useMemo(
-    () => buildSettlementReconciliationRows(settlementCycleSourceRows),
-    [settlementCycleSourceRows],
-  );
-  const settlementCycleReportUnavailable = Boolean(settlementPeriodsError);
-
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
@@ -70,6 +60,16 @@ export default function Reports() {
     }
     return filtered;
   };
+
+  const settlementCycleSourceRows = useMemo(() => {
+    const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
+    return periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
+  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  const settlementCycleRows = useMemo(
+    () => buildSettlementReconciliationRows(settlementCycleSourceRows),
+    [settlementCycleSourceRows],
+  );
+  const settlementCycleReportUnavailable = Boolean(settlementPeriodsError);
 
   const reportData = useMemo(() => {
     const periodRows = filterByPeriod(outstandingPeriods || [], "period_year", "period_month");
