@@ -189,6 +189,8 @@ DECLARE
   v_admin_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000001';
   v_member_id uuid := '8c9a1b2c-3d4e-4f50-8123-000000000002';
   v_owner_count integer;
+  v_security_event_id uuid;
+  v_security_notification_count integer;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.facility_memberships fm
@@ -234,6 +236,66 @@ BEGIN
       AND al.changed_by = v_admin_id
   ) THEN
     RAISE EXCEPTION 'Membership creation must emit an audit record';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.user_id = v_member_id
+      AND n.facility_id = v_facility_id
+      AND n.entity_type = 'facility_memberships'
+      AND n.source_audit_log_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'A newly added facility member must receive a notification from the row audit event';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM public.notifications n
+    WHERE n.user_id = v_member_id
+      AND n.facility_id = v_facility_id
+      AND n.entity_type = 'facility_memberships'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'One membership mutation must produce exactly one notification per affected user';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.user_id = v_admin_id
+      AND n.entity_type = 'facilities'
+      AND n.facility_id = v_facility_id
+      AND n.source_audit_log_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'The facility creator must receive a facility creation notification';
+  END IF;
+
+  INSERT INTO public.security_audit_log (actor_user_id, action, target_user_id, metadata)
+  VALUES (v_admin_id, 'facility_member_access_changed', v_member_id, '{"test":"synthetic fixture"}'::jsonb)
+  RETURNING id INTO v_security_event_id;
+
+  SELECT count(*) INTO v_security_notification_count
+  FROM public.notifications n
+  WHERE n.entity_type = 'security_audit_log'
+    AND n.entity_id = v_security_event_id::text
+    AND n.source_audit_log_id = v_security_event_id
+    AND n.user_id IN (v_admin_id, v_member_id);
+
+  IF v_security_notification_count <> 2 THEN
+    RAISE EXCEPTION 'Security audit events must notify both the affected user and administrative actor; found %', v_security_notification_count;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.entity_type = 'security_audit_log'
+      AND n.entity_id = v_security_event_id::text
+      AND n.user_id = v_member_id
+      AND n.action_url = '/profile'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.entity_type = 'security_audit_log'
+      AND n.entity_id = v_security_event_id::text
+      AND n.user_id = v_admin_id
+      AND n.action_url = '/audit-trail'
+  ) THEN
+    RAISE EXCEPTION 'Security notifications must route affected accounts and administrators to their appropriate sections';
   END IF;
 END;
 $persisted_state$;

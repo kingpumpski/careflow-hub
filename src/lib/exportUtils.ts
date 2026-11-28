@@ -250,6 +250,10 @@ async function buildPreAuthDoc(preauth: any, items: any[], companyInfo: Letterhe
   };
   addLine("Patient:", preauth.patient_name || "—");
   addLine("Insurance:", preauth.insurance_name || "—");
+  if (preauth.insurance_address) addLine("Insurer address:", preauth.insurance_address);
+  if (preauth.insurance_contact_person) addLine("Insurer contact:", preauth.insurance_contact_person);
+  if (preauth.insurance_phone) addLine("Insurer telephone:", preauth.insurance_phone);
+  if (preauth.insurance_email) addLine("Insurer email:", preauth.insurance_email);
   addLine("Doctor:", preauth.doctor_name || "—");
   addLine("Diagnosis:", preauth.diagnosis || "—");
   addLine("Date:", preauth.procedure_date || "—");
@@ -275,9 +279,53 @@ async function buildPreAuthDoc(preauth: any, items: any[], companyInfo: Letterhe
   return doc;
 }
 
-export async function exportReportPDF(title: string, data: any[], columns: string[], companyInfo: LetterheadConfig) {
+export type ReportCounterparty = {
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  contactPerson?: string | null;
+};
+
+export async function exportReportPDF(
+  title: string,
+  data: any[],
+  columns: string[],
+  companyInfo: LetterheadConfig,
+  counterparty?: ReportCounterparty,
+) {
   const doc = new jsPDF("landscape");
-  const y = await drawLetterhead(doc, companyInfo || {}, title);
+  let y = await drawLetterhead(doc, companyInfo || {}, title);
+
+  if (counterparty?.name) {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const details = [
+      counterparty.address,
+      counterparty.contactPerson ? `Attn: ${counterparty.contactPerson}` : null,
+      counterparty.phone ? `Tel: ${counterparty.phone}` : null,
+      counterparty.email,
+    ].filter(Boolean).join("   •   ");
+    const nameLines = doc.splitTextToSize(counterparty.name, pageWidth - 42);
+    const detailLines = details ? doc.splitTextToSize(details, pageWidth - 42) : [];
+    const blockHeight = 12 + nameLines.length * 5 + detailLines.length * 4;
+    doc.setFillColor(246, 248, 252);
+    doc.roundedRect(14, y, pageWidth - 28, blockHeight, 2, 2, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text("DOCUMENT FOR", 20, y + 5);
+    doc.setFontSize(10);
+    doc.setTextColor(35);
+    doc.text(nameLines, 20, y + 10);
+    if (detailLines.length) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(90);
+      doc.text(detailLines, 20, y + 10 + nameLines.length * 5);
+    }
+    y += blockHeight + 4;
+  }
+
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, y);

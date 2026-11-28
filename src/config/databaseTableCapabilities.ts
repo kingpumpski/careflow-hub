@@ -25,6 +25,7 @@ const RPC_CAPABILITIES: Readonly<Record<string, DatabaseCapabilityKey>> = Object
   add_facility_member_by_email: "facilityAdministration",
   deactivate_facility_member: "facilityAdministration",
   set_facility_provisional_wht_rate: "facilityAdministration",
+  get_report_letterhead_settings: "documentLetterheadSettings",
 });
 
 export function getDatabaseCapabilityForResource(resource: string): DatabaseCapabilityKey | null {

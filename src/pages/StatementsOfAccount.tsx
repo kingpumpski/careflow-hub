@@ -9,10 +9,10 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLetterheadConfig } from "@/lib/letterhead";
-import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import { buildCompanyStatement, buildStatementReconciliation, formatStatementAmount, type StatementClaimRow, type StatementLedgerEntry, type StatementSettlementPeriod, type StatementTaxRow } from "@/modules/statements/statementOfAccount";
 import { exportCompanyStatementPDF } from "@/modules/statements/exportStatementPdf";
 import { toast } from "@/hooks/use-toast";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 
 const today = new Date().toISOString().slice(0, 10);
 const yearStart = `${new Date().getFullYear()}-01-01`;
@@ -101,19 +101,7 @@ export default function StatementsOfAccount() {
     retry: 1,
   });
 
-  const { data: settings } = useQuery({
-    queryKey: ["statement-letterhead-settings", canManageSettings],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_report_letterhead_settings");
-      if (!error) return data ?? [];
-      if (!isMissingLetterheadSettingsRpc(error)) throw error;
-      if (!canManageSettings) return [];
-      const fallback = await supabase.from("system_settings").select("key, value");
-      if (fallback.error) throw fallback.error;
-      return fallback.data ?? [];
-    },
-    retry: (failureCount, error) => !isMissingLetterheadSettingsRpc(error) && failureCount < 2,
-  });
+  const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: canRead, canManageSettings });
 
   const settingRows = (settings || []) as SettingRow[];
   const companyRows = (companies || []) as unknown as CompanyOption[];

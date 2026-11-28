@@ -19,6 +19,8 @@ import BulkImportDialog from "@/components/shared/BulkImportDialog";
 import { createPreAuthorizationAtomic } from "@/features/preauth/services/preauthStudio.service";
 import { getCareFlowDataMode } from "@/modules/offline/data-mode";
 import { canPersistRemoteUserNotification } from "@/modules/offline/notificationGuard";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 
 const statusStyles: Record<string, string> = {
   Draft: "bg-muted text-muted-foreground border-border", PendingApproval: "bg-warning/10 text-warning border-warning/20", Approved: "bg-success/10 text-success border-success/20", Rejected: "bg-destructive/10 text-destructive border-destructive/20", Completed: "bg-info/10 text-info border-info/20",
@@ -48,20 +50,33 @@ export default function PreAuthorization() {
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: procedures } = useSupabaseQuery("procedures");
   const { data: doctors } = useSupabaseQuery("doctors");
-  const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: letterheadSettings } = useDocumentLetterheadSettings({ canReadDocument: can("preauth.read"), canManageSettings: can("settings.manage") });
   const updateMutation = useSupabaseUpdate("pre_authorizations");
   const insertNotif = useSupabaseInsert("notifications");
 
   const permissionDenied = (action: string) => toast({ title: "Permission denied", description: `You do not have permission to ${action}.`, variant: "destructive" });
   const canTransition = (target: string) => target === "PendingApproval" || target === "Draft" ? canWrite : canApprove;
   const getPatientName = (id: string) => (patients || []).find((p: any) => p.id === id)?.patient_name || "—";
-  const getInsurerName = (id: string) => (insurers || []).find((i: any) => i.id === id)?.company_name || "—";
+  const getInsurer = (id: string) => (insurers || []).find((i: any) => i.id === id);
+  const getInsurerName = (id: string) => getInsurer(id)?.company_name || "—";
+  const getInsurerDocumentDetails = (id: string) => {
+    const insurer = getInsurer(id);
+    return {
+      insurance_address: insurer?.address || "",
+      insurance_contact_person: insurer?.contact_person || "",
+      insurance_phone: insurer?.phone || "",
+      insurance_email: insurer?.email || "",
+    };
+  };
   const getProcedureName = (id: string) => (procedures || []).find((p: any) => p.id === id)?.procedure_name || "—";
   const getDoctorName = (id: string) => (doctors || []).find((d: any) => d.id === id)?.doctor_name || "—";
-  const getS = (k: string) => settings?.find?.((s: any) => s.key === k)?.value || "";
+  const getS = (k: string) => letterheadSettings?.find?.((s: any) => s.key === k)?.value || "";
   const companyInfo = buildLetterheadConfig(getS);
 
   const notifyTransition = async (pa: any, newState: string, note?: string) => {
+    // Once database audit fan-out is released, the trigger notifies the actor and
+    // affected facility members. Avoid creating a duplicate client-side message.
+    if (databaseCapabilities.notificationEvents) return;
     const offline = getCareFlowDataMode() === "offline";
     if (!canPersistRemoteUserNotification(user?.id, offline)) return;
     try {
@@ -69,7 +84,6 @@ export default function PreAuthorization() {
         user_id: user!.id,
         title: `Pre-Auth ${newState}`,
         message: `${getPatientName(pa.patient_id)} — ${getInsurerName(pa.insurance_company_id)}${note ? ` (${note})` : ""}`,
-        type: "preauth",
         read: false,
       });
     } catch (error) {
@@ -100,9 +114,9 @@ export default function PreAuthorization() {
     const to = [insurer?.email].filter(Boolean).join(","); const cc = [...((insurer?.additional_emails || []) as string[]), ...((getS("claims_cc_emails") || "").split(",").map((s: string) => s.trim()).filter(Boolean))].join(","); return { to, cc, subject, body };
   };
 
-  const handleSendEmail = async (pa: any) => { setSending(true); try { const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); const docMeta = { ...pa, patient_name: getPatientName(pa.patient_id), insurance_name: getInsurerName(pa.insurance_company_id), doctor_name: getDoctorName(pa.doctor_id) }; const { to, cc, subject, body } = buildEmailDraft(pa); await exportPreAuthPDF(docMeta, itemsData || [], companyInfo); window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank"); toast({ title: "Email draft opened", description: "The PDF was downloaded; attach it before sending. The request was not marked as completed." }); if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } finally { setSending(false); } };
+  const handleSendEmail = async (pa: any) => { setSending(true); try { const { data: itemsData } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); const docMeta = { ...pa, patient_name: getPatientName(pa.patient_id), insurance_name: getInsurerName(pa.insurance_company_id), ...getInsurerDocumentDetails(pa.insurance_company_id), doctor_name: getDoctorName(pa.doctor_id) }; const { to, cc, subject, body } = buildEmailDraft(pa); await exportPreAuthPDF(docMeta, itemsData || [], companyInfo); window.open(`mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank"); toast({ title: "Email draft opened", description: "The PDF was downloaded; attach it before sending. The request was not marked as completed." }); if (viewPreauth?.id === pa.id) await reloadTimeline(pa.id); } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); } finally { setSending(false); } };
   const handleView = async (pa: any) => { setViewPreauth(pa); const { data } = await (supabase.from("preauth_items") as any).select("*").eq("preauth_id", pa.id); setViewItems(data || []); await reloadTimeline(pa.id); };
-  const handleExportPDF = async () => { if (!viewPreauth) return; await exportPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems, companyInfo); };
+  const handleExportPDF = async () => { if (!viewPreauth) return; await exportPreAuthPDF({ ...viewPreauth, patient_name: getPatientName(viewPreauth.patient_id), insurance_name: getInsurerName(viewPreauth.insurance_company_id), ...getInsurerDocumentDetails(viewPreauth.insurance_company_id), doctor_name: getDoctorName(viewPreauth.doctor_id) }, viewItems, companyInfo); };
   const handleStatusUpdate = async (e: React.FormEvent) => { e.preventDefault(); const pa = (preauths || []).find((p: any) => p.id === statusForm.id); if (!pa) return; const success = await handleTransition(pa, statusForm.status, statusForm.note); if (success) setStatusDialogOpen(false); };
 
   if (showForm || editingPreauth) { if (!canWrite) { setShowForm(false); setEditingPreauth(null); permissionDenied("create or edit pre-authorizations"); return null; } return <PreAuthForm onBack={() => { setShowForm(false); setEditingPreauth(null); }} editData={editingPreauth} />; }

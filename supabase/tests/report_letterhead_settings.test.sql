@@ -37,8 +37,11 @@ BEGIN
   IF position('security_internal.get_report_letterhead_settings' in v_public_definition) = 0 THEN
     RAISE EXCEPTION 'The public wrapper must delegate to the private helper';
   END IF;
-  IF position('reports.read' in v_private_definition) = 0 THEN
-    RAISE EXCEPTION 'The private letterhead reader must require reports.read';
+  IF position('reports.read' in v_private_definition) = 0
+     OR position('ledger.read' in v_private_definition) = 0
+     OR position('claims.read' in v_private_definition) = 0
+     OR position('preauth.read' in v_private_definition) = 0 THEN
+    RAISE EXCEPTION 'The private letterhead reader must require an approved document/report permission';
   END IF;
   IF position('provider_name' in v_private_definition) = 0
      OR position('letterhead_footer_note' in v_private_definition) = 0

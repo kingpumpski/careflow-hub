@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { usePermissions } from "@/modules/security/usePermissions";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -19,10 +21,11 @@ interface Row {
 }
 
 export default function ScheduleGenerator() {
+  const { can } = usePermissions();
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: claims } = useSupabaseQuery("claims");
   const { data: payments } = useSupabaseQuery("payments");
-  const { data: settings } = useSupabaseQuery("system_settings");
+  const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const currentYear = new Date().getFullYear();
   const [insurerId, setInsurerId] = useState("all");
@@ -42,9 +45,15 @@ export default function ScheduleGenerator() {
     [settings]
   );
 
-  const insurerName = insurerId === "all"
-    ? "All Insurance Companies"
-    : (insurers || []).find((i: any) => i.id === insurerId)?.company_name || "";
+  const selectedInsurer = insurerId === "all" ? undefined : (insurers || []).find((i: any) => i.id === insurerId);
+  const insurerName = insurerId === "all" ? "All Insurance Companies" : selectedInsurer?.company_name || "";
+  const insurerDocumentDetails = selectedInsurer ? {
+    name: selectedInsurer.company_name,
+    address: selectedInsurer.address,
+    phone: selectedInsurer.phone,
+    email: selectedInsurer.email,
+    contactPerson: selectedInsurer.contact_person,
+  } : undefined;
 
   const rows: Row[] = useMemo(() => {
     const from = Number(fromMonth), to = Number(toMonth);
@@ -134,7 +143,7 @@ export default function ScheduleGenerator() {
         </div>
         <div className="md:col-span-4 flex flex-wrap gap-2">
           <Button onClick={() => setGenerated(true)} className="gap-2"><ClipboardList className="w-4 h-4" />Generate Schedule</Button>
-          <Button variant="outline" disabled={!generated} onClick={() => exportReportPDF(title, pdfBody(), columns, companyInfo)} className="gap-2"><FileDown className="w-4 h-4" />Export PDF</Button>
+          <Button variant="outline" disabled={!generated} onClick={() => exportReportPDF(title, pdfBody(), columns, companyInfo, insurerDocumentDetails)} className="gap-2"><FileDown className="w-4 h-4" />Export PDF</Button>
           <Button variant="outline" disabled={!generated} onClick={() => exportReportExcel(title, excelRows(), "Schedule")} className="gap-2"><FileSpreadsheet className="w-4 h-4" />Export Excel</Button>
           <Button variant="outline" disabled={!generated} onClick={() => exportReportPDF(title, pdfBody(), columns, companyInfo)} className="gap-2"><Printer className="w-4 h-4" />Print</Button>
         </div>
