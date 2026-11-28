@@ -76,7 +76,7 @@ export interface ClaimsScheduleBalanceInput {
   submittedGross: number;
   rejectedGross: number;
   cashReceived: number;
-  confirmedWithholdingTax: number;
+  certifiedWithholdingTax: number;
   approvedGross?: number | null;
 }
 
@@ -85,6 +85,6 @@ export function calculateClaimsScheduleBalance(input: ClaimsScheduleBalanceInput
   const approvedGross = input.approvedGross == null
     ? Math.max(input.submittedGross - input.rejectedGross, 0)
     : Math.max(input.approvedGross, 0);
-  const outstanding = Math.max(approvedGross - input.cashReceived - input.confirmedWithholdingTax, 0);
+  const outstanding = Math.max(approvedGross - input.cashReceived - input.certifiedWithholdingTax, 0);
   return { approvedGross, outstanding };
 }
