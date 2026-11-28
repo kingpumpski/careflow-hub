@@ -3,7 +3,7 @@
 **Snapshot:** 2026-11-28  
 **Repository:** `kingpumpski/careflow-hub`  
 **Production Supabase project:** `jajfdgknctzqypdtvmxo`  
-**Main commit at snapshot:** `1d718f288006a5369fe3d9a853473680d33b2fb7`
+**Main commit at snapshot:** `296af07ff08626f74d7975d112beaa9778a53608`
 
 This register is the current release-control view. A source-code fix, passing CI, or successful GitHub Pages deployment does not clear a production database blocker. A blocker is closed only after the relevant production contract is deployed and verified.
 
@@ -20,6 +20,7 @@ This register is the current release-control view. A source-code fix, passing CI
 | CF-FAC-01 | Facility administration | **BLOCKED** | Base `facilities` and `facility_memberships` tables exist; onboarding/member/WHT RPCs are absent. Existing facility and membership tables currently have no seeded records. | Rehearse RPCs and RLS; verify create-owner, add-member, deactivate-member and facility WHT rate authorization before enabling the feature flag. |
 | CF-NOTIFY-01 | Notification fan-out | **BLOCKED** | `notifications` table exists with the older minimal shape; notification fan-out triggers are not deployed. Recipient-scoped read/update isolation and audit-log read protection pass. | Apply the reconciled notification migration; verify idempotent fan-out, recipient isolation, audit redaction and event routing before enabling notifications. |
 | CF-REPORT-01 | Report letterhead settings RPC | **BLOCKED** | `get_report_letterhead_settings()` is absent in production. Source hook is capability-gated and does not grant ordinary readers broad `system_settings` access. | Deploy and verify allowlisted RPC, SECURITY INVOKER wrapper, permission checks and report PDF output before enabling letterhead flag. |
+| CF-REPORT-02 | Claims-cycle settlement reconciliation report | **SOURCE IMPLEMENTATION IN REVIEW** | The existing reports did not expose a dedicated cycle-by-cycle advice reconciliation view. A new report component and calculation tests are being added in the current PR; production-approved gross and receipt date remain unavailable until the remittance migration is released. | Pass CI and migration tests; verify cycle matching, separate provisional/actual WHT, null-safe historical advice, export output and permission-scoped reads. Keep unknown approved gross/receipt date blank. |
 | CF-DIAG-01 | Claim diagnosis draft persistence | **BLOCKED** | `claim_diagnosis_drafts` is missing. | Deploy facility-scoped RLS and persistence RPC/table; verify save/reload isolation and keep feature disabled until confirmed. |
 | CF-SEC-01 | Security review | **REVIEW REQUIRED** | Existing authenticated-callable SECURITY DEFINER functions, deny-by-default `role_permissions` RLS, and disabled leaked-password protection need evidence-based review. | Review function callers/policies; do not revoke helpers blindly or add broad permission-catalog policies; test password policy and recovery before changing Auth settings. |
 | CF-OPS-01 | Backup and restore prerequisite | **BLOCKED — DEVELOPMENT PAUSED** | Backup development remains explicitly on hold. A verified encrypted backup and restore rehearsal are still mandatory before production schema changes. | Keep backup feature work paused; before production release, obtain a verified backup and complete a disposable restore rehearsal. Do not merge backup PR #128 to bypass this gate. |
@@ -34,6 +35,7 @@ The source Reports page now has these report areas:
 4. Tax Liability — tax base/rate with separate provisional WHT, actual WHT and WHT applied.
 5. Claim Aging — outstanding by age bucket.
 6. Cash Receipts by Month — cash grouped by insurer and recorded payment month.
+7. Settlement Reconciliation — claims-cycle report under implementation in the current PR; it matches advice to the original submitted month and separates submitted gross, approved gross, rejected amount, provisional WHT, actual WHT, cash received, approval variance and approved-but-unpaid balance. It must remain unavailable when the source query fails; missing values are shown as unknown, not zero.
 
 The report screen now includes approved gross and approval variance in the account-balance table when insurer advice is available. The cash-receipts report is derived from the existing `payments` table and remains available independently of the missing remittance ledger/view. It does not treat payment month as the claims cycle and does not infer actual-WHT receipt date. PDF, Excel and print paths were merged in PR #141 as commit `53dbcb4e53a88b0373b8b694b2ba46dd5bedda02`. CI, quality, dependency audit and disposable PostgreSQL migration replay passed on the exact PR head; the merge-commit GitHub Pages deployment and published-site smoke test also passed.
 
@@ -60,3 +62,17 @@ Keep all optional database capabilities disabled until their own production obje
 - Keep the backup feature implementation paused.
 - Do not change the prepared-document/insurer-submission boundary.
 - Do not mark migration versions applied based on filenames, approximate names or disposable test normalization.
+
+
+## Fresh production recheck — 2026-11-28 09:17 UTC
+
+The Supabase migration API was queried again. It still returns 74 migration records, with latest version `20260921160938` (`fix_facility_policy_recursion_runtime`). The repository tree still contains 146 SQL migrations and the three duplicate timestamp groups remain:
+- `20260907140000`: `preauth_atomic_hardening`, `preauth_versions_workflow_hardening`
+- `20260907144000`: `preauth_document_integrity`, `preauth_document_lifecycle`
+- `20260907145000`: `preauth_audit_events`, `preauth_workflow_transitions`
+
+A fresh read-only catalog check reconfirmed that `preauthorization_submissions`, claim-case tables, settlement-exception tables, remittance ledger, receipt-month view and diagnosis-draft table are missing. `claims_settlement_periods` exists with RLS enabled, but it still lacks `approved_gross_amount` and `actual_receipt_date`. The `claims_outstanding_periods` view exists. The live permission catalogue still has no `claims.settlement.read/write` keys. The live finalizer wrapper remains SECURITY DEFINER with an empty search path.
+
+The latest security-advisor read at 09:17 UTC reports the same three categories: one RLS-enabled/no-policy informational finding (`role_permissions`, deny-by-default), five authenticated-callable SECURITY DEFINER functions, and leaked-password protection disabled. No policy, function grant, Auth setting or production object was changed by this inspection.
+
+The new Settlement Reconciliation report is source-only in the current PR. It reads the existing `claims_settlement_periods` table and keeps approved-gross calculations unknown where that historical column is absent. It does not depend on the missing remittance table or view.

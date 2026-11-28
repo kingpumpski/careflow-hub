@@ -1,6 +1,6 @@
 # CareFlow Hub — production migration ledger snapshot
 
-**Captured:** 2026-11-28 (read-only; fresh Supabase migration API inventory)  
+**Captured:** 2026-11-28 09:17 UTC (read-only; refreshed Supabase migration API inventory)  
 **Project:** `jajfdgknctzqypdtvmxo`  
 **Database:** PostgreSQL 17.11, `eu-west-1`  
 **Repository main commit:** `1d718f288006a5369fe3d9a853473680d33b2fb7`

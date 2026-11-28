@@ -30,7 +30,7 @@ const READ_PERMISSIONS_BY_TABLE: Partial<Record<TableName, Permission[]>> = {
   withholding_tax: ["payments.read", "ledger.read", "reports.read"], system_settings: ["settings.manage"],
   diagnosis_codes: ["preauth.read", "claims.read"], procedure_templates: ["preauth.read"], preauth_catalog_items: ["preauth.read", "claims.read"],
   ledger_entries: ["ledger.read", "reports.read"], audit_logs: ["audit.read"], user_roles: ["users.manage"],
-  claims_settlement_periods: ["payments.read", "claims.settlement.read"], claims_settlement_remittances: ["payments.read", "claims.settlement.read"], claims_settlement_receipt_months: ["payments.read", "claims.settlement.read"], settlement_exceptions: ["payments.read", "claims.settlement.read"], settlement_exception_audit_events: ["payments.read", "claims.settlement.read"],
+  claims_settlement_periods: ["payments.read", "claims.settlement.read", "reports.read"], claims_settlement_remittances: ["payments.read", "claims.settlement.read"], claims_settlement_receipt_months: ["payments.read", "claims.settlement.read"], settlement_exceptions: ["payments.read", "claims.settlement.read"], settlement_exception_audit_events: ["payments.read", "claims.settlement.read"],
   claims_outstanding_periods: ["claims.read"],
   claim_diagnosis_drafts: ["claims.read"],
 };
