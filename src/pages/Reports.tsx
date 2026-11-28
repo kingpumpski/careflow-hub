@@ -643,6 +643,7 @@ export default function Reports() {
                 auditLogs={operationalAuditLogs}
                 profiles={profiles || []}
                 canReadAudit={canReadAudit}
+                canReadClaims={can("claims.read")}
                 settlementSourceUnavailable={Boolean(settlementPeriodsError)}
                 outstandingSourceUnavailable={Boolean(outstandingPeriodsError)}
                 auditSourceUnavailable={Boolean(auditLogsError)}
