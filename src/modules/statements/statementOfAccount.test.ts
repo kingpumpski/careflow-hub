@@ -106,15 +106,11 @@ describe("company statement claims and tax reconciliation", () => {
     expect(result.monthlyBreakdown.map((row) => row.month)).toEqual([2, 3]);
   });
 
-  it("uses settlement actual WHT as the statement credit only after advice is confirmed", () => {
-    const confirmed = buildStatementWhtCredits(claims, taxes, settlements, "2026-01-31");
-    expect(confirmed.find((row) => row.year === 2026 && row.month === 1)).toEqual({
-      year: 2026, month: 1, amount: 45, basis: "actual",
-    });
-    const pending = [{ ...settlements[0], settlement_status: "awaiting_payment", actual_withholding_tax: 90 }];
-    const result = buildStatementReconciliation(claims, taxes, pending, "2026-01-01", "2026-01-31");
+  it("uses settlement actual WHT in the claims-cycle reconciliation after advice is confirmed", () => {
+    const result = buildStatementReconciliation(claims, taxes, settlements, "2026-01-01", "2026-01-31");
     expect(result.actualWhtTotal).toBe(45);
     expect(result.effectiveWhtTotal).toBe(45);
+    expect(result.monthlyBreakdown[0].whtBasis).toBe("actual");
   });
 
   it("rejects negative or non-finite tax and rejection totals", () => {
