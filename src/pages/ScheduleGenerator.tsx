@@ -85,16 +85,14 @@ export default function ScheduleGenerator() {
         .reduce((sum: number, period: any) => sum + Number(period.actual_withholding_tax || 0), 0);
       const hasConfirmedSettlementTax = monthlySettlements.some((period: any) =>
         ["payment_advice_received", "reconciled"].includes(period.settlement_status) && period.actual_withholding_tax != null);
-      const settlementProvisionalTax = monthlySettlements.reduce((sum: number, period: any) => sum + Number(period.provisional_withholding_tax || 0), 0);
       const monthlyTaxRows = (withholdingTax || []).filter((tax: any) =>
         Number(tax.year) === Number(year) && Number(tax.month) === m
         && (insurerId === "all" || tax.insurance_company_id === insurerId));
       const actualTaxRows = monthlyTaxRows.filter((tax: any) => tax.is_actual === true);
-      const taxFallback = actualTaxRows.length
-        ? actualTaxRows.reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0)
-        : monthlyTaxRows.reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
-      const wht = hasConfirmedSettlementTax ? confirmedSettlementTax
-        : monthlySettlements.length ? settlementProvisionalTax : taxFallback;
+      const taxFallback = actualTaxRows.reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
+      // Only confirmed actual WHT settles the claim balance. A provisional
+      // estimate is not a payment and must never reduce outstanding claims.
+      const wht = hasConfirmedSettlementTax ? confirmedSettlementTax : taxFallback;
       out.push({
         period: `${MONTHS[m - 1]} ${year}`,
         submitted,
@@ -141,7 +139,7 @@ export default function ScheduleGenerator() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title flex items-center gap-2"><ClipboardList className="w-6 h-6 text-primary" />Schedule Generator</h1>
-        <p className="page-description">Build insurer claim schedules with period-level submitted, rejected, cash-paid and withholding-tax figures. Outstanding = Submitted − Payments − WHT.</p>
+        <p className="page-description">Build insurer claim schedules with period-level submitted, rejected, cash-paid and confirmed withholding-tax figures. Provisional WHT is excluded from settlement credits. Outstanding = Submitted − Payments − Confirmed WHT.</p>
       </div>
 
       <div className="stat-card grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -181,7 +179,7 @@ export default function ScheduleGenerator() {
       {generated && (
         <div className="stat-card overflow-x-auto">
           <h3 className="font-heading font-semibold mb-1">{insurerName}</h3>
-          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Submitted − Payments − WHT · Rejection Rate = Rejected / Submitted × 100</p>
+          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Submitted − Payments − Confirmed WHT · Rejection Rate = Rejected / Submitted × 100</p>
           <table className="data-table min-w-[900px]">
             <thead>
               <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
