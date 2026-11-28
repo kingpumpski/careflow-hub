@@ -18,7 +18,10 @@ export type OperationalSettlementPeriod = {
 };
 export type OperationalOutstandingPeriod = {
   insurance_company_id: string; period_year: number; period_month: number;
-  outstanding_amount: number | string | null; outstanding_status?: string | null;
+  outstanding_amount: number | string | null;
+  paid_amount?: number | string | null;
+  withholding_tax_amount?: number | string | null;
+  outstanding_status?: string | null;
 };
 export type OperationalAuditLog = {
   table_name: string; action: string; record_id: string | null; changed_by: string | null; changed_at: string;
@@ -77,7 +80,7 @@ export function buildOperationalReportData(input: {
       .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
     const netClaim = submitted - rejected;
     const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
-    const viewPaid = financialRows.length
+    const viewPaid = financialRows.some((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
       : null;
     const paid = viewPaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
