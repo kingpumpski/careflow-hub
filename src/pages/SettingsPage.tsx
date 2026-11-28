@@ -120,7 +120,13 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
   const saveSetting = (key: string, value: string) => saveSettings([{ key, value }]);
 
   const saveLetterheadSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
-    if (!databaseCapabilities.facilityLetterheadSettings) return saveSettings(entries);
+    if (!databaseCapabilities.facilityLetterheadSettings) {
+      if (letterheadOnly) {
+        toast({ title: "Facility letterhead release pending", description: "This designer will save company-specific branding after the facility letterhead database migration is released. Shared system branding has not been changed.", variant: "destructive" });
+        return false;
+      }
+      return saveSettings(entries);
+    }
     if (!facilityId) {
       toast({ title: "Facility selection required", description: "Select an active company/facility before saving its letterhead.", variant: "destructive" });
       return false;
@@ -147,6 +153,9 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
     }
     setUploading(true);
     try {
+      if (letterheadOnly && !databaseCapabilities.facilityLetterheadSettings) {
+        throw new Error("Company-specific logo uploads are disabled until the facility letterhead database migration is released.");
+      }
       const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
       if (!allowedTypes.includes(file.type)) throw new Error("Use a PNG, JPG or WebP logo image.");
       const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : "png";
@@ -249,6 +258,8 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
         <p className="page-description">{letterheadOnly ? "Design and preview the branding applied to company reports, statements and authorization documents." : <>Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></>}</p>
       </div>
 
+      {letterheadOnly && !databaseCapabilities.facilityLetterheadSettings && <div role="alert" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">Facility-specific letterhead storage is prepared but not yet released to this database. You can inspect the shared design, but saving company-specific branding and logo uploads are disabled until migration reconciliation and the approved database release are complete.</div>}
+
       <Tabs defaultValue="provider">
         {!letterheadOnly && <TabsList>
           <TabsTrigger value="provider">Company &amp; Letterhead</TabsTrigger>
@@ -271,7 +282,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
               <div><Label>Address</Label><Input value={providerAddress} onChange={(e) => setProviderAddress(e.target.value)} placeholder="P.O. Box 123, Accra" className="mt-1" /></div>
               <div><Label>Phone</Label><Input value={providerPhone} onChange={(e) => setProviderPhone(e.target.value)} placeholder="+233 XX XXX XXXX" className="mt-1" /></div>
             </div>
-            <Button size="sm" onClick={handleSaveProvider}>Save Provider Info</Button>
+            <Button size="sm" onClick={handleSaveProvider} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Provider Info</Button>
           </div>
 
           <div className="stat-card space-y-4">
@@ -282,7 +293,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
               </div>
               <div>
                 <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading || (letterheadOnly && !databaseCapabilities.facilityLetterheadSettings)}>
                   {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading...</> : "Upload Logo"}
                 </Button>
                 <p className="text-xs text-muted-foreground mt-1">PNG, JPG or WebP (max 2MB)</p>
@@ -349,7 +360,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
                 if (!(await saveLetterheadSettings([{ key: "banking_partners", value: JSON.stringify(clean) }]))) return;
                 setBankingPartners(clean);
                 toast({ title: "Banking partners saved", description: `${clean.length} partner(s) will appear on documents` });
-              }}>Save Banking Partners</Button>
+              }} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Banking Partners</Button>
             </div>
           </div>
 
@@ -438,7 +449,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
                 { key: "letterhead_footer_note", value: footerNote },
               ]);
               if (saved) toast({ title: "Letterhead design saved" });
-            }}>Save Letterhead Design</Button>
+            }} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Letterhead Design</Button>
           </div>
         </TabsContent>
 
