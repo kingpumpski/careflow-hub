@@ -324,7 +324,7 @@ export default function Reports() {
     const accentColor = /^#[0-9a-f]{6}$/i.test(companyInfo.accent_color || "")
       ? companyInfo.accent_color!
       : "#1E4078";
-    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT and actual WHT per insurer advice are shown separately. Only the amount supported by a tax certificate received by the facility is credited to Accounts Receivable and reduces the outstanding balance.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
+    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT and actual WHT per insurer advice are shown separately. Only the amount supported by a tax certificate received by the facility is credited to Accounts Receivable and reduces the outstanding balance.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Credit Received</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
     const receiptTable = activeReport === "balance"
       ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
       : "";
@@ -349,12 +349,12 @@ export default function Reports() {
       columns = ["Income Statement Line", "Amount (GHS)"];
       data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Provisional WHT Estimate (not an expense)", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
     } else if (activeReport === "receivables") {
-      columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)", "Collected"];
+      columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Credit Received (GHS)", "Outstanding (GHS)", "Collected"];
       const receivables = sortedReport.filter((row) => row.outstanding > 0);
       data = receivables.map((row) => [row.company, row.netClaim, row.paid, row.tax, row.outstanding, row.netClaim > 0 ? `${(((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)}%` : "—"]);
       data.push(["Grand Total", grandNet, grandPaid, grandTax, grandOutstanding, grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"]);
     } else if (activeReport === "tax") {
-      columns = ["Company / Summary", "WHT Basis", "Tax Base (GHS)", "WHT Rate", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)"];
+      columns = ["Company / Summary", "WHT Basis", "Tax Base (GHS)", "WHT Rate", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Credit Received (GHS)"];
       data = [
         ["WHT Payable", "—", "—", "—", "—", "—", taxLiabilityData.whtPayable],
         ["WHT Reversals", "—", "—", "—", "—", "—", taxLiabilityData.whtReversals],
@@ -401,7 +401,7 @@ export default function Reports() {
       data = [["0–30 days", agingData.b30], ["31–60 days", agingData.b60], ["61–90 days", agingData.b90], ["91–120 days", agingData.b120], ["120+ days", agingData.b120plus]];
       data.push(["Total Outstanding", Object.values(agingData).reduce((sum, value) => sum + value, 0)]);
     } else {
-      columns = ["Company", "Submitted (GHS)", "Rejected (GHS)", "Approved Gross (GHS)", "Approval Variance (GHS)", "Paid (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)"];
+      columns = ["Company", "Submitted (GHS)", "Rejected (GHS)", "Approved Gross (GHS)", "Approval Variance (GHS)", "Paid (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Credit Received (GHS)", "Outstanding (GHS)"];
       data = sortedReport.map(row => [row.company, row.submitted, row.rejected, row.approvedGross ?? "—", row.approvalVariance ?? "—", row.paid, row.provisionalTax, row.actualTax, row.tax, row.outstanding]);
       data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
     }
@@ -430,14 +430,14 @@ export default function Reports() {
     if (activeReport === "income") {
       rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Provisional WHT Estimate (not an expense)", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
     } else if (activeReport === "receivables") {
-      rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Applied": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
-      rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Applied": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
+      rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Credit Received": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
+      rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Credit Received": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
     } else if (activeReport === "tax") {
       rows = [
-        { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtPayable },
-        { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtReversals },
-        { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.netLiability },
-        { "Company / Summary": "WHT Tax Credit Receivable", "WHT Basis": "Certificate-backed asset", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.taxCreditReceivable },
+        { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.whtPayable },
+        { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.whtReversals },
+        { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.netLiability },
+        { "Company / Summary": "WHT Tax Credit Receivable", "WHT Basis": "Certificate-backed asset", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.taxCreditReceivable },
         ...sortedReport.filter((row) => row.tax > 0).map((row) => ({
           "Company / Summary": row.company,
           "WHT Basis": row.taxBasisLabel,
@@ -445,7 +445,7 @@ export default function Reports() {
           "WHT Rate": row.taxRate == null ? "—" : `${(row.taxRate * 100).toFixed(2)}%`,
           "Provisional WHT (GHS)": row.provisionalTax,
           "Actual WHT (GHS)": row.actualTax,
-          "WHT Applied (GHS)": row.tax,
+          "WHT Credit Received (GHS)": row.tax,
         })),
       ];
     } else if (activeReport === "operations") {
@@ -490,8 +490,8 @@ export default function Reports() {
       rows = [{ "Aging Bucket": "0–30 days", "Outstanding": agingData.b30 }, { "Aging Bucket": "31–60 days", "Outstanding": agingData.b60 }, { "Aging Bucket": "61–90 days", "Outstanding": agingData.b90 }, { "Aging Bucket": "91–120 days", "Outstanding": agingData.b120 }, { "Aging Bucket": "120+ days", "Outstanding": agingData.b120plus }];
       rows.push({ "Aging Bucket": "Total Outstanding", "Outstanding": Object.values(agingData).reduce((sum, value) => sum + value, 0) });
     } else {
-      rows = sortedReport.map(row => ({ "Insurance Company": row.company, "Submitted": row.submitted, "Rejected": row.rejected, "Net Claim": row.netClaim, "Approved Gross": row.approvedGross, "Approval Variance": row.approvalVariance, "Paid": row.paid, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Applied": row.tax, "Outstanding": row.outstanding }));
-      rows.push({ "Insurance Company": "Grand Total", "Submitted": grandSubmitted, "Rejected": grandRejected, "Net Claim": grandNet, "Approved Gross": null, "Approval Variance": null, "Paid": grandPaid, "Provisional WHT": sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), "Actual WHT": sortedReport.reduce((sum, row) => sum + row.actualTax, 0), "WHT Applied": grandTax, "Outstanding": grandOutstanding });
+      rows = sortedReport.map(row => ({ "Insurance Company": row.company, "Submitted": row.submitted, "Rejected": row.rejected, "Net Claim": row.netClaim, "Approved Gross": row.approvedGross, "Approval Variance": row.approvalVariance, "Paid": row.paid, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Credit Received": row.tax, "Outstanding": row.outstanding }));
+      rows.push({ "Insurance Company": "Grand Total", "Submitted": grandSubmitted, "Rejected": grandRejected, "Net Claim": grandNet, "Approved Gross": null, "Approval Variance": null, "Paid": grandPaid, "Provisional WHT": sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), "Actual WHT": sortedReport.reduce((sum, row) => sum + row.actualTax, 0), "WHT Credit Received": grandTax, "Outstanding": grandOutstanding });
     }
     exportReportExcel(`${periodLabel} - ${reportName}`, rows, "Report");
   };
@@ -643,7 +643,7 @@ export default function Reports() {
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-primary">GH¢ {taxLiabilityData.taxCreditReceivable.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Tax Credit Receivable</p></div>
               </div>
               <table className="data-table">
-                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Applied (GHS)</th></tr></thead>
+                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Credit Received (GHS)</th></tr></thead>
                 <tbody>
                   {settlementReportUnavailable && <tr><td colSpan={7} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
