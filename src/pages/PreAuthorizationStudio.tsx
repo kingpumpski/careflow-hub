@@ -126,7 +126,7 @@ export default function PreAuthorizationStudio() {
 
   const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({ requestNumber: savedId ? finalRequestNumber : undefined, issuedDate, patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || effectiveInsurerName || "", providerName, providerAddress, providerPhone, doctorName: selectedDoctor?.doctor_name || "", procedureName: effectiveProcedure, procedureDate, diagnosis, currency, format, logoUrl: providerLogoUrl || undefined });
 
-  const previewPdf = async (snapshot?: Parameters<typeof buildPreAuthPdfBlobFromSnapshot>[0]) => {
+  const previewPdf = async (snapshot?: Parameters<typeof buildPreAuthPdfBlobFromSnapshot>[0]): Promise<boolean> => {
     try {
       const result = snapshot
         ? await buildPreAuthPdfBlobFromSnapshot(snapshot)
@@ -134,8 +134,10 @@ export default function PreAuthorizationStudio() {
       setPdfPreviewBlob(result.blob);
       setPdfPreviewFileName(result.fileName);
       setPdfPreviewOpen(true);
+      return true;
     } catch (error) {
       toast({ title: "Could not prepare PDF preview", description: error instanceof Error ? error.message : "The document could not be generated.", variant: "destructive" });
+      return false;
     }
   };
 
@@ -216,7 +218,7 @@ export default function PreAuthorizationStudio() {
       const versionNumber = Number(finalized?.version_number);
       if (!Number.isInteger(versionNumber) || versionNumber < 1) throw new Error("The server did not return a valid frozen revision number.");
       const submissionPackage = buildPreAuthSubmissionPackageFromSnapshot({ preauthId: id, versionNumber, requestNumber: finalRequestNumber, snapshot: frozenSnapshot, subject: email.subject, messageBody: email.body, insurerEmail: selectedInsurer?.email, insurerName: selectedInsurer?.company_name, additionalEmails: selectedInsurer?.additional_emails, ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean) });
-      await previewPdf(frozenSnapshot);
+      if (!(await previewPdf(frozenSnapshot))) throw new Error("The pre-authorization PDF preview could not be prepared. The email handoff was not opened.");
       const { error: auditError } = await ((supabase as any).from("preauthorization_audit_events")).insert({ preauth_id: id, version_id: finalized.version_id, submission_id: finalized.submission_id, event_type: "email_handoff_prepared", event_data: { versionNumber, recipientCount: submissionPackage.recipients.length, attachmentCount: submissionPackage.attachments.length }, actor_id: user?.id || null });
       if (auditError) console.warn("Pre-authorization audit event could not be recorded", auditError);
       setSavedId(id); setReviewOpen(false); openPreparedEmail(submissionPackage);
