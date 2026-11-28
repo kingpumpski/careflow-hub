@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { buildOperationalReportData, type OperationalAuditLog, type OperationalClaim, type OperationalInsurer, type OperationalOutstandingPeriod, type OperationalPayment, type OperationalProfile, type OperationalSettlementPeriod } from "@/modules/reports/operationalReportCalculations";
 
-const money = (value: number) => `GH¢ ${value.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value: number | null) => value == null ? "—" : `GH¢ ${value.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const percent = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
 
 export default function OperationalPerformanceReport(props: {
