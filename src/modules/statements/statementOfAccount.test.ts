@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyStatement, buildStatementReconciliation } from "./statementOfAccount";
+import { buildCompanyStatement, buildStatementReconciliation, buildStatementWhtCredits } from "./statementOfAccount";
 
 const rows = [
   { id: "1", insurance_company_id: "ins-a", entry_date: "2026-01-02", entry_type: "claim_submission", account_debit: "Accounts Receivable", account_credit: "Claims Revenue", amount: 1000, description: "January claims", reference: "CLM-001" },
@@ -26,6 +26,40 @@ describe("company statement of account", () => {
     expect(result.totalDebit).toBe(1000);
     expect(result.totalCredit).toBe(600);
     expect(result.closingBalance).toBe(400);
+  });
+
+  it("credits effective WHT as a distinct statement line and includes historical WHT in brought-forward balance", () => {
+    const openingTax = [{ year: 2025, month: 12, tax_amount: 25, is_actual: true }];
+    const currentTax = [{ year: 2026, month: 1, tax_amount: 50, is_actual: false }];
+    const claimsForCredits = [
+      { claim_year: 2025, claim_month: 12, claim_amount: 500, status: "submitted" },
+      { claim_year: 2026, claim_month: 1, claim_amount: 1000, status: "submitted" },
+    ];
+    const credits = buildStatementWhtCredits(claimsForCredits, [...openingTax, ...currentTax], [], "2026-01-31");
+    expect(credits).toEqual([
+      { year: 2025, month: 12, amount: 25, basis: "actual" },
+      { year: 2026, month: 1, amount: 50, basis: "provisional" },
+    ]);
+    const result = buildCompanyStatement([
+      { id: "claim", insurance_company_id: "ins-a", entry_date: "2026-01-02", entry_type: "claim_submission", account_debit: "Accounts Receivable", account_credit: "Claims Revenue", amount: 1000 },
+      { id: "payment", insurance_company_id: "ins-a", entry_date: "2026-01-10", entry_type: "payment", account_debit: "Cash/Bank", account_credit: "Accounts Receivable", amount: 600 },
+    ], "ins-a", "2026-01-01", "2026-01-31", credits);
+    expect(result.openingBalance).toBe(-25);
+    expect(result.totalDebit).toBe(1000);
+    expect(result.totalCredit).toBe(650);
+    expect(result.closingBalance).toBe(325);
+    expect(result.lines.some((line) => line.entryType === "withholding_tax_credit" && line.credit === 50)).toBe(true);
+  });
+
+  it("does not double-count a WHT credit already posted to Accounts Receivable", () => {
+    const ledger = [
+      { id: "tax-ledger", insurance_company_id: "ins-a", entry_date: "2026-01-31", entry_type: "withholding_tax", account_debit: "WHT Receivable", account_credit: "Accounts Receivable", amount: 40 },
+    ];
+    const result = buildCompanyStatement(ledger, "ins-a", "2026-01-01", "2026-01-31", [
+      { year: 2026, month: 1, amount: 40, basis: "actual" },
+    ]);
+    expect(result.totalCredit).toBe(40);
+    expect(result.lines).toHaveLength(1);
   });
 
   it("reports a credit balance when receipts exceed the opening and period debits", () => {
