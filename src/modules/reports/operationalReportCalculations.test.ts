@@ -40,6 +40,28 @@ describe("operational report calculations", () => {
     expect(report.outstandingFollowUp[0]).toMatchObject({ outstanding: 22.5, daysOutstanding: 59, ageBand: "31–60 days", taxBasis: "Actual WHT" });
   });
 
+  it("uses monthly aggregate settlement submissions when there are no individual claim rows", () => {
+    const report = buildOperationalReportData({
+      ...base,
+      claims: [],
+      payments: [],
+      settlementPeriods: [{
+        id: "cycle-aggregate", insurance_company_id: "ins-a",
+        period_start: "2026-09-01", period_end: "2026-09-30",
+        settlement_status: "reconciled", total_claims_submitted: 1000,
+        rejection_amount: 100, payment_received: 877.5,
+      }],
+      outstandingPeriods: [{
+        insurance_company_id: "ins-a", period_year: 2026, period_month: 9,
+        outstanding_amount: 22.5, paid_amount: 877.5, outstanding_status: "actual",
+      }],
+    });
+    expect(report.insurerPerformance[0]).toMatchObject({
+      claimsCount: 0, periodCount: 1, submitted: 1000, rejected: 100,
+      netClaim: 900, paid: 877.5, outstanding: 22.5,
+    });
+  });
+
   it("counts claim audit events by staff without counting unrelated audit events", () => {
     const report = buildOperationalReportData(base);
     expect(report.staffActivity).toEqual([{ actorId: "staff-1", staffName: "Claims Officer", inserts: 1, updates: 1, distinctClaimsTouched: 1, lastActivity: "2026-09-02T00:00:00Z" }]);
