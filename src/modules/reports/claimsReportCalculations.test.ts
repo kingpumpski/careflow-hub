@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "./claimsReportCalculations";
+import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis, calculateClaimsScheduleBalance } from "./claimsReportCalculations";
 
 describe("claim report gross totals", () => {
   it("keeps rejected claims inside submitted gross and subtracts them once for net claims", () => {
@@ -84,5 +84,36 @@ describe("applied withholding tax by claims month", () => {
       { actual: 22.5, provisional: 50, actualCount: 1 },
       { actual: 0, provisional: 10, actualCount: 0 },
     ])).toBe(32.5);
+  });
+});
+
+
+describe("claims schedule outstanding balance", () => {
+  it("deducts rejected claims, cash and confirmed WHT from submitted gross", () => {
+    expect(calculateClaimsScheduleBalance({
+      submittedGross: 1000,
+      rejectedGross: 100,
+      cashReceived: 600,
+      confirmedWithholdingTax: 22.5,
+    })).toEqual({ approvedGross: 900, outstanding: 277.5 });
+  });
+
+  it("prefers the insurer-approved gross when it differs from submitted less rejected", () => {
+    expect(calculateClaimsScheduleBalance({
+      submittedGross: 1000,
+      rejectedGross: 100,
+      approvedGross: 850,
+      cashReceived: 600,
+      confirmedWithholdingTax: 21.25,
+    })).toEqual({ approvedGross: 850, outstanding: 228.75 });
+  });
+
+  it("does not allow provisional WHT to reduce the outstanding balance", () => {
+    expect(calculateClaimsScheduleBalance({
+      submittedGross: 1000,
+      rejectedGross: 100,
+      cashReceived: 600,
+      confirmedWithholdingTax: 0,
+    }).outstanding).toBe(300);
   });
 });
