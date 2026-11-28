@@ -176,8 +176,9 @@ export function buildOperationalReportData(input: {
     const viewPaid = financialRows.length > 0 && financialRows.every((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
       : null;
-    const cyclePaymentKnown = cycleRows.some((period) => period.payment_received != null)
-      || (cycleRows.length > 0 && cycleRows.every((period) => period.settlement_status === "awaiting_payment"));
+    const cyclePaymentKnown = cycleRows.length > 0 && cycleRows.every((period) =>
+      period.payment_received != null || period.settlement_status === "awaiting_payment"
+    );
     const cyclePaid = cyclePaymentKnown
       ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
       : null;
