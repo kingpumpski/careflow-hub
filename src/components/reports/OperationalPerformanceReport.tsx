@@ -31,15 +31,16 @@ export default function OperationalPerformanceReport(props: {
     </section>
     <section className="stat-card space-y-3">
       <h3 className="font-semibold">Insurer performance</h3>
-      {!props.canReadClaims && <p className="text-sm text-muted-foreground">Claims read permission is required for insurer performance metrics.</p>}
-      <div className="overflow-x-auto"><table className="data-table min-w-[1100px]">
-        <thead><tr><th>Insurer</th><th>Claim records</th><th>Claims cycles</th><th>Submitted</th><th>Rejected</th><th>Net claim</th><th>Linked cash</th><th>Balance</th><th>Denial rate</th><th>Recovery rate</th><th>Avg. days to pay</th></tr></thead>
-        <tbody>{report.insurerPerformance.map((row) => <tr key={row.insurerId}>
-          <td className="font-medium">{row.insurer}</td><td>{row.claimsCount}</td><td>{row.periodCount}</td><td>{money(row.submitted)}</td><td>{money(row.rejected)}</td><td>{money(row.netClaim)}</td><td>{money(row.paid)}</td>
-          <td className={row.outstanding != null && row.outstanding > 0 ? "text-warning" : "text-success"}>{money(row.outstanding)}</td><td>{percent(row.denialRate)}</td><td>{percent(row.recoveryRate)}</td><td>{row.averageDaysToPay == null ? "—" : `${row.averageDaysToPay.toFixed(1)} days`}</td>
-        </tr>)}{!report.insurerPerformance.length && <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">No insurer activity in the selected period.</td></tr>}</tbody>
-      </table></div>
-      <p className="text-xs text-muted-foreground">Cash collected here is limited to payment entries linked to the selected claim records. Unlinked insurer-level receipts are not allocated to a claim and are excluded from this recovery measure.</p>
+      {!props.canReadClaims ? <p className="text-sm text-muted-foreground">Claims read permission is required for insurer performance metrics.</p> : <>
+        <div className="overflow-x-auto"><table className="data-table min-w-[1100px]">
+          <thead><tr><th>Insurer</th><th>Claim records</th><th>Claims cycles</th><th>Submitted</th><th>Rejected</th><th>Net claim</th><th>Cash received</th><th>Outstanding</th><th>Denial rate</th><th>Recovery rate</th><th>Avg. days to pay</th></tr></thead>
+          <tbody>{report.insurerPerformance.map((row) => <tr key={row.insurerId}>
+            <td className="font-medium">{row.insurer}</td><td>{row.claimsCount}</td><td>{row.periodCount}</td><td>{money(row.submitted)}</td><td>{money(row.rejected)}</td><td>{money(row.netClaim)}</td><td>{money(row.paid)}</td>
+            <td className={row.outstanding != null && row.outstanding > 0 ? "text-warning" : "text-success"}>{money(row.outstanding)}</td><td>{percent(row.denialRate)}</td><td>{percent(row.recoveryRate)}</td><td>{row.averageDaysToPay == null ? "—" : `${row.averageDaysToPay.toFixed(1)} days`}</td>
+          </tr>)}{!report.insurerPerformance.length && <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">No insurer activity in the selected period.</td></tr>}</tbody>
+        </table></div>
+        <p className="text-xs text-muted-foreground">Cash received uses claims-cycle totals when present; otherwise it uses payments linked to the selected claim records. Unlinked insurer-level receipts are not allocated to individual claims in the fallback measure.</p>
+      </>}
     </section>
     <section className="stat-card space-y-3">
       <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Settlement delays</h3>{props.settlementSourceUnavailable && <Badge variant="destructive">Source unavailable</Badge>}</div>
