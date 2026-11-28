@@ -259,7 +259,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
         </TabsList>}
 
         <TabsContent value="provider" className="space-y-4 mt-4">
-          <div className={letterheadOnly ? "hidden" : "stat-card space-y-4"}>
+          <div className="stat-card space-y-4">
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <Building2 className="w-4 h-4 text-primary" />
               Provider / Company Information
@@ -274,7 +274,23 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
             <Button size="sm" onClick={handleSaveProvider}>Save Provider Info</Button>
           </div>
 
-          <div className={letterheadOnly ? "hidden" : "stat-card space-y-4"}>
+          <div className="stat-card space-y-4">
+            <h3 className="font-heading font-semibold flex items-center gap-2"><Upload className="w-4 h-4 text-primary" />Organization Logo</h3>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-lg bg-muted border-2 border-dashed border-border flex items-center justify-center overflow-hidden">
+                {logoUrl ? <img src={logoUrl} alt="Company logo preview" className="w-full h-full object-contain" /> : <Upload className="w-6 h-6 text-muted-foreground" />}
+              </div>
+              <div>
+                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading...</> : "Upload Logo"}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">PNG, JPG or WebP (max 2MB)</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card space-y-4">
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <Landmark className="w-4 h-4 text-primary" />
               Banking Partners
@@ -330,7 +346,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
               </Button>
               <Button size="sm" onClick={async () => {
                 const clean = bankingPartners.filter((b) => (b.bank_name || "").trim());
-                if (!(await saveSetting("banking_partners", JSON.stringify(clean)))) return;
+                if (!(await saveLetterheadSettings([{ key: "banking_partners", value: JSON.stringify(clean) }]))) return;
                 setBankingPartners(clean);
                 toast({ title: "Banking partners saved", description: `${clean.length} partner(s) will appear on documents` });
               }}>Save Banking Partners</Button>
@@ -342,7 +358,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
               <PenTool className="w-4 h-4 text-primary" />
               Letterhead Designer
             </h3>
-            <p className="text-xs text-muted-foreground">Controls the branded header and footer applied to pre-authorization documents and exported reports. The organization logo from the General tab is used automatically.</p>
+            <p className="text-xs text-muted-foreground">Design the company identity, logo, header and footer applied to reports, statements, claims schedules and pre-authorization documents.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -415,7 +431,7 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
             </div>
 
             <Button size="sm" onClick={async () => {
-              const saved = await saveSettings([
+              const saved = await saveLetterheadSettings([
                 { key: "letterhead_accent", value: letterheadAccent },
                 { key: "letterhead_style", value: letterheadStyle },
                 { key: "letterhead_show_banking", value: showBanking ? "true" : "false" },
@@ -427,29 +443,6 @@ export default function SettingsPage({ letterheadOnly = false }: { letterheadOnl
         </TabsContent>
 
         <TabsContent value="general" className="space-y-4 mt-4">
-          <div className="stat-card space-y-4">
-            <h3 className="font-heading font-semibold flex items-center gap-2">
-              <Upload className="w-4 h-4 text-primary" />
-              Organization Logo
-            </h3>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-lg bg-muted border-2 border-dashed border-border flex items-center justify-center overflow-hidden">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <Upload className="w-6 h-6 text-muted-foreground" />
-                )}
-              </div>
-              <div>
-                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml" className="hidden" onChange={handleLogoUpload} />
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                  {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading...</> : "Upload Logo"}
-                </Button>
-                <p className="text-xs text-muted-foreground mt-1">PNG, SVG, or JPG (max 2MB)</p>
-              </div>
-            </div>
-          </div>
-
           <div className="stat-card space-y-4">
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-primary" />
