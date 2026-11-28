@@ -153,12 +153,10 @@ export default function Reports() {
         }
         taxByPeriod.set(key, periodTax);
       });
-      const fallbackTaxApplied = calculateAppliedWithholdingTax(Array.from(taxByPeriod.values()));
-
-      // The settlement-period view is authoritative: it prefers aggregate claim
-      // submissions, approved gross, matched payments and actual WHT, and uses
-      // provisional WHT only while actual advice is unavailable. Raw tables are
-      // retained as a compatibility fallback when the view is not yet deployed.
+      // The settlement-period view is authoritative for submitted, approved and
+      // paid amounts. Provisional WHT remains a separate estimate and is never
+      // treated as a receivable settlement. Raw tables remain a compatibility
+      // fallback while the corrected view migration is awaiting production release.
       const submitted = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
         : fallbackClaimTotals.submittedGross;
@@ -175,15 +173,15 @@ export default function Reports() {
       // When its separate columns are absent, derive the applied amount from
       // the raw tax ledger: actual replaces provisional within each claims month.
       const fallbackTaxPeriods = Array.from(taxByPeriod.values());
-      const tax = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
-        : fallbackTaxApplied;
       const provisionalTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.provisional_withholding_tax_amount || 0), 0)
         : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.provisional, 0);
       const actualTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.actual_withholding_tax_amount || 0), 0)
         : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.actual, 0);
+      // Only certificate/advice-confirmed actual WHT is applied to receivables.
+      // The provisional amount is visible for tax estimation, not collection. 
+      const tax = actualTax;
       const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
       const approvedGross = authoritative.length > 0 && approvedGrossRows.length === authoritative.length
         ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
@@ -197,7 +195,7 @@ export default function Reports() {
         : fallbackClaimTotals.netClaim;
       const outstanding = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
-        : Math.max(netClaim - paid - tax, 0);
+        : Math.max(netClaim - paid - actualTax, 0);
       const fallbackTaxPeriodEntries = Array.from(taxByPeriod.entries());
       const hasActualAdvice = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => period.outstanding_status === "actual")
@@ -323,7 +321,7 @@ export default function Reports() {
     const accentColor = /^#[0-9a-f]{6}$/i.test(companyInfo.accent_color || "")
       ? companyInfo.accent_color!
       : "#1E4078";
-    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Approved gross and approval variance are shown when insurer payment advice is available. The WHT applied to outstanding balances is actual WHT when confirmed, otherwise the provisional estimate.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
+    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT is shown as an estimate only. It does not reduce outstanding receivables; only confirmed actual WHT from insurer payment advice is applied.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
     const receiptTable = activeReport === "balance"
       ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
       : "";
