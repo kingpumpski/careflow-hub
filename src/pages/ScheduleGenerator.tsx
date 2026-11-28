@@ -21,6 +21,37 @@ interface Row {
   outstanding: number;
   rejectionRate: number;
 }
+interface ScheduleClaimRow {
+  claim_year: number | string | null;
+  claim_month: number | string | null;
+  insurance_company_id: string;
+  claim_amount: number | string | null;
+  status?: string | null;
+}
+interface SchedulePaymentRow {
+  claim_year: number | string | null;
+  claim_month: number | string | null;
+  insurance_company_id: string;
+  amount_paid: number | string | null;
+}
+interface ScheduleTaxRow {
+  year: number | string;
+  month: number | string;
+  insurance_company_id: string;
+  tax_amount: number | string | null;
+  is_actual: boolean;
+}
+interface ScheduleSettlementRow {
+  period_type: string;
+  period_start: string;
+  insurance_company_id: string;
+  total_claims_submitted: number | string | null;
+  rejection_amount: number | string | null;
+  approved_gross_amount: number | string | null;
+  payment_received: number | string | null;
+  actual_withholding_tax: number | string | null;
+  settlement_status: string;
+}
 
 export default function ScheduleGenerator() {
   const { can } = usePermissions();
@@ -29,6 +60,10 @@ export default function ScheduleGenerator() {
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
   const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods");
+  const claimRows = (claims || []) as unknown as ScheduleClaimRow[];
+  const paymentRows = (payments || []) as unknown as SchedulePaymentRow[];
+  const taxRows = (withholdingTax || []) as unknown as ScheduleTaxRow[];
+  const settlementRows = (settlementPeriods || []) as unknown as ScheduleSettlementRow[];
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const currentYear = new Date().getFullYear();
@@ -65,21 +100,21 @@ export default function ScheduleGenerator() {
     const from = Number(fromMonth), to = Number(toMonth);
     const out: Row[] = [];
     for (let m = from; m <= to; m++) {
-      const monthClaims = (claims || []).filter((claim: any) =>
+      const monthClaims = claimRows.filter((claim) =>
         Number(claim.claim_year) === Number(year)
         && Number(claim.claim_month) === m
         && (insurerId === "all" || claim.insurance_company_id === insurerId));
-      const monthlySettlements = (settlementPeriods || []).filter((period: any) =>
+      const monthlySettlements = settlementRows.filter((period) =>
         period.period_type === "month"
         && String(period.period_start || "").slice(0, 7) === `${year}-${String(m).padStart(2, "0")}`
         && (insurerId === "all" || period.insurance_company_id === insurerId));
-      const monthlyTaxRows = (withholdingTax || []).filter((tax: any) =>
+      const monthlyTaxRows = taxRows.filter((tax) =>
         Number(tax.year) === Number(year)
         && Number(tax.month) === m
         && (insurerId === "all" || tax.insurance_company_id === insurerId));
-      const settledInsurers = new Set(monthlySettlements.map((period: any) => period.insurance_company_id));
-      const periodFigures = monthlySettlements.map((period: any) => {
-        const companyClaims = monthClaims.filter((claim: any) => claim.insurance_company_id === period.insurance_company_id);
+      const settledInsurers = new Set(monthlySettlements.map((period) => period.insurance_company_id));
+      const periodFigures = monthlySettlements.map((period) => {
+        const companyClaims = monthClaims.filter((claim) => claim.insurance_company_id === period.insurance_company_id);
         const claimFallback = calculateClaimGrossTotals(companyClaims);
         const submittedGross = period.total_claims_submitted == null
           ? claimFallback.submittedGross
@@ -90,14 +125,14 @@ export default function ScheduleGenerator() {
         const approvedGross = period.approved_gross_amount == null
           ? Math.max(submittedGross - rejectedGross, 0)
           : Number(period.approved_gross_amount || 0);
-        const companyPayments = (payments || []).filter((payment: any) =>
+        const companyPayments = paymentRows.filter((payment) =>
           payment.insurance_company_id === period.insurance_company_id
           && Number(payment.claim_year) === Number(year)
           && Number(payment.claim_month) === m);
         const cashReceived = period.approved_gross_amount != null && period.payment_received != null
           ? Number(period.payment_received || 0)
           : companyPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
-        const companyTaxRows = monthlyTaxRows.filter((tax: any) => tax.insurance_company_id === period.insurance_company_id);
+        const companyTaxRows = monthlyTaxRows.filter((tax) => tax.insurance_company_id === period.insurance_company_id);
         const hasConfirmedAdvice = ["payment_advice_received", "reconciled"].includes(period.settlement_status)
           && period.actual_withholding_tax != null;
         const confirmedWht = hasConfirmedAdvice
@@ -106,14 +141,14 @@ export default function ScheduleGenerator() {
             .reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
         return { submittedGross, rejectedGross, approvedGross, cashReceived, confirmedWht };
       });
-      const fallbackClaims = monthClaims.filter((claim: any) => !settledInsurers.has(claim.insurance_company_id));
+      const fallbackClaims = monthClaims.filter((claim) => !settledInsurers.has(claim.insurance_company_id));
       const fallbackTotals = calculateClaimGrossTotals(fallbackClaims);
-      const fallbackPayments = (payments || []).filter((payment: any) =>
+      const fallbackPayments = paymentRows.filter((payment) =>
         Number(payment.claim_year) === Number(year)
         && Number(payment.claim_month) === m
         && (insurerId === "all" || payment.insurance_company_id === insurerId)
         && !settledInsurers.has(payment.insurance_company_id));
-      const fallbackTax = monthlyTaxRows.filter((tax: any) =>
+      const fallbackTax = monthlyTaxRows.filter((tax) =>
         !settledInsurers.has(tax.insurance_company_id) && tax.is_actual === true)
         .reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
       const fallbackPaid = fallbackPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount_paid || 0), 0);
