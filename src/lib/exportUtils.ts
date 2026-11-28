@@ -339,8 +339,28 @@ export async function buildReportPDFBlob(
   });
 
   drawBankingFooter(doc, companyInfo || {});
-  doc.save(`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+
+  return doc.output("blob");
 }
+
+export async function exportReportPDF(
+  title: string,
+  data: any[],
+  columns: string[],
+  companyInfo: LetterheadConfig,
+  counterparty?: ReportCounterparty,
+) {
+  const blob = await buildReportPDFBlob(title, data, columns, companyInfo, counterparty);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${title.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 export function exportReportExcel(title: string, rows: any[], sheetName: string) {
   const ws = XLSX.utils.json_to_sheet(rows);
