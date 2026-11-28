@@ -287,13 +287,13 @@ export type ReportCounterparty = {
   contactPerson?: string | null;
 };
 
-export async function exportReportPDF(
+export async function buildReportPDFBlob(
   title: string,
   data: any[],
   columns: string[],
   companyInfo: LetterheadConfig,
   counterparty?: ReportCounterparty,
-) {
+): Promise<Blob> {
   const doc = new jsPDF("landscape");
   let y = await drawLetterhead(doc, companyInfo || {}, title);
 
