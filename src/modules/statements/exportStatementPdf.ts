@@ -116,7 +116,7 @@ export async function exportCompanyStatementPDF(
       doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
       doc.setFontSize(7);
       doc.setTextColor(130);
-      doc.text("Accounts Receivable sub-ledger • Tax totals are separately reconciled and do not alter the receivable balance.", 14, pageHeight - 7);
+      doc.text("Accounts Receivable statement • WHT is shown as a separate credit; actual WHT replaces provisional WHT.", 14, pageHeight - 7);
       doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - 14, pageHeight - 7, { align: "right" });
     },
   });
@@ -136,7 +136,7 @@ export async function exportCompanyStatementPDF(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(100);
-  doc.text("Monthly claim-period totals overlapping this statement period. Actual WHT replaces provisional WHT when confirmed; the two are not added together.", 14, reconciliationY);
+  doc.text("Monthly claim-period totals. Effective WHT is credited in the statement ledger above; actual WHT replaces provisional WHT when confirmed.", 14, reconciliationY);
   reconciliationY += 7;
 
   const reconciliationCards = [
@@ -189,7 +189,7 @@ export async function exportCompanyStatementPDF(
       doc.line(14, height - 12, pageWidth - 14, height - 12);
       doc.setFontSize(7);
       doc.setTextColor(130);
-      doc.text("Accounts Receivable sub-ledger • Tax totals are separately reconciled and do not alter the receivable balance.", 14, height - 7);
+      doc.text("Accounts Receivable statement • WHT is shown as a separate credit; actual WHT replaces provisional WHT.", 14, height - 7);
       doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - 14, height - 7, { align: "right" });
     },
   });
