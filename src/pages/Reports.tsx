@@ -43,10 +43,14 @@ export default function Reports() {
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
   ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement";
-  const settlementCycleRows = useMemo(() => {
+  const settlementCycleSourceRows = useMemo(() => {
     const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
-    return buildSettlementReconciliationRows(periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId));
+    return periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
   }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  const settlementCycleRows = useMemo(
+    () => buildSettlementReconciliationRows(settlementCycleSourceRows),
+    [settlementCycleSourceRows],
+  );
   const settlementCycleReportUnavailable = Boolean(settlementPeriodsError);
 
   const filterByPeriod = (items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
@@ -584,7 +588,7 @@ export default function Reports() {
               <h3 className="font-heading font-semibold">{periodLabel} — Claims-Cycle Settlement Reconciliation</h3>
               {settlementCycleReportUnavailable
                 ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">The settlement-period database source is unavailable. No reconciliation totals are being represented as zero.</div>
-                : <SettlementReconciliationReport periods={settlementCycleRows as any} insurers={insurers || []} />}
+                : <SettlementReconciliationReport periods={settlementCycleSourceRows as any} insurers={insurers || []} />}
             </div>
           </TabsContent>
 
