@@ -250,8 +250,8 @@ export default function Reports() {
     const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    const taxCreditDebits = filteredLedger.filter((e) => e.account_debit === "Withholding Tax Receivable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    const taxCreditCredits = filteredLedger.filter((e) => e.account_credit === "Withholding Tax Receivable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+    const taxCreditDebits = filteredLedger.filter((e) => e.account_debit === "Withholding Tax Receivable").reduce((s: number, e) => s + Number(e.amount || 0), 0);
+    const taxCreditCredits = filteredLedger.filter((e) => e.account_credit === "Withholding Tax Receivable").reduce((s: number, e) => s + Number(e.amount || 0), 0);
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals, taxCreditReceivable: taxCreditDebits - taxCreditCredits };
   }, [ledger, selectedCompanyId, filterByPeriod]);
 
