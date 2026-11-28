@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import { PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +14,7 @@ import { databaseCapabilities } from "@/config/databaseCapabilities";
 import { createPreAuthorizationAtomic, searchClientSuggestions, type ClientSuggestion } from "@/features/preauth/services/preauthStudio.service";
 import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { buildPreAuthEmail, buildRequestNumber, buildDuplicateSignature, itemAmount, totalItems, type PreAuthStudioItem } from "@/modules/authorization/preauth-studio";
-import { downloadPreAuthPdf, downloadPreAuthPdfFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
+import { buildPreAuthPdfBlob, buildPreAuthPdfBlobFromSnapshot, type PreAuthPdfData } from "@/modules/authorization/preauth-document";
 import { assertPreAuthSnapshotMatchesReviewInput } from "@/modules/authorization/preauth-integrity";
 import { buildPreAuthDocumentPayload, validatePreAuthReview, type PreAuthReviewInput } from "@/modules/authorization/preauth-review";
 import { buildPreAuthRecipientManifest, buildPreAuthSubmissionPackageFromSnapshot, type PreAuthSubmissionPackage } from "@/modules/authorization/preauth-submission";
@@ -64,6 +65,9 @@ export default function PreAuthorizationStudio() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [warningsConfirmed, setWarningsConfirmed] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("preauthorization.pdf");
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
 
   const selectedPatient = (patients || []).find((p: any) => p.id === patientId);
   const selectedInsurer = (insurers || []).find((i: any) => i.id === insurerId);
@@ -121,6 +125,21 @@ export default function PreAuthorizationStudio() {
   };
 
   const pdfData = (finalRequestNumber = requestNumber): PreAuthPdfData => ({ requestNumber: savedId ? finalRequestNumber : undefined, issuedDate, patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, patientPhone: patientPhone || selectedPatient?.phone || "", companyName: companyName || effectiveInsurerName || "", providerName, providerAddress, providerPhone, doctorName: selectedDoctor?.doctor_name || "", procedureName: effectiveProcedure, procedureDate, diagnosis, currency, format, logoUrl: providerLogoUrl || undefined });
+
+  const previewPdf = async (snapshot?: Parameters<typeof buildPreAuthPdfBlobFromSnapshot>[0]): Promise<boolean> => {
+    try {
+      const result = snapshot
+        ? await buildPreAuthPdfBlobFromSnapshot(snapshot)
+        : await buildPreAuthPdfBlob(pdfData(), items);
+      setPdfPreviewBlob(result.blob);
+      setPdfPreviewFileName(result.fileName);
+      setPdfPreviewOpen(true);
+      return true;
+    } catch (error) {
+      toast({ title: "Could not prepare PDF preview", description: error instanceof Error ? error.message : "The document could not be generated.", variant: "destructive" });
+      return false;
+    }
+  };
 
   const email = useMemo(() => buildPreAuthEmail({ patientName: effectivePatientName, membershipNumber: effectiveMembershipNumber, procedureName: effectiveProcedure, procedureDate, diagnosis, insurerName: effectiveInsurerName || "Insurance Partner", insurerContactPerson: selectedInsurer?.contact_person, providerName, providerEmail: getSetting("provider_email"), officerName: getSetting("officer_name"), officerPosition: getSetting("officer_position"), officerPhone: getSetting("officer_phone"), senderEmail: getSetting("claims_sender_email") }), [effectivePatientName, membershipNumber, effectiveProcedure, procedureDate, diagnosis, selectedInsurer, providerName, settings]);
 
@@ -199,7 +218,7 @@ export default function PreAuthorizationStudio() {
       const versionNumber = Number(finalized?.version_number);
       if (!Number.isInteger(versionNumber) || versionNumber < 1) throw new Error("The server did not return a valid frozen revision number.");
       const submissionPackage = buildPreAuthSubmissionPackageFromSnapshot({ preauthId: id, versionNumber, requestNumber: finalRequestNumber, snapshot: frozenSnapshot, subject: email.subject, messageBody: email.body, insurerEmail: selectedInsurer?.email, insurerName: selectedInsurer?.company_name, additionalEmails: selectedInsurer?.additional_emails, ccEmails: (getSetting("claims_cc_emails") || "").split(",").map((value: string) => value.trim()).filter(Boolean) });
-      await downloadPreAuthPdfFromSnapshot(frozenSnapshot);
+      if (!(await previewPdf(frozenSnapshot))) throw new Error("The pre-authorization PDF preview could not be prepared. The email handoff was not opened.");
       const { error: auditError } = await ((supabase as any).from("preauthorization_audit_events")).insert({ preauth_id: id, version_id: finalized.version_id, submission_id: finalized.submission_id, event_type: "email_handoff_prepared", event_data: { versionNumber, recipientCount: submissionPackage.recipients.length, attachmentCount: submissionPackage.attachments.length }, actor_id: user?.id || null });
       if (auditError) console.warn("Pre-authorization audit event could not be recorded", auditError);
       setSavedId(id); setReviewOpen(false); openPreparedEmail(submissionPackage);
@@ -214,7 +233,7 @@ export default function PreAuthorizationStudio() {
     <div className="w-full max-w-[1500px] min-w-0 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4 min-w-0">
         <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><FileCheck2 className="h-6 w-6 shrink-0 text-primary" /><h1 className="page-title">Pre-Authorization Studio</h1><Badge variant="outline">Document-first workflow</Badge></div><p className="page-description">Create once, edit safely, preview, save a unique request, then freeze the request and prepare the final email package for the selected insurance partner.</p></div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Button variant="outline" onClick={() => downloadPreAuthPdf(pdfData(), items)} className="flex-1 gap-2 sm:flex-none"><Download className="h-4 w-4" /> Preview / PDF</Button><Button variant="outline" onClick={reviewRequest} disabled={saving || submitting} className="flex-1 gap-2 sm:flex-none"><FileCheck2 className="h-4 w-4" /> Review request</Button><Button onClick={saveDraft} disabled={saving || submitting} className="flex-1 gap-2 sm:flex-none"><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save draft"}</Button></div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Button variant="outline" onClick={() => void previewPdf()} className="flex-1 gap-2 sm:flex-none"><Download className="h-4 w-4" /> Preview Document</Button><Button variant="outline" onClick={reviewRequest} disabled={saving || submitting} className="flex-1 gap-2 sm:flex-none"><FileCheck2 className="h-4 w-4" /> Review request</Button><Button onClick={saveDraft} disabled={saving || submitting} className="flex-1 gap-2 sm:flex-none"><Save className="h-4 w-4" /> {saving ? "Saving…" : "Save draft"}</Button></div>
       </div>
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
         <div className="min-w-0 space-y-5">
@@ -252,6 +271,7 @@ export default function PreAuthorizationStudio() {
         </div>
         <aside className="min-w-0 xl:sticky xl:top-4 xl:self-start"><div className="overflow-hidden rounded-lg border bg-white shadow-sm"><div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-3"><div className="min-w-0"><p className="text-xs uppercase tracking-wide text-muted-foreground">Live document preview</p><p className="truncate font-semibold">{requestNumber}</p></div><Badge variant="outline" className="shrink-0">{format === "ghana" ? "GHANA" : "INTERNATIONAL"}</Badge></div><div className="p-3 text-[10px] leading-4 sm:p-5"><div className="border-b-2 border-primary pb-3 text-center"><div className="text-sm font-bold">{providerName}</div><div>{providerAddress}</div><div>Tel: {providerPhone}</div><div className="mt-2 text-base font-bold">PRE-AUTHORIZATION REQUEST</div><div className="mt-1 flex justify-between"><span>{requestNumber}</span><span>{issuedDate}</span></div></div><div className="mt-3 grid grid-cols-2 gap-1"><div className="border p-2"><b>NAME:</b> {effectivePatientName}</div><div className="border p-2"><b>COMPANY:</b> {companyName || effectiveInsurerName || "—"}</div><div className="border p-2"><b>MEMBERSHIP #:</b> {effectiveMembershipNumber || "—"}</div><div className="border p-2"><b>PATIENT TEL:</b> {patientPhone || selectedPatient?.phone || "—"}</div><div className="border p-2"><b>PROVIDER:</b> {providerName}</div><div className="border p-2"><b>DOCTOR:</b> {selectedDoctor?.doctor_name || "—"}</div><div className="border p-2"><b>PROCEDURE:</b> {effectiveProcedure}</div><div className="border p-2"><b>PROCEDURE DATE:</b> {procedureDate || "—"}</div><div className="col-span-2 border p-2"><b>DIAGNOSIS:</b> {diagnosis || "—"}</div></div><div className="mt-3 overflow-x-auto border"><div className="grid min-w-[315px] grid-cols-[1fr_45px_75px_75px] bg-primary/15 font-bold"><div className="p-2">Description</div><div className="p-2">Qty</div><div className="p-2">Unit</div><div className="p-2">Amount</div></div>{items.filter((i) => i.description).map((i) => <div key={i.id} className="grid min-w-[315px] grid-cols-[1fr_45px_75px_75px] border-t"><div className="p-2 break-words">{i.description}</div><div className="p-2">{i.quantity}</div><div className="p-2 text-right">{currency} {i.unitPrice.toFixed(2)}</div><div className="p-2 text-right">{currency} {itemAmount(i).toFixed(2)}</div></div>)}<div className="grid min-w-[315px] grid-cols-[1fr_120px_75px] border-t font-bold"><div className="col-span-2 p-2 text-right">TOTAL</div><div className="p-2 text-right">{currency} {total.toFixed(2)}</div></div></div></div></div><div className="mt-3 rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground"><b className="text-foreground">Request preparation safeguard:</b> save a draft, review the request, resolve blocking errors and confirm warnings. Preview / PDF and email drafting remain available. The frozen handoff record is enabled only after the canonical production database objects pass release checks; the officer remains responsible for sending the email.</div></aside>
       </div>
+      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewFileName} title="Pre-Authorization Document Preview" />
     </div>
   );
 }

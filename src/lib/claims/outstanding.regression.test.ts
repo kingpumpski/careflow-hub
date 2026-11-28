@@ -14,11 +14,14 @@ describe("canonical outstanding calculation", () => {
     expect(calculateOutstanding(100000, 0, 120000, 0)).toBe(0);
   });
 
-  it("requires both payment and WHT evidence for actual status", () => {
+  it("requires payment advice and certificate coverage when WHT is due", () => {
     expect(resolveOutstandingStatus(1, 0)).toBe("provisional");
     expect(resolveOutstandingStatus(0, 1)).toBe("provisional");
-    expect(resolveOutstandingStatus(1, 1)).toBe("actual");
-    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("provisional");
+    expect(resolveOutstandingStatus(1, 0, 0, 0)).toBe("actual");
+    expect(resolveOutstandingStatus(1, 1, 5000, 5000)).toBe("actual");
+    expect(resolveOutstandingStatus(1, 1, 5000, 1200)).toBe("partial");
+    expect(resolveOutstandingStatus(1, 0, 5000, 0)).toBe("provisional");
+    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("partial");
     expect(resolveAggregateStatus(["actual", "actual"])).toBe("actual");
   });
 });

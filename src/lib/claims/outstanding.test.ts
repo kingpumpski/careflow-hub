@@ -18,7 +18,7 @@ describe("claims outstanding calculation", () => {
 
   it("treats an explicitly recorded zero WHT as reconciled", () => {
     expect(calculateOutstanding(100000, 10000, 90000, 0)).toBe(0);
-    expect(resolveOutstandingStatus(1, 1)).toBe("actual");
+    expect(resolveOutstandingStatus(1, 0, 0, 0)).toBe("actual");
   });
 
   it("floors over-settled balances at zero", () => {
@@ -27,7 +27,7 @@ describe("claims outstanding calculation", () => {
 
   it("requires every included period to be actual for an aggregate actual status", () => {
     expect(resolveAggregateStatus(["actual", "actual"])).toBe("actual");
-    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("provisional");
+    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("partial");
     expect(resolveAggregateStatus([])).toBe("provisional");
   });
 });

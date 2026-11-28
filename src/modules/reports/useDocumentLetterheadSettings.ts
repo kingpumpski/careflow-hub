@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { isMissingLetterheadSettingsRpc } from "@/modules/reports/letterheadSettings";
 import { databaseCapabilities } from "@/config/databaseCapabilities";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 
 const LETTERHEAD_SETTING_KEYS = [
   "provider_name",
@@ -12,6 +13,8 @@ const LETTERHEAD_SETTING_KEYS = [
   "letterhead_accent",
   "letterhead_style",
   "letterhead_footer_note",
+  "letterhead_show_banking",
+  "banking_partners",
 ] as const;
 
 export type DocumentLetterheadSetting = {
@@ -35,8 +38,10 @@ export function useDocumentLetterheadSettings({
   canManageSettings: boolean;
 }) {
 
+  const facilityId = getStoredFacilityId();
+
   return useQuery({
-    queryKey: ["document-letterhead-settings", canReadDocument, canManageSettings],
+    queryKey: ["document-letterhead-settings", facilityId, canReadDocument, canManageSettings],
     enabled: canReadDocument,
     queryFn: async (): Promise<DocumentLetterheadSetting[]> => {
       const loadAdminFallback = async () => {
@@ -48,6 +53,13 @@ export function useDocumentLetterheadSettings({
         if (fallback.error) throw fallback.error;
         return (fallback.data ?? []) as DocumentLetterheadSetting[];
       };
+
+      if (databaseCapabilities.facilityLetterheadSettings) {
+        if (!facilityId) return [];
+        const { data, error } = await supabase.rpc("get_facility_letterhead_settings", { p_facility_id: facilityId });
+        if (error) throw error;
+        return (data ?? []) as DocumentLetterheadSetting[];
+      }
 
       if (!databaseCapabilities.documentLetterheadSettings) return loadAdminFallback();
 

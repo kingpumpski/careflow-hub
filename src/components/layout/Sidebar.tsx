@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Shield, FileCheck, TrendingUp, Settings2, ChevronDown, ChevronRight, Activity, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Shield, FileCheck, FileText, Database, TrendingUp, Settings2, ChevronDown, ChevronRight, Activity, type LucideIcon } from "lucide-react";
 import { usePermissions } from "@/modules/security";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/modules/security";
@@ -15,20 +15,25 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "Claims Intelligence", icon: Shield, children: [
     { label: "Monthly Claims Entry", path: "/claims", permission: "claims.read" },
     { label: "Individual Claim Cases", path: "/claims/cases", permission: "claims.read" },
-  { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
-  { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
-  { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
+    { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
     { label: "Settlement Capture", path: "/claims/settlements", permission: "payments.read" },
     { label: "Settlement Tracking", path: "/payments", permission: "payments.read" },
     { label: "Outstanding", path: "/outstanding", permission: "payments.read" },
     { label: "Rejections", path: "/rejections", permission: "claims.read" },
     { label: "Withholding Tax", path: "/withholding-tax", permission: "payments.read" },
-    { label: "Bulk Import", path: "/insurance-import", permission: "masterdata.write" },
-    { label: "Document Intake", path: "/document-intake", permission: "masterdata.write" },
-    { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
+  ] },
+  { label: "Financial Reports", icon: FileText, children: [
+    { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
     { label: "Reports", path: "/reports", permission: "reports.read" },
     { label: "General Ledger", path: "/ledger", permission: "ledger.read" },
     { label: "Statements of Account", path: "/statements-of-account", permission: "ledger.read" },
+  ] },
+  { label: "Data & Audit", icon: Database, children: [
+    { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
+    { label: "Bulk Import", path: "/insurance-import", permission: "masterdata.write" },
+    { label: "Document Intake", path: "/document-intake", permission: "masterdata.write" },
+    { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
+    { label: "Audit Logs", path: "/audit-trail", permission: "audit.read" },
   ] },
   { label: "Pre-Authorization", icon: FileCheck, children: [
     { label: "Authorization Studio", path: "/pre-auth/studio", permission: "preauth.read" },
@@ -51,10 +56,10 @@ export const NAV_GROUPS: NavGroup[] = [
   ] },
   { label: "Administration", icon: Settings2, children: [
     { label: "Users & Roles", path: "/users", permission: "users.manage" },
-    { label: "Audit Logs", path: "/audit-trail", permission: "audit.read" },
     { label: "Messages", path: "/chat" },
     { label: "Notifications", path: "/notifications" },
     { label: "Settings", path: "/settings", permission: "settings.manage" },
+    { label: "Letterhead Designer", path: "/letterhead-designer", permission: "settings.manage" },
     { label: "Facilities & Access", path: "/facilities", superuserOnly: true },
   ] },
 ];
@@ -64,15 +69,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const { can } = usePermissions();
   const { userRole } = useAuth();
   const groupContaining = (g: NavGroup) => g.children?.some((c) => c.path === location.pathname);
-  const [expanded, setExpanded] = useState<string[]>(() => { const open = NAV_GROUPS.filter(groupContaining).map((g) => g.label); return open.length ? open : ["Claims Intelligence"]; });
+  const [expanded, setExpanded] = useState<string | null>(() => NAV_GROUPS.find(groupContaining)?.label ?? null);
 
   useEffect(() => {
-    const activeGroups = NAV_GROUPS.filter(groupContaining).map((g) => g.label);
-    if (!activeGroups.length) return;
-    setExpanded((prev) => Array.from(new Set([...prev, ...activeGroups])));
+    // Keep only the section containing the active page open.
+    setExpanded(NAV_GROUPS.find(groupContaining)?.label ?? null);
   }, [location.pathname]);
 
-  const toggle = (label: string) => setExpanded((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
+  const toggle = (label: string) => setExpanded((current) => current === label ? null : label);
   const isActive = (path: string) => location.pathname === path;
   const visible = (child: NavChild) => (child.superuserOnly ? userRole === "superuser" : true) && (!child.permission || can(child.permission));
   return <aside className="h-full w-64 max-w-[88vw] max-h-screen bg-sidebar !text-sidebar-foreground flex flex-col border-r border-sidebar-border no-print overflow-hidden">
@@ -89,7 +93,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
         if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} aria-current={isActive(group.path!) ? "page" : undefined} className={`sidebar-item min-h-10 !text-sidebar-foreground ${isActive(group.path!) ? "sidebar-item-active !text-sidebar-primary-foreground" : ""}`}><group.icon className="w-[18px] h-[18px] shrink-0" />{group.label}</Link>;
         const children = group.children.filter(visible);
         if (!children.length) return null;
-        const open = expanded.includes(group.label);
+        const open = expanded === group.label;
         return <div key={group.label} className="min-w-0">
           <button type="button" onClick={() => toggle(group.label)} aria-expanded={open} className="sidebar-item w-full min-h-10 !text-sidebar-foreground justify-between">
             <span className="flex items-center gap-3 min-w-0"><group.icon className="w-[18px] h-[18px] shrink-0" /><span className="truncate">{group.label}</span></span>

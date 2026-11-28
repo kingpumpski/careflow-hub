@@ -6,12 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
-import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
-import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
+import { buildReportPDFBlob, exportReportExcel } from "@/lib/exportUtils";
+import { HtmlPrintPreviewDialog, PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
+import { toast } from "@/hooks/use-toast";
+import { calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 import { usePermissions } from "@/modules/security/usePermissions";
+import type { Permission } from "@/modules/security";
 import SettlementReconciliationReport from "@/components/reports/SettlementReconciliationReport";
 import { buildSettlementReconciliationRows } from "@/modules/reports/settlementReconciliationReport";
 import OperationalPerformanceReport from "@/components/reports/OperationalPerformanceReport";
@@ -20,26 +23,43 @@ import { buildOperationalReportData } from "@/modules/reports/operationalReportC
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
 const percentLabel = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
+const REPORT_SOURCE_PERMISSIONS: Record<string, Permission[]> = {
+  balance: ["claims.read", "payments.read"],
+  income: ["ledger.read"],
+  receivables: ["claims.read", "payments.read"],
+  tax: ["claims.read", "payments.read", "ledger.read"],
+  aging: ["claims.read", "payments.read"],
+  receipts: ["payments.read"],
+  settlement: ["payments.read"],
+  operations: ["claims.read", "payments.read", "audit.read"],
+};
 
 export default function Reports() {
   const [activePeriod, setActivePeriod] = useState("Monthly");
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
+  const [printPreviewHtml, setPrintPreviewHtml] = useState("");
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewName, setPdfPreviewName] = useState("report.pdf");
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
+  const missingReportPermissions = (REPORT_SOURCE_PERMISSIONS[activeReport] || []).filter((permission) => !can(permission));
+  const reportSourceAccessMissing = missingReportPermissions.length > 0;
 
-  const { data: claims } = useSupabaseQuery("claims");
+  const { data: claims } = useSupabaseQuery("claims", { enabled: can("claims.read") });
   const canReadAudit = can("audit.read");
   const canReadClaims = can("claims.read");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: payments } = useSupabaseQuery("payments");
-  const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
-  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
-  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: activeReport === "settlement" || activeReport === "operations", missingSchemaBehavior: "error" });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: can("claims.read") || can("payments.read") });
+  const { data: payments } = useSupabaseQuery("payments", { enabled: can("payments.read") });
+  const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { enabled: can("ledger.read") || can("reports.read"), missingSchemaBehavior: "error" });
+  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { enabled: can("claims.read") && can("payments.read"), missingSchemaBehavior: "error" });
+  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: (activeReport === "settlement" || activeReport === "operations") && can("payments.read"), missingSchemaBehavior: "error" });
   const { data: auditLogs, error: auditLogsError } = useSupabaseQuery("audit_logs", { enabled: activeReport === "operations" && canReadAudit, orderBy: "changed_at", limit: 1000, missingSchemaBehavior: "error" });
   const { data: profiles } = useSupabaseQuery("profiles", { select: "id,full_name", enabled: activeReport === "operations" && canReadAudit });
-  const { data: ledger } = useSupabaseQuery("ledger_entries");
+  const { data: ledger } = useSupabaseQuery("ledger_entries", { enabled: can("ledger.read") });
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
@@ -133,12 +153,10 @@ export default function Reports() {
         }
         taxByPeriod.set(key, periodTax);
       });
-      const fallbackTaxApplied = calculateAppliedWithholdingTax(Array.from(taxByPeriod.values()));
-
-      // The settlement-period view is authoritative: it prefers aggregate claim
-      // submissions, approved gross, matched payments and actual WHT, and uses
-      // provisional WHT only while actual advice is unavailable. Raw tables are
-      // retained as a compatibility fallback when the view is not yet deployed.
+      // The settlement-period view is authoritative for submitted, approved and
+      // paid amounts. Provisional WHT remains a separate estimate and is never
+      // treated as a receivable settlement. Raw tables remain a compatibility
+      // fallback while the corrected view migration is awaiting production release.
       const submitted = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
         : fallbackClaimTotals.submittedGross;
@@ -155,15 +173,18 @@ export default function Reports() {
       // When its separate columns are absent, derive the applied amount from
       // the raw tax ledger: actual replaces provisional within each claims month.
       const fallbackTaxPeriods = Array.from(taxByPeriod.values());
-      const tax = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.reduce((sum, period) => sum + Number(period.withholding_tax_amount || 0), 0)
-        : fallbackTaxApplied;
       const provisionalTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.provisional_withholding_tax_amount || 0), 0)
         : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.provisional, 0);
       const actualTax = authoritative.length && hasSeparatedTaxFields
         ? authoritative.reduce((sum, period) => sum + Number(period.actual_withholding_tax_amount || 0), 0)
         : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.actual, 0);
+      // Only certificate/advice-confirmed actual WHT is applied to receivables.
+      // The provisional amount is visible for tax estimation, not collection. 
+      const hasCertifiedTaxField = authoritative.some((period) => "certified_withholding_tax_amount" in period);
+      const tax = hasCertifiedTaxField
+        ? authoritative.reduce((sum, period) => sum + Number(period.certified_withholding_tax_amount || 0), 0)
+        : 0;
       const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
       const approvedGross = authoritative.length > 0 && approvedGrossRows.length === authoritative.length
         ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
@@ -175,20 +196,20 @@ export default function Reports() {
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
         : fallbackClaimTotals.netClaim;
-      const outstanding = authoritative.length && hasSeparatedTaxFields
+      const outstanding = authoritative.length && hasCertifiedTaxField
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
         : Math.max(netClaim - paid - tax, 0);
       const fallbackTaxPeriodEntries = Array.from(taxByPeriod.entries());
       const hasActualAdvice = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.some((period) => period.outstanding_status === "actual")
+        ? authoritative.some((period) => period.actual_withholding_tax_amount != null)
         : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount > 0);
       const hasProvisionalApplied = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.some((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+        ? authoritative.some((period) => period.actual_withholding_tax_amount == null && Number(period.provisional_withholding_tax_amount || 0) > 0)
         : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount === 0 && periodTax.provisionalCount > 0);
       const hasTaxData = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => Number(period.withholding_tax_entry_count || 0) > 0)
         : fallbackTaxPeriodEntries.length > 0;
-      const actualBasisRows = authoritative.filter((period) => period.outstanding_status === "actual");
+      const actualBasisRows = authoritative.filter((period) => period.actual_withholding_tax_amount != null);
       const actualBasisAvailable = hasSeparatedTaxFields && actualBasisRows.length > 0
         && actualBasisRows.every((period) => period.approved_gross_amount != null);
       const actualBasisAmount = actualBasisAvailable
@@ -196,7 +217,7 @@ export default function Reports() {
         : null;
       const provisionalBasisAmount = authoritative.length && hasSeparatedTaxFields
         ? authoritative
-          .filter((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+          .filter((period) => period.actual_withholding_tax_amount == null && Number(period.withholding_tax_entry_count || 0) > 0)
           .reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
         : fallbackTaxPeriodEntries.reduce((sum, [key, periodTax]) => (
           periodTax.actualCount === 0 && periodTax.provisionalCount > 0
@@ -223,14 +244,16 @@ export default function Reports() {
     const revenue = filteredLedger.filter((e: any) => e.account_credit === "Claims Revenue").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj - whtExp };
+    return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj };
   }, [ledger, selectedCompanyId, filterByPeriod]);
 
   const taxLiabilityData = useMemo(() => {
     const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
-    return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
+    const taxCreditDebits = filteredLedger.filter((e) => e.account_debit === "Withholding Tax Receivable").reduce((s: number, e) => s + Number(e.amount || 0), 0);
+    const taxCreditCredits = filteredLedger.filter((e) => e.account_credit === "Withholding Tax Receivable").reduce((s: number, e) => s + Number(e.amount || 0), 0);
+    return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals, taxCreditReceivable: taxCreditDebits - taxCreditCredits };
   }, [ledger, selectedCompanyId, filterByPeriod]);
 
   // Aging uses the same authoritative outstanding-period view as the balance
@@ -277,20 +300,9 @@ export default function Reports() {
     : null;
 
   const handlePrint = (title: string) => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const source = document.getElementById("report-content");
-    if (!source) {
-      printWindow.close();
-      return;
-    }
-    // Wait for the report document and its company logo to finish loading
-    // before opening the browser print dialog.
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
+    if (!source) return;
     const printable = source.cloneNode(true) as HTMLElement;
     printable.querySelectorAll('[role="tablist"], [role="tab"]').forEach((tab) => tab.remove());
     printable.querySelectorAll("button").forEach((button) => button.replaceWith(document.createTextNode(button.textContent?.trim() || "")));
@@ -312,11 +324,11 @@ export default function Reports() {
     const accentColor = /^#[0-9a-f]{6}$/i.test(companyInfo.accent_color || "")
       ? companyInfo.accent_color!
       : "#1E4078";
-    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Approved gross and approval variance are shown when insurer payment advice is available. The WHT applied to outstanding balances is actual WHT when confirmed, otherwise the provisional estimate.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
+    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT and actual WHT per insurer advice are shown separately. Only the amount supported by a tax certificate received by the facility is credited to Accounts Receivable and reduces the outstanding balance.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Credit Received</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
     const receiptTable = activeReport === "balance"
       ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
       : "";
-    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
+    setPrintPreviewHtml(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${accentColor};padding:0 0 14px;margin-bottom:18px}
       .brand-logo{max-width:92px;max-height:64px;object-fit:contain}.brand-copy{flex:1}.brand-name{font-size:20px;font-weight:700;color:${accentColor};margin:0}.brand-contact{color:#526078;margin-top:4px;font-size:9px}
@@ -324,30 +336,31 @@ export default function Reports() {
       h2,h3{color:#1e4078;margin:16px 0 8px}table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:9px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#1e4078!important;color:#fff!important;font-weight:700;text-align:left}th,td{border:1px solid #d7dee8;padding:7px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fc}tfoot td{background:#eaf0f7;font-weight:700}.text-right{text-align:right}.font-bold,.font-semibold{font-weight:700}.text-destructive{color:#b42318}.text-success{color:#087443}.text-warning{color:#946200}.stat-card{border:1px solid #dce3ed;border-radius:6px;padding:12px;margin:8px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.report-footer{border-top:1px solid #d7dee8;padding-top:8px;margin-top:22px;color:#667085;font-size:8px}
       @media print{body{background:#fff}.no-print{display:none!important}}
     </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${counterpartySection}${printable.outerHTML}${reconciliationTable}${receiptTable}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
-    printWindow.document.close();
+    setPrintPreviewOpen(true);
   };
 
-  const handleExportPDF = () => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+  const handleExportPDF = async () => {
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
     let columns: string[] = [];
     if (activeReport === "income") {
       columns = ["Income Statement Line", "Amount (GHS)"];
-      data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Withholding Tax Expense", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
+      data = [["Claims Revenue", incomeData.revenue], ["Revenue Adjustments", incomeData.revAdj], ["Net Revenue", incomeData.netRevenue], ["Provisional WHT Estimate (not an expense)", incomeData.whtExp], ["Net Income", incomeData.netIncome]];
     } else if (activeReport === "receivables") {
-      columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)", "Collected"];
+      columns = ["Company", "Net Claim (GHS)", "Paid (GHS)", "WHT Credit Received (GHS)", "Outstanding (GHS)", "Collected"];
       const receivables = sortedReport.filter((row) => row.outstanding > 0);
       data = receivables.map((row) => [row.company, row.netClaim, row.paid, row.tax, row.outstanding, row.netClaim > 0 ? `${(((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)}%` : "—"]);
       data.push(["Grand Total", grandNet, grandPaid, grandTax, grandOutstanding, grandNet > 0 ? `${(((grandPaid + grandTax) / grandNet) * 100).toFixed(1)}%` : "—"]);
     } else if (activeReport === "tax") {
-      columns = ["Company / Summary", "WHT Basis", "Tax Base (GHS)", "WHT Rate", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)"];
+      columns = ["Company / Summary", "WHT Basis", "Tax Base (GHS)", "WHT Rate", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Credit Received (GHS)"];
       data = [
         ["WHT Payable", "—", "—", "—", "—", "—", taxLiabilityData.whtPayable],
         ["WHT Reversals", "—", "—", "—", "—", "—", taxLiabilityData.whtReversals],
         ["Net Tax Liability", "—", "—", "—", "—", "—", taxLiabilityData.netLiability],
-        ...sortedReport.filter((row) => row.tax > 0).map((row) => [
+        ["WHT Tax Credit Receivable", "Certificate-backed asset", "—", "—", "—", "—", taxLiabilityData.taxCreditReceivable],
+        ...sortedReport.filter((row) => row.provisionalTax > 0 || row.actualTax > 0).map((row) => [
           row.company,
           row.taxBasisLabel,
           row.taxBasisAmount ?? "—",
@@ -388,7 +401,7 @@ export default function Reports() {
       data = [["0–30 days", agingData.b30], ["31–60 days", agingData.b60], ["61–90 days", agingData.b90], ["91–120 days", agingData.b120], ["120+ days", agingData.b120plus]];
       data.push(["Total Outstanding", Object.values(agingData).reduce((sum, value) => sum + value, 0)]);
     } else {
-      columns = ["Company", "Submitted (GHS)", "Rejected (GHS)", "Approved Gross (GHS)", "Approval Variance (GHS)", "Paid (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Applied (GHS)", "Outstanding (GHS)"];
+      columns = ["Company", "Submitted (GHS)", "Rejected (GHS)", "Approved Gross (GHS)", "Approval Variance (GHS)", "Paid (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "WHT Credit Received (GHS)", "Outstanding (GHS)"];
       data = sortedReport.map(row => [row.company, row.submitted, row.rejected, row.approvedGross ?? "—", row.approvalVariance ?? "—", row.paid, row.provisionalTax, row.actualTax, row.tax, row.outstanding]);
       data.push(["Grand Total", grandSubmitted, grandRejected, "—", "—", grandPaid, sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), sortedReport.reduce((sum, row) => sum + row.actualTax, 0), grandTax, grandOutstanding]);
     }
@@ -400,23 +413,31 @@ export default function Reports() {
       email: selectedCompany.email,
       contactPerson: selectedCompany.contact_person,
     } : undefined;
-    exportReportPDF(title, data, columns, companyInfo, counterparty);
+    try {
+      const blob = await buildReportPDFBlob(title, data, columns, companyInfo, counterparty);
+      setPdfPreviewBlob(blob);
+      setPdfPreviewName(`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+      setPdfPreviewOpen(true);
+    } catch (error) {
+      toast({ title: "Unable to prepare PDF preview", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    }
   };
 
   const handleExportExcel = () => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
-      rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Withholding Tax Expense", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
+      rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Provisional WHT Estimate (not an expense)", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
     } else if (activeReport === "receivables") {
-      rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Applied": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
-      rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Applied": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
+      rows = sortedReport.filter((row) => row.outstanding > 0).map((row) => ({ "Company": row.company, "Net Claim": row.netClaim, "Paid": row.paid, "WHT Credit Received": row.tax, "Outstanding": row.outstanding, "Collected %": row.netClaim > 0 ? Number((((row.paid + row.tax) / row.netClaim) * 100).toFixed(1)) : null }));
+      rows.push({ "Company": "Grand Total", "Net Claim": grandNet, "Paid": grandPaid, "WHT Credit Received": grandTax, "Outstanding": grandOutstanding, "Collected %": grandNet > 0 ? Number((((grandPaid + grandTax) / grandNet) * 100).toFixed(1)) : null });
     } else if (activeReport === "tax") {
       rows = [
-        { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtPayable },
-        { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.whtReversals },
-        { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Applied (GHS)": taxLiabilityData.netLiability },
+        { "Company / Summary": "WHT Payable", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.whtPayable },
+        { "Company / Summary": "WHT Reversals", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.whtReversals },
+        { "Company / Summary": "Net Tax Liability", "WHT Basis": "—", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.netLiability },
+        { "Company / Summary": "WHT Tax Credit Receivable", "WHT Basis": "Certificate-backed asset", "Tax Base (GHS)": null, "WHT Rate": "—", "Provisional WHT (GHS)": null, "Actual WHT (GHS)": null, "WHT Credit Received (GHS)": taxLiabilityData.taxCreditReceivable },
         ...sortedReport.filter((row) => row.tax > 0).map((row) => ({
           "Company / Summary": row.company,
           "WHT Basis": row.taxBasisLabel,
@@ -424,7 +445,7 @@ export default function Reports() {
           "WHT Rate": row.taxRate == null ? "—" : `${(row.taxRate * 100).toFixed(2)}%`,
           "Provisional WHT (GHS)": row.provisionalTax,
           "Actual WHT (GHS)": row.actualTax,
-          "WHT Applied (GHS)": row.tax,
+          "WHT Credit Received (GHS)": row.tax,
         })),
       ];
     } else if (activeReport === "operations") {
@@ -469,8 +490,8 @@ export default function Reports() {
       rows = [{ "Aging Bucket": "0–30 days", "Outstanding": agingData.b30 }, { "Aging Bucket": "31–60 days", "Outstanding": agingData.b60 }, { "Aging Bucket": "61–90 days", "Outstanding": agingData.b90 }, { "Aging Bucket": "91–120 days", "Outstanding": agingData.b120 }, { "Aging Bucket": "120+ days", "Outstanding": agingData.b120plus }];
       rows.push({ "Aging Bucket": "Total Outstanding", "Outstanding": Object.values(agingData).reduce((sum, value) => sum + value, 0) });
     } else {
-      rows = sortedReport.map(row => ({ "Insurance Company": row.company, "Submitted": row.submitted, "Rejected": row.rejected, "Net Claim": row.netClaim, "Approved Gross": row.approvedGross, "Approval Variance": row.approvalVariance, "Paid": row.paid, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Applied": row.tax, "Outstanding": row.outstanding }));
-      rows.push({ "Insurance Company": "Grand Total", "Submitted": grandSubmitted, "Rejected": grandRejected, "Net Claim": grandNet, "Approved Gross": null, "Approval Variance": null, "Paid": grandPaid, "Provisional WHT": sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), "Actual WHT": sortedReport.reduce((sum, row) => sum + row.actualTax, 0), "WHT Applied": grandTax, "Outstanding": grandOutstanding });
+      rows = sortedReport.map(row => ({ "Insurance Company": row.company, "Submitted": row.submitted, "Rejected": row.rejected, "Net Claim": row.netClaim, "Approved Gross": row.approvedGross, "Approval Variance": row.approvalVariance, "Paid": row.paid, "Provisional WHT": row.provisionalTax, "Actual WHT": row.actualTax, "WHT Credit Received": row.tax, "Outstanding": row.outstanding }));
+      rows.push({ "Insurance Company": "Grand Total", "Submitted": grandSubmitted, "Rejected": grandRejected, "Net Claim": grandNet, "Approved Gross": null, "Approval Variance": null, "Paid": grandPaid, "Provisional WHT": sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0), "Actual WHT": sortedReport.reduce((sum, row) => sum + row.actualTax, 0), "WHT Credit Received": grandTax, "Outstanding": grandOutstanding });
     }
     exportReportExcel(`${periodLabel} - ${reportName}`, rows, "Report");
   };
@@ -483,12 +504,13 @@ export default function Reports() {
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial &amp; Operational Reports</h1><p className="page-description">Generate financial statements, claims-cycle reconciliations and operational performance reports</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={reportSourceAccessMissing ? "Additional source permissions are required before this report can be exported." : settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={reportSourceAccessMissing ? "Additional source permissions are required before this report can be exported." : settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
         </div>
       </div>
 
+      {reportSourceAccessMissing && <div role="alert" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">This report needs additional data permissions: {missingReportPermissions.join(", ")}. Ask an administrator to grant the required scoped access. Report figures and exports are withheld until the source permissions are available.</div>}
       {settlementReportUnavailable && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Claims settlement report data is unavailable. Financial totals are not zero; printing and exports are disabled until the settlement source is restored.</div>}
       {activeReport === "balance" && !settlementReportUnavailable && <div role="status" className="rounded-md border p-3 text-sm text-muted-foreground">Cash receipts are grouped by recorded payment date. Actual withholding tax is grouped by claims period because the connected production schema does not record a separate tax receipt date.</div>}
 
@@ -515,7 +537,14 @@ export default function Reports() {
           <TabsTrigger value="operations">Operational Performance</TabsTrigger>
         </TabsList>
 
-        <div id="report-content" className="mt-4">
+        {reportSourceAccessMissing ? (
+          <div role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <h2 className="font-semibold text-destructive">Report data access is incomplete</h2>
+            <p className="mt-1 text-muted-foreground">This report requires additional source permissions. No claims or financial rows are exposed by weakening database security, and exports are disabled until access is granted.</p>
+            <p className="mt-2 font-medium">Required permissions: {missingReportPermissions.join(", ")}</p>
+          </div>
+        ) : (
+          <div id="report-content" className="mt-4">
           <TabsContent value="balance">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">{settlementReportUnavailable ? "—" : `GH¢ ${grandSubmitted.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
@@ -570,8 +599,8 @@ export default function Reports() {
                   <tr><td className="pl-8 text-destructive">Less: Revenue Adjustments (Rejections)</td><td className="text-right text-destructive">(GH¢ {incomeData.revAdj.toLocaleString()})</td></tr>
                   <tr className="font-bold border-t"><td className="pl-4">Net Revenue</td><td className="text-right">GH¢ {incomeData.netRevenue.toLocaleString()}</td></tr>
                   <tr><td colSpan={2}>&nbsp;</td></tr>
-                  <tr className="bg-muted/20"><td colSpan={2} className="font-bold">Expenses</td></tr>
-                  <tr><td className="pl-8 text-warning">Withholding Tax Expense</td><td className="text-right text-warning">GH¢ {incomeData.whtExp.toLocaleString()}</td></tr>
+                  <tr className="bg-muted/20"><td colSpan={2} className="font-bold">Tax information (not an expense)</td></tr>
+                  <tr><td className="pl-8 text-muted-foreground">Provisional WHT estimate — memo only</td><td className="text-right text-muted-foreground">GH¢ {incomeData.whtExp.toLocaleString()}</td></tr>
                   <tr><td colSpan={2}>&nbsp;</td></tr>
                   <tr className="font-bold text-lg border-t-2 bg-success/5"><td>Net Income</td><td className="text-right text-success">GH¢ {incomeData.netIncome.toLocaleString()}</td></tr>
                 </tbody>
@@ -607,13 +636,14 @@ export default function Reports() {
           <TabsContent value="tax">
             <div className="stat-card">
               <h3 className="font-heading font-semibold mb-4">{periodLabel} — Tax Liability Report</h3>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-warning">GH¢ {taxLiabilityData.whtPayable.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Payable</p></div>
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-success">GH¢ {taxLiabilityData.whtReversals.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Reversals</p></div>
                 <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">GH¢ {taxLiabilityData.netLiability.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">Net Tax Liability</p></div>
+                <div className="stat-card text-center"><p className="text-2xl font-bold font-heading text-primary">GH¢ {taxLiabilityData.taxCreditReceivable.toLocaleString()}</p><p className="text-xs text-muted-foreground mt-1">WHT Tax Credit Receivable</p></div>
               </div>
               <table className="data-table">
-                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Applied (GHS)</th></tr></thead>
+                <thead><tr><th>Company</th><th>WHT Basis</th><th>Tax Base (GHS)</th><th>WHT Rate</th><th>Provisional WHT (GHS)</th><th>Actual WHT (GHS)</th><th>WHT Credit Received (GHS)</th></tr></thead>
                 <tbody>
                   {settlementReportUnavailable && <tr><td colSpan={7} className="text-center text-muted-foreground py-6">Company-level WHT reconciliation is unavailable because the claims settlement source is missing.</td></tr>}
                   {sortedReport.filter(r => r.tax > 0).map((r) => (
@@ -705,7 +735,10 @@ export default function Reports() {
             </div>
           </TabsContent>
         </div>
+        )}
       </Tabs>
+      <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
+      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
     </div>
   );
 }

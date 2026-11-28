@@ -40,7 +40,8 @@ BEGIN
     RAISE EXCEPTION 'Configured WHT rate helper must not expose the internal system setting directly';
   END IF;
 
-  IF position('No approved provisional WHT rate is configured for this facility' in pg_get_functiondef('security_internal.configured_withholding_tax_rate(uuid)'::regprocedure)) = 0
+  IF position('No approved provisional WHT rate is configured' in pg_get_functiondef('security_internal.configured_withholding_tax_rate(uuid)'::regprocedure)) = 0
+     OR position('authorized administrator' in pg_get_functiondef('security_internal.configured_withholding_tax_rate(uuid)'::regprocedure)) = 0
      OR position('5.00' in pg_get_functiondef('security_internal.configured_withholding_tax_rate(uuid)'::regprocedure)) > 0 THEN
     RAISE EXCEPTION 'Monthly claim posting must fail closed when the approved WHT rate is not configured; no implicit tax rate is permitted';
   END IF;

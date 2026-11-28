@@ -70,3 +70,21 @@ export function calculateAppliedWithholdingTax(periods: readonly WithholdingPeri
     0,
   );
 }
+
+
+export interface ClaimsScheduleBalanceInput {
+  submittedGross: number;
+  rejectedGross: number;
+  cashReceived: number;
+  certifiedWithholdingTax: number;
+  approvedGross?: number | null;
+}
+
+/** Calculate the insurer's true outstanding amount without treating provisional WHT as a settlement. */
+export function calculateClaimsScheduleBalance(input: ClaimsScheduleBalanceInput) {
+  const approvedGross = input.approvedGross == null
+    ? Math.max(input.submittedGross - input.rejectedGross, 0)
+    : Math.max(input.approvedGross, 0);
+  const outstanding = Math.max(approvedGross - input.cashReceived - input.certifiedWithholdingTax, 0);
+  return { approvedGross, outstanding };
+}

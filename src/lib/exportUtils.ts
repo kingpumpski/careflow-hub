@@ -10,7 +10,7 @@ interface GrandTotals {
   grandRejected: number;
 }
 
-export function exportClaimsPDF(data: any[], totals: GrandTotals) {
+export function exportClaimsPDF(data: Array<Array<string | number>>, totals: GrandTotals) {
   const doc = new jsPDF();
   doc.setFontSize(18);
   doc.text("Claims Management Report", 14, 22);
@@ -40,7 +40,7 @@ export function exportClaimsPDF(data: any[], totals: GrandTotals) {
   doc.save("claims-report.pdf");
 }
 
-export function exportClaimsExcel(data: any[], totals: GrandTotals) {
+export function exportClaimsExcel(data: Array<Array<string | number>>, totals: GrandTotals) {
   const rows = data.map((a: any) => ({
     "Insurance Company": a.company_name,
     "Claims": a.claimCount,
@@ -115,9 +115,22 @@ export async function loadImageDataUrl(url?: string): Promise<{ data: string; fo
   }
 }
 
-export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+export async function buildPreAuthPDFBlob(preauth: any, items: any[], companyInfo: LetterheadConfig) {
   const doc = await buildPreAuthDoc(preauth, items, companyInfo);
-  doc.save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+  return {
+    blob: doc.output("blob"),
+    fileName: `preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`,
+  };
+}
+
+export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+  const { blob, fileName } = await buildPreAuthPDFBlob(preauth, items, companyInfo);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function preAuthPdfBase64(preauth: any, items: any[], companyInfo: LetterheadConfig): Promise<{ base64: string; filename: string }> {
@@ -287,13 +300,13 @@ export type ReportCounterparty = {
   contactPerson?: string | null;
 };
 
-export async function exportReportPDF(
+export async function buildReportPDFBlob(
   title: string,
-  data: any[],
+  data: Array<Array<string | number>>,
   columns: string[],
   companyInfo: LetterheadConfig,
   counterparty?: ReportCounterparty,
-) {
+): Promise<Blob> {
   const doc = new jsPDF("landscape");
   let y = await drawLetterhead(doc, companyInfo || {}, title);
 
@@ -339,8 +352,28 @@ export async function exportReportPDF(
   });
 
   drawBankingFooter(doc, companyInfo || {});
-  doc.save(`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+
+  return doc.output("blob");
 }
+
+export async function exportReportPDF(
+  title: string,
+  data: Array<Array<string | number>>,
+  columns: string[],
+  companyInfo: LetterheadConfig,
+  counterparty?: ReportCounterparty,
+) {
+  const blob = await buildReportPDFBlob(title, data, columns, companyInfo, counterparty);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${title.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 export function exportReportExcel(title: string, rows: any[], sheetName: string) {
   const ws = XLSX.utils.json_to_sheet(rows);

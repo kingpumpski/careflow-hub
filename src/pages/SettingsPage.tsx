@@ -10,6 +10,9 @@ import { toast } from "@/hooks/use-toast";
 import { parseBankingPartners, LETTERHEAD_STYLES } from "@/lib/letterhead";
 import type { BankingPartner } from "@/lib/exportUtils";
 import BackupCenter from "@/components/settings/BackupCenter";
+import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 
 const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string; hint: string }> = {
   gmail: { host: "smtp.gmail.com", port: "587", secure: "tls", hint: "Gmail requires 2-Step Verification and a 16-character App Password (not your normal password). Username is your full Gmail/Workspace address." },
@@ -18,11 +21,20 @@ const SMTP_PRESETS: Record<string, { host: string; port: string; secure: string;
   custom: { host: "", port: "587", secure: "tls", hint: "Enter your own mail server details." },
 };
 
-export default function SettingsPage() {
-  const { data: settings, refetch } = useSupabaseQuery("system_settings");
+export default function SettingsPage({ letterheadOnly = false }: { letterheadOnly?: boolean } = {}) {
+  const { data: settings, refetch } = useSupabaseQuery("system_settings", {
+    enabled: !letterheadOnly || !databaseCapabilities.facilityLetterheadSettings,
+  });
+  const facilityId = getStoredFacilityId();
+  const { data: facilityLetterheadSettings, refetch: refetchFacilityLetterhead } = useDocumentLetterheadSettings({
+    canReadDocument: true,
+    canManageSettings: true,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getSetting = (key: string) => settings?.find?.((s: any) => s.key === key)?.value || "";
+  const getSetting = (key: string) => facilityLetterheadSettings?.find((row) => row.key === key)?.value
+    ?? settings?.find?.((row: any) => row.key === key)?.value
+    ?? "";
 
   const [providerName, setProviderName] = useState("");
   const [providerAddress, setProviderAddress] = useState("");
@@ -56,7 +68,7 @@ export default function SettingsPage() {
   const [footerNote, setFooterNote] = useState("");
 
   useEffect(() => {
-    if (settings) {
+    if (settings || facilityLetterheadSettings) {
       setProviderName(getSetting("provider_name"));
       setProviderAddress(getSetting("provider_address"));
       setProviderPhone(getSetting("provider_phone"));
@@ -87,7 +99,7 @@ export default function SettingsPage() {
         : host === "smtp.office365.com" ? "outlook" : "custom"
       );
     }
-  }, [settings]);
+  }, [settings, facilityLetterheadSettings]);
 
   const saveSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
     const updatedAt = new Date().toISOString();
@@ -107,6 +119,31 @@ export default function SettingsPage() {
 
   const saveSetting = (key: string, value: string) => saveSettings([{ key, value }]);
 
+  const saveLetterheadSettings = async (entries: Array<{ key: string; value: string }>): Promise<boolean> => {
+    if (!databaseCapabilities.facilityLetterheadSettings) {
+      if (letterheadOnly) {
+        toast({ title: "Facility letterhead release pending", description: "This designer will save company-specific branding after the facility letterhead database migration is released. Shared system branding has not been changed.", variant: "destructive" });
+        return false;
+      }
+      return saveSettings(entries);
+    }
+    if (!facilityId) {
+      toast({ title: "Facility selection required", description: "Select an active company/facility before saving its letterhead.", variant: "destructive" });
+      return false;
+    }
+    const p_settings = Object.fromEntries(entries.map(({ key, value }) => [key, value]));
+    const { error } = await supabase.rpc("save_facility_letterhead_settings", {
+      p_facility_id: facilityId,
+      p_settings,
+    });
+    if (error) {
+      toast({ title: "Letterhead was not saved", description: error.message || "The facility rejected the letterhead update.", variant: "destructive" });
+      return false;
+    }
+    await refetchFacilityLetterhead();
+    return true;
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -116,15 +153,22 @@ export default function SettingsPage() {
     }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `company-logo.${ext}`;
-      // Remove old logo if exists
-      await supabase.storage.from("logos").remove([path]);
-      const { error } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
+      if (letterheadOnly && !databaseCapabilities.facilityLetterheadSettings) {
+        throw new Error("Company-specific logo uploads are disabled until the facility letterhead database migration is released.");
+      }
+      const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+      if (!allowedTypes.includes(file.type)) throw new Error("Use a PNG, JPG or WebP logo image.");
+      const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : "png";
+      const facilityScoped = databaseCapabilities.facilityLetterheadSettings;
+      if (facilityScoped && !facilityId) throw new Error("Select an active company/facility before uploading its logo.");
+      const bucket = facilityScoped ? "facility-logos" : "logos";
+      const path = facilityScoped ? `${facilityId}/company-logo.${ext}` : `company-logo.${ext}`;
+      await supabase.storage.from(bucket).remove([path]);
+      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
-      const { data: urlData } = supabase.storage.from("logos").getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
       const url = urlData.publicUrl + "?t=" + Date.now();
-      if (!(await saveSetting("logo_url", url))) return;
+      if (!(await saveLetterheadSettings([{ key: "logo_url", value: url }]))) return;
       setLogoUrl(url);
       toast({ title: "Logo uploaded successfully" });
     } catch (err: any) {
@@ -135,7 +179,7 @@ export default function SettingsPage() {
   };
 
   const handleSaveProvider = async () => {
-    const saved = await saveSettings([
+    const saved = await saveLetterheadSettings([
       { key: "provider_name", value: providerName },
       { key: "provider_address", value: providerAddress },
       { key: "provider_phone", value: providerPhone },
@@ -210,18 +254,20 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="page-header">
-        <h1 className="page-title">System Settings</h1>
-        <p className="page-description">Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></p>
+        <h1 className="page-title">{letterheadOnly ? "Letterhead Designer" : "System Settings"}</h1>
+        <p className="page-description">{letterheadOnly ? "Design and preview the branding applied to company reports, statements and authorization documents." : <>Configure company identity, document branding and system preferences. <a href="#letterhead-designer" className="font-medium text-primary underline underline-offset-4">Open Letterhead Designer</a></>}</p>
       </div>
 
+      {letterheadOnly && !databaseCapabilities.facilityLetterheadSettings && <div role="alert" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">Facility-specific letterhead storage is prepared but not yet released to this database. You can inspect the shared design, but saving company-specific branding and logo uploads are disabled until migration reconciliation and the approved database release are complete.</div>}
+
       <Tabs defaultValue="provider">
-        <TabsList>
+        {!letterheadOnly && <TabsList>
           <TabsTrigger value="provider">Company &amp; Letterhead</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax Configuration</TabsTrigger>
           <TabsTrigger value="email">Email (SMTP)</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
-        </TabsList>
+        </TabsList>}
 
         <TabsContent value="provider" className="space-y-4 mt-4">
           <div className="stat-card space-y-4">
@@ -236,7 +282,23 @@ export default function SettingsPage() {
               <div><Label>Address</Label><Input value={providerAddress} onChange={(e) => setProviderAddress(e.target.value)} placeholder="P.O. Box 123, Accra" className="mt-1" /></div>
               <div><Label>Phone</Label><Input value={providerPhone} onChange={(e) => setProviderPhone(e.target.value)} placeholder="+233 XX XXX XXXX" className="mt-1" /></div>
             </div>
-            <Button size="sm" onClick={handleSaveProvider}>Save Provider Info</Button>
+            <Button size="sm" onClick={handleSaveProvider} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Provider Info</Button>
+          </div>
+
+          <div className="stat-card space-y-4">
+            <h3 className="font-heading font-semibold flex items-center gap-2"><Upload className="w-4 h-4 text-primary" />Organization Logo</h3>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-lg bg-muted border-2 border-dashed border-border flex items-center justify-center overflow-hidden">
+                {logoUrl ? <img src={logoUrl} alt="Company logo preview" className="w-full h-full object-contain" /> : <Upload className="w-6 h-6 text-muted-foreground" />}
+              </div>
+              <div>
+                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading || (letterheadOnly && !databaseCapabilities.facilityLetterheadSettings)}>
+                  {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading...</> : "Upload Logo"}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">PNG, JPG or WebP (max 2MB)</p>
+              </div>
+            </div>
           </div>
 
           <div className="stat-card space-y-4">
@@ -295,10 +357,10 @@ export default function SettingsPage() {
               </Button>
               <Button size="sm" onClick={async () => {
                 const clean = bankingPartners.filter((b) => (b.bank_name || "").trim());
-                if (!(await saveSetting("banking_partners", JSON.stringify(clean)))) return;
+                if (!(await saveLetterheadSettings([{ key: "banking_partners", value: JSON.stringify(clean) }]))) return;
                 setBankingPartners(clean);
                 toast({ title: "Banking partners saved", description: `${clean.length} partner(s) will appear on documents` });
-              }}>Save Banking Partners</Button>
+              }} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Banking Partners</Button>
             </div>
           </div>
 
@@ -307,7 +369,7 @@ export default function SettingsPage() {
               <PenTool className="w-4 h-4 text-primary" />
               Letterhead Designer
             </h3>
-            <p className="text-xs text-muted-foreground">Controls the branded header and footer applied to pre-authorization documents and exported reports. The organization logo from the General tab is used automatically.</p>
+            <p className="text-xs text-muted-foreground">Design the company identity, logo, header and footer applied to reports, statements, claims schedules and pre-authorization documents.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -380,41 +442,18 @@ export default function SettingsPage() {
             </div>
 
             <Button size="sm" onClick={async () => {
-              const saved = await saveSettings([
+              const saved = await saveLetterheadSettings([
                 { key: "letterhead_accent", value: letterheadAccent },
                 { key: "letterhead_style", value: letterheadStyle },
                 { key: "letterhead_show_banking", value: showBanking ? "true" : "false" },
                 { key: "letterhead_footer_note", value: footerNote },
               ]);
               if (saved) toast({ title: "Letterhead design saved" });
-            }}>Save Letterhead Design</Button>
+            }} disabled={letterheadOnly && !databaseCapabilities.facilityLetterheadSettings}>Save Letterhead Design</Button>
           </div>
         </TabsContent>
 
         <TabsContent value="general" className="space-y-4 mt-4">
-          <div className="stat-card space-y-4">
-            <h3 className="font-heading font-semibold flex items-center gap-2">
-              <Upload className="w-4 h-4 text-primary" />
-              Organization Logo
-            </h3>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-lg bg-muted border-2 border-dashed border-border flex items-center justify-center overflow-hidden">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <Upload className="w-6 h-6 text-muted-foreground" />
-                )}
-              </div>
-              <div>
-                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml" className="hidden" onChange={handleLogoUpload} />
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                  {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading...</> : "Upload Logo"}
-                </Button>
-                <p className="text-xs text-muted-foreground mt-1">PNG, SVG, or JPG (max 2MB)</p>
-              </div>
-            </div>
-          </div>
-
           <div className="stat-card space-y-4">
             <h3 className="font-heading font-semibold flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-primary" />
