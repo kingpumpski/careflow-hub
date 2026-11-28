@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { drawLetterhead, type LetterheadConfig } from "@/lib/exportUtils";
-import type { StatementReconciliation, StatementSummary } from "./statementOfAccount";
+import type { StatementSummary } from "./statementOfAccount";
 
 export type StatementCompany = {
   company_name: string;
@@ -17,7 +17,6 @@ const dateLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateS
 export async function exportCompanyStatementPDF(
   company: StatementCompany,
   statement: StatementSummary,
-  reconciliation: StatementReconciliation,
   startDate: string,
   endDate: string,
   generatedAt: Date,
@@ -121,79 +120,6 @@ export async function exportCompanyStatementPDF(
     },
   });
 
-  const ledgerFinalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y;
-  let reconciliationY = ledgerFinalY + 10;
-  const reconciliationPageHeight = doc.internal.pageSize.getHeight();
-  if (reconciliationY > reconciliationPageHeight - 48) {
-    doc.addPage();
-    reconciliationY = 20;
-  }
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(accent[0], accent[1], accent[2]);
-  doc.text("CLAIMS & WITHHOLDING-TAX RECONCILIATION", 14, reconciliationY);
-  reconciliationY += 5;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(100);
-  doc.text("Monthly claim-period totals. Effective WHT is credited in the statement ledger above; actual WHT replaces provisional WHT when confirmed.", 14, reconciliationY);
-  reconciliationY += 7;
-
-  const reconciliationCards = [
-    ["REJECTED CLAIMS", money(reconciliation.rejectedClaimsTotal)],
-    ["PROVISIONAL WHT", money(reconciliation.provisionalWhtTotal)],
-    ["ACTUAL WHT", money(reconciliation.actualWhtTotal)],
-    ["WHT APPLIED", money(reconciliation.effectiveWhtTotal)],
-  ];
-  const reconciliationGap = 4;
-  const reconciliationCardWidth = (pageWidth - 28 - reconciliationGap * 3) / 4;
-  reconciliationCards.forEach(([label, value], index) => {
-    const x = 14 + index * (reconciliationCardWidth + reconciliationGap);
-    doc.setFillColor(index === 3 ? accent[0] : 248, index === 3 ? accent[1] : 249, index === 3 ? accent[2] : 252);
-    doc.roundedRect(x, reconciliationY, reconciliationCardWidth, 15, 2, 2, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.5);
-    doc.setTextColor(index === 3 ? 225 : 115);
-    doc.text(label, x + 3, reconciliationY + 5);
-    doc.setFontSize(9);
-    doc.setTextColor(index === 3 ? 255 : 35);
-    doc.text(value, x + 3, reconciliationY + 11);
-  });
-  reconciliationY += 21;
-
-  autoTable(doc, {
-    startY: reconciliationY,
-    head: [["CLAIMS MONTH", "REJECTED CLAIMS (GH¢)", "PROVISIONAL WHT (GH¢)", "ACTUAL WHT (GH¢)", "WHT APPLIED (GH¢)"]],
-    body: reconciliation.monthlyBreakdown.map((row) => [
-      new Date(row.year, row.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
-      money(row.rejected),
-      money(row.provisionalWht),
-      money(row.actualWht),
-      money(row.effectiveWht),
-    ]),
-    foot: [[
-      "PERIOD TOTALS",
-      money(reconciliation.rejectedClaimsTotal),
-      money(reconciliation.provisionalWhtTotal),
-      money(reconciliation.actualWhtTotal),
-      money(reconciliation.effectiveWhtTotal),
-    ]],
-    theme: "striped",
-    styles: { font: "helvetica", fontSize: 7.5, cellPadding: 2.5, textColor: [45, 55, 70], lineColor: [225, 230, 238], lineWidth: 0.15 },
-    headStyles: { fillColor: accent, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7 },
-    footStyles: { fillColor: [235, 240, 247], textColor: [30, 45, 65], fontStyle: "bold" },
-    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } },
-    didDrawPage: () => {
-      const height = doc.internal.pageSize.getHeight();
-      doc.setDrawColor(225, 230, 238);
-      doc.line(14, height - 12, pageWidth - 14, height - 12);
-      doc.setFontSize(7);
-      doc.setTextColor(130);
-      doc.text("Accounts Receivable statement • WHT is shown as a separate credit; actual WHT replaces provisional WHT.", 14, height - 7);
-      doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - 14, height - 7, { align: "right" });
-    },
-  });
-
   const closingText = statement.closingSide === "debit"
     ? "DEBIT BALANCE — the company has an outstanding amount payable to the facility."
     : statement.closingSide === "credit"
@@ -208,5 +134,8 @@ export async function exportCompanyStatementPDF(
     doc.text(closingText, 14, finalY + 9);
   }
   const safeName = company.company_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "company";
-  doc.save(`statement-of-account-${safeName}-${startDate}-to-${endDate}.pdf`);
+  return {
+    blob: doc.output("blob"),
+    fileName: `statement-of-account-${safeName}-${startDate}-to-${endDate}.pdf`,
+  };
 }
