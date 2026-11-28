@@ -79,6 +79,7 @@ BEGIN
      OR length(v_reference) > 160
      OR p_certificate_date IS NULL
      OR p_received_date IS NULL
+     OR p_certificate_date > p_received_date
      OR p_tax_amount IS NULL
      OR p_tax_amount <= 0
      OR p_tax_amount <> round(p_tax_amount, 2)
@@ -191,3 +192,37 @@ COMMENT ON TABLE public.withholding_tax_receipts IS
   'Append-only evidence of insurer-paid withholding-tax certificates; each receipt posts a tax-credit asset and Accounts Receivable credit, never cash.';
 COMMENT ON FUNCTION public.record_withholding_tax_receipt(UUID, TEXT, DATE, DATE, NUMERIC, TEXT) IS
   'Records an insurer-paid WHT certificate, reverses the period provisional WHT expense/payable estimate once, and posts Dr Withholding Tax Receivable / Cr Accounts Receivable.';
+
+
+CREATE OR REPLACE FUNCTION public.prevent_withholding_tax_receipt_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  RAISE EXCEPTION 'WHT certificate receipts are append-only; record a separately authorized correction instead.';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS withholding_tax_receipts_immutable ON public.withholding_tax_receipts;
+CREATE TRIGGER withholding_tax_receipts_immutable
+  BEFORE UPDATE OR DELETE ON public.withholding_tax_receipts
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_withholding_tax_receipt_mutation();
+
+CREATE OR REPLACE FUNCTION public.prevent_certified_wht_ledger_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF OLD.entry_type IN ('withholding_tax_receipt', 'withholding_tax_provisional_reversal') THEN
+    RAISE EXCEPTION 'Certified WHT ledger postings are immutable; record a compensating journal instead.';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS certified_wht_ledger_immutable ON public.ledger_entries;
+CREATE TRIGGER certified_wht_ledger_immutable
+  BEFORE UPDATE OR DELETE ON public.ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_certified_wht_ledger_mutation();
