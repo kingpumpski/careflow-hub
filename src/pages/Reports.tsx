@@ -14,6 +14,7 @@ import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 import { usePermissions } from "@/modules/security/usePermissions";
+import type { Permission } from "@/modules/security";
 import SettlementReconciliationReport from "@/components/reports/SettlementReconciliationReport";
 import { buildSettlementReconciliationRows } from "@/modules/reports/settlementReconciliationReport";
 import OperationalPerformanceReport from "@/components/reports/OperationalPerformanceReport";
@@ -22,6 +23,16 @@ import { buildOperationalReportData } from "@/modules/reports/operationalReportC
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
 const percentLabel = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
+const REPORT_SOURCE_PERMISSIONS: Record<string, Permission[]> = {
+  balance: ["claims.read", "payments.read"],
+  income: ["ledger.read"],
+  receivables: ["claims.read", "payments.read"],
+  tax: ["claims.read", "payments.read", "ledger.read"],
+  aging: ["claims.read", "payments.read"],
+  receipts: ["payments.read"],
+  settlement: ["payments.read"],
+  operations: ["claims.read", "payments.read", "audit.read"],
+};
 
 export default function Reports() {
   const [activePeriod, setActivePeriod] = useState("Monthly");
@@ -35,6 +46,8 @@ export default function Reports() {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
+  const missingReportPermissions = (REPORT_SOURCE_PERMISSIONS[activeReport] || []).filter((permission) => !can(permission));
+  const reportSourceAccessMissing = missingReportPermissions.length > 0;
 
   const { data: claims } = useSupabaseQuery("claims");
   const canReadAudit = can("audit.read");
@@ -286,7 +299,7 @@ export default function Reports() {
     : null;
 
   const handlePrint = (title: string) => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const source = document.getElementById("report-content");
     if (!source) return;
     const printable = source.cloneNode(true) as HTMLElement;
@@ -490,7 +503,7 @@ export default function Reports() {
       <div className="page-header flex items-start justify-between">
         <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial &amp; Operational Reports</h1><p className="page-description">Generate financial statements, claims-cycle reconciliations and operational performance reports</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; Excel export is disabled." : undefined}><Download className="w-4 h-4" />Excel</Button>
         </div>
@@ -522,7 +535,14 @@ export default function Reports() {
           <TabsTrigger value="operations">Operational Performance</TabsTrigger>
         </TabsList>
 
-        <div id="report-content" className="mt-4">
+        {reportSourceAccessMissing ? (
+          <div role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <h2 className="font-semibold text-destructive">Report data access is incomplete</h2>
+            <p className="mt-1 text-muted-foreground">This report requires additional source permissions. No claims or financial rows are exposed by weakening database security, and exports are disabled until access is granted.</p>
+            <p className="mt-2 font-medium">Required permissions: {missingReportPermissions.join(", ")}</p>
+          </div>
+        ) : (
+          <div id="report-content" className="mt-4">
           <TabsContent value="balance">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <div className="stat-card text-center"><p className="text-2xl font-bold font-heading">{settlementReportUnavailable ? "—" : `GH¢ ${grandSubmitted.toLocaleString()}`}</p><p className="text-xs text-muted-foreground mt-1">Submitted</p></div>
@@ -713,6 +733,7 @@ export default function Reports() {
             </div>
           </TabsContent>
         </div>
+        )}
       </Tabs>
       <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
       <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
