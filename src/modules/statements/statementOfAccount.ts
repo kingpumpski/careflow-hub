@@ -22,13 +22,6 @@ export type StatementLine = {
   entryType: string;
 };
 
-export type StatementWhtCredit = {
-  year: number;
-  month: number;
-  amount: number;
-  basis: "actual" | "provisional";
-};
-
 export type StatementSummary = {
   openingBalance: number;
   totalDebit: number;
@@ -39,18 +32,16 @@ export type StatementSummary = {
 };
 
 /**
- * Builds an insurer's Accounts Receivable statement. Confirmed WHT (or
- * provisional WHT until advice is received) is shown as a separate credit
- * against the insurer's receivable balance. The source WHT control/expense
- * journal remains in its own ledger; this is a statement allocation, not a
- * second general-ledger posting.
+ * Builds an insurer's Accounts Receivable statement from posted ledger entries.
+ * Insurer-paid WHT appears only when its certificate receipt has generated the
+ * tax-credit journal; provisional WHT estimates and tax-control postings do
+ * not reduce the insurer's receivable balance.
  */
 export function buildCompanyStatement(
   entries: StatementLedgerEntry[],
   companyId: string,
   startDate: string,
   endDate: string,
-  withholdingTaxCredits: StatementWhtCredit[] = [],
 ): StatementSummary {
   if (!companyId) throw new Error("Select a company to generate its statement.");
   if (!startDate || !endDate || startDate > endDate) {
@@ -80,42 +71,7 @@ export function buildCompanyStatement(
       || String(a.entry.created_at || "").localeCompare(String(b.entry.created_at || ""))
       || a.entry.id.localeCompare(b.entry.id));
 
-  const existingWhtCredits = new Map<string, number>();
-  relevant.forEach(({ entry, credit }) => {
-    if (credit <= 0 || !/withholding|wht/i.test(entry.entry_type)) return;
-    const key = entry.entry_date.slice(0, 7);
-    existingWhtCredits.set(key, (existingWhtCredits.get(key) || 0) + credit);
-  });
-  const statementWhtRows = withholdingTaxCredits
-    .map((tax) => {
-      const key = monthKey(tax.year, tax.month);
-      const amount = Number(tax.amount);
-      const alreadyCredited = existingWhtCredits.get(key) || 0;
-      const remainingCredit = Math.max(0, amount - alreadyCredited);
-      const monthEnd = monthEndDate(tax.year, tax.month);
-      const date = monthEnd > endDate ? endDate : monthEnd;
-      if (!Number.isFinite(amount) || amount < 0) {
-        throw new Error("The withholding-tax credit contains an invalid amount; statement generation was stopped.");
-      }
-      if (remainingCredit < 0.005) return null;
-      const entry: StatementLedgerEntry = {
-        id: `statement-wht-${tax.year}-${String(tax.month).padStart(2, "0")}`,
-        entry_date: date,
-        entry_type: "withholding_tax_credit",
-        account_debit: "—",
-        account_credit: "Accounts Receivable",
-        amount: remainingCredit,
-        insurance_company_id: companyId,
-        reference: `WHT-${tax.year}-${String(tax.month).padStart(2, "0")}`,
-        description: `Withholding tax credit — ${tax.basis} — ${new Date(tax.year, tax.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`,
-      };
-      return { entry, amount: remainingCredit, debit: 0, credit: remainingCredit };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
-  const allRows = [...relevant, ...statementWhtRows].sort((a, b) =>
-    a.entry.entry_date.localeCompare(b.entry.entry_date)
-      || String(a.entry.created_at || "").localeCompare(String(b.entry.created_at || ""))
-      || a.entry.id.localeCompare(b.entry.id));
+  const allRows = relevant;
 
   const beforePeriod = allRows.filter(({ entry }) => entry.entry_date < startDate);
   const openingBalance = beforePeriod.reduce((sum, row) => sum + row.debit - row.credit, 0);
@@ -300,44 +256,3 @@ export function buildStatementReconciliation(
   };
 }
 
-
-/**
- * Builds the complete WHT credit history through the statement end date.
- * This history is required to calculate the brought-forward balance correctly;
- * the selected-period reconciliation alone would omit earlier WHT credits.
- */
-export function buildStatementWhtCredits(
-  claims: StatementClaimRow[],
-  taxRows: StatementTaxRow[],
-  settlementPeriods: StatementSettlementPeriod[],
-  throughDate: string,
-): StatementWhtCredit[] {
-  if (!throughDate) throw new Error("A statement end date is required to calculate withholding-tax credits.");
-  const candidateKeys = [
-    ...claims.flatMap((row) => row.claim_year != null && row.claim_month != null
-      && row.claim_month >= 1 && row.claim_month <= 12
-      ? [monthKey(row.claim_year, row.claim_month)] : []),
-    ...taxRows.filter((row) => Number.isInteger(row.year) && Number.isInteger(row.month)
-      && row.month >= 1 && row.month <= 12).map((row) => monthKey(row.year, row.month)),
-    ...settlementPeriods.filter((row) => row.period_type === "month")
-      .map((row) => row.period_start.slice(0, 7))
-      .filter((key) => /^\\d{4}-(0[1-9]|1[0-2])$/.test(key)),
-  ].filter((key) => key <= throughDate.slice(0, 7)).sort();
-
-  if (candidateKeys.length === 0) return [];
-  const history = buildStatementReconciliation(
-    claims,
-    taxRows,
-    settlementPeriods,
-    `${candidateKeys[0]}-01`,
-    throughDate,
-  );
-  return history.monthlyBreakdown
-    .filter((row) => row.effectiveWht > 0 && row.whtBasis !== "none")
-    .map((row) => ({
-      year: row.year,
-      month: row.month,
-      amount: row.effectiveWht,
-      basis: row.whtBasis as "actual" | "provisional",
-    }));
-}
