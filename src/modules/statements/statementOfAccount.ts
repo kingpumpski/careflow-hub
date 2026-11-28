@@ -86,7 +86,8 @@ export function buildCompanyStatement(
   const statementWhtRows = withholdingTaxCredits
     .filter((tax) => tax.amount > 0 && !existingWhtCredits.has(monthKey(tax.year, tax.month)))
     .map((tax) => {
-      const date = monthEndDate(tax.year, tax.month);
+      const monthEnd = monthEndDate(tax.year, tax.month);
+      const date = monthEnd > endDate ? endDate : monthEnd;
       const amount = Number(tax.amount);
       if (!Number.isFinite(amount) || amount < 0) {
         throw new Error("The withholding-tax credit contains an invalid amount; statement generation was stopped.");
