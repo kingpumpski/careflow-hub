@@ -76,20 +76,20 @@ export default function ScheduleGenerator() {
         (insurerId === "all" || p.insurance_company_id === insurerId))
         .reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
       const grossSubmitted = submitted + rejected;
-      const monthlySettlements = (settlementPeriods || []).filter((period: any) =>
+      const monthlySettlements = (settlementPeriods || []).filter((period) =>
         period.period_type === "month"
         && String(period.period_start || "").slice(0, 7) === `${year}-${String(m).padStart(2, "0")}`
         && (insurerId === "all" || period.insurance_company_id === insurerId));
       const confirmedSettlementTax = monthlySettlements
-        .filter((period: any) => ["payment_advice_received", "reconciled"].includes(period.settlement_status) && period.actual_withholding_tax != null)
-        .reduce((sum: number, period: any) => sum + Number(period.actual_withholding_tax || 0), 0);
-      const hasConfirmedSettlementTax = monthlySettlements.some((period: any) =>
+        .filter((period) => ["payment_advice_received", "reconciled"].includes(period.settlement_status) && period.actual_withholding_tax != null)
+        .reduce((sum: number, period) => sum + Number(period.actual_withholding_tax || 0), 0);
+      const hasConfirmedSettlementTax = monthlySettlements.some((period) =>
         ["payment_advice_received", "reconciled"].includes(period.settlement_status) && period.actual_withholding_tax != null);
-      const monthlyTaxRows = (withholdingTax || []).filter((tax: any) =>
+      const monthlyTaxRows = (withholdingTax || []).filter((tax) =>
         Number(tax.year) === Number(year) && Number(tax.month) === m
         && (insurerId === "all" || tax.insurance_company_id === insurerId));
-      const actualTaxRows = monthlyTaxRows.filter((tax: any) => tax.is_actual === true);
-      const taxFallback = actualTaxRows.reduce((sum: number, tax: any) => sum + Number(tax.tax_amount || 0), 0);
+      const actualTaxRows = monthlyTaxRows.filter((tax) => tax.is_actual === true);
+      const taxFallback = actualTaxRows.reduce((sum: number, tax) => sum + Number(tax.tax_amount || 0), 0);
       // Only confirmed actual WHT settles the claim balance. A provisional
       // estimate is not a payment and must never reduce outstanding claims.
       const wht = hasConfirmedSettlementTax ? confirmedSettlementTax : taxFallback;
