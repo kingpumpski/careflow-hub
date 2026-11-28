@@ -96,6 +96,7 @@ export function buildOperationalReportData(input: {
 
   const cycleKeys = new Set(input.settlementPeriods.map((period) => `${period.insurance_company_id}:${period.period_start.slice(0, 7)}`));
   const knownOutstandingInsurers = new Set<string>();
+  const incompleteOutstandingInsurers = new Set<string>();
   const outstandingFollowUp = input.settlementPeriods.flatMap((period) => {
     const submitted = period.total_claims_submitted == null ? null : number(period.total_claims_submitted);
     const rejected = period.rejection_amount == null ? null : number(period.rejection_amount);
@@ -115,7 +116,7 @@ export function buildOperationalReportData(input: {
       outstanding = submitted - rejected - provisionalWht - paymentReceived;
       taxBasis = "Provisional WHT";
     }
-    if (outstanding === null) return [];
+    if (outstanding === null) { incompleteOutstandingInsurers.add(period.insurance_company_id); return []; }
     knownOutstandingInsurers.add(period.insurance_company_id);
     const daysOutstanding = daysBetween(period.period_end, today) ?? 0;
     return outstanding > 0 ? [{
@@ -132,6 +133,10 @@ export function buildOperationalReportData(input: {
   const legacyOutstandingFollowUp = input.outstandingPeriods.flatMap((period) => {
     const key = `${period.insurance_company_id}:${monthKey(period.period_year, period.period_month)}`;
     if (cycleKeys.has(key)) return [];
+    if (period.outstanding_amount == null) {
+      incompleteOutstandingInsurers.add(period.insurance_company_id);
+      return [];
+    }
     const outstanding = number(period.outstanding_amount);
     knownOutstandingInsurers.add(period.insurance_company_id);
     const daysOutstanding = daysBetween(
@@ -168,7 +173,7 @@ export function buildOperationalReportData(input: {
         .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
     const netClaim = rejected === null ? null : submitted - rejected;
     const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
-    const viewPaid = financialRows.some((period) => period.paid_amount != null)
+    const viewPaid = financialRows.length > 0 && financialRows.every((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
       : null;
     const cyclePaymentKnown = cycleRows.some((period) => period.payment_received != null)
@@ -179,9 +184,11 @@ export function buildOperationalReportData(input: {
     const paid = cycleRows.length > 0
       ? cyclePaid
       : viewPaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
-    const outstanding = knownOutstandingInsurers.has(insurer.id)
-      ? allOutstandingFollowUp.filter((row) => row.insurerId === insurer.id).reduce((sum, row) => sum + row.outstanding, 0)
-      : null;
+    const outstanding = incompleteOutstandingInsurers.has(insurer.id)
+      ? null
+      : knownOutstandingInsurers.has(insurer.id)
+        ? allOutstandingFollowUp.filter((row) => row.insurerId === insurer.id).reduce((sum, row) => sum + row.outstanding, 0)
+        : null;
     const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
       .filter((days): days is number => days !== null);
     return {
