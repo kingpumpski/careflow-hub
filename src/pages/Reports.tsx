@@ -339,7 +339,7 @@ export default function Reports() {
   };
 
   const handleExportPDF = async () => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
@@ -423,7 +423,7 @@ export default function Reports() {
   };
 
   const handleExportExcel = () => {
-    if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
+    if (reportSourceAccessMissing || settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
     const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
