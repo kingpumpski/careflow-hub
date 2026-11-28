@@ -85,12 +85,13 @@ export function summarizeSettlementReconciliationRows(rows: readonly SettlementR
     else summary.adviceReceivedCount += 1;
     summary.submitted += row.submitted;
     summary.provisionalWht += row.provisionalWht;
-    if (row.approvedGross !== null) summary.approvedGross += row.approvedGross;
-    if (row.rejected !== null) summary.rejected += row.rejected;
-    if (row.actualWht !== null) summary.actualWht += row.actualWht;
-    if (row.cashReceived !== null) summary.cashReceived += row.cashReceived;
-    if (row.approvalVariance !== null) summary.approvalVariance += row.approvalVariance;
+    if (row.approvedGross !== null) { summary.approvedGross += row.approvedGross; summary.approvedGrossCount += 1; }
+    if (row.rejected !== null) { summary.rejected += row.rejected; summary.rejectedCount += 1; }
+    if (row.actualWht !== null) { summary.actualWht += row.actualWht; summary.actualWhtCount += 1; }
+    if (row.cashReceived !== null) { summary.cashReceived += row.cashReceived; summary.cashReceivedCount += 1; }
+    if (row.approvalVariance !== null) { summary.approvalVariance += row.approvalVariance; summary.approvalVarianceCount += 1; }
     if (row.approvedUnpaid !== null) {
+      summary.approvedUnpaidCount += 1;
       if (row.approvedUnpaid > 0.005) summary.approvedUnpaid += row.approvedUnpaid;
       if (row.approvedUnpaid < -0.005) summary.overSettled += Math.abs(row.approvedUnpaid);
       if (Math.abs(row.approvedUnpaid) <= 0.005) summary.balancedCount += 1;
