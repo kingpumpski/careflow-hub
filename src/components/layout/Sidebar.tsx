@@ -55,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Messages", path: "/chat" },
     { label: "Notifications", path: "/notifications" },
     { label: "Settings", path: "/settings", permission: "settings.manage" },
+    { label: "Letterhead Designer", path: "/letterhead-designer", permission: "settings.manage" },
     { label: "Facilities & Access", path: "/facilities", superuserOnly: true },
   ] },
 ];
