@@ -115,7 +115,7 @@ export async function exportCompanyStatementPDF(
       doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
       doc.setFontSize(7);
       doc.setTextColor(130);
-      doc.text("Accounts Receivable statement • WHT is shown as a separate credit; actual WHT replaces provisional WHT.", 14, pageHeight - 7);
+      doc.text("Accounts Receivable statement • certified insurer-paid WHT is shown as a separate tax-credit settlement.", 14, pageHeight - 7);
       doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - 14, pageHeight - 7, { align: "right" });
     },
   });
