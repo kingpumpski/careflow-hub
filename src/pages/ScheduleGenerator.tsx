@@ -8,7 +8,7 @@ import { buildReportPDFBlob, exportReportExcel } from "@/lib/exportUtils";
 import { PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
 import { usePermissions } from "@/modules/security/usePermissions";
-import { calculateClaimGrossTotals, calculateClaimsScheduleBalance } from "@/modules/reports/claimsReportCalculations";
+
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -21,49 +21,25 @@ interface Row {
   outstanding: number;
   rejectionRate: number;
 }
-interface ScheduleClaimRow {
-  claim_year: number | string | null;
-  claim_month: number | string | null;
+interface ScheduleOutstandingRow {
   insurance_company_id: string;
-  claim_amount: number | string | null;
-  status?: string | null;
-}
-interface SchedulePaymentRow {
-  claim_year: number | string | null;
-  claim_month: number | string | null;
-  insurance_company_id: string;
-  amount_paid: number | string | null;
-}
-interface ScheduleTaxRow {
-  year: number | string;
-  month: number | string;
-  insurance_company_id: string;
-  tax_amount: number | string | null;
-  is_actual: boolean;
-}
-interface ScheduleSettlementRow {
-  period_type: string;
-  period_start: string;
-  insurance_company_id: string;
-  total_claims_submitted: number | string | null;
-  rejection_amount: number | string | null;
+  period_year: number | string;
+  period_month: number | string;
+  submitted_amount: number | string | null;
+  rejected_amount: number | string | null;
+  net_claim_amount: number | string | null;
   approved_gross_amount: number | string | null;
-  payment_received: number | string | null;
-  actual_withholding_tax: number | string | null;
-  settlement_status: string;
+  paid_amount: number | string | null;
+  outstanding_amount: number | string | null;
+  certified_withholding_tax_amount?: number | string | null;
 }
 
 export default function ScheduleGenerator() {
   const { can } = usePermissions();
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: claims } = useSupabaseQuery("claims");
-  const { data: payments } = useSupabaseQuery("payments");
-  const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
-  const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods");
-  const claimRows = useMemo(() => (claims || []) as unknown as ScheduleClaimRow[], [claims]);
-  const paymentRows = useMemo(() => (payments || []) as unknown as SchedulePaymentRow[], [payments]);
-  const taxRows = useMemo(() => (withholdingTax || []) as unknown as ScheduleTaxRow[], [withholdingTax]);
-  const settlementRows = useMemo(() => (settlementPeriods || []) as unknown as ScheduleSettlementRow[], [settlementPeriods]);
+  const canReadSchedule = can("claims.read") && can("payments.read");
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadSchedule });
+  const { data: outstandingPeriods } = useSupabaseQuery("claims_outstanding_periods", { enabled: canReadSchedule });
+  const periodRows = useMemo(() => (outstandingPeriods || []) as unknown as ScheduleOutstandingRow[], [outstandingPeriods]);
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const currentYear = new Date().getFullYear();
@@ -77,9 +53,9 @@ export default function ScheduleGenerator() {
 
   const years = useMemo(() => {
     const set = new Set<number>([currentYear]);
-    (claims || []).forEach((c: any) => c.claim_year && set.add(Number(c.claim_year)));
+    periodRows.forEach((row) => row.period_year && set.add(Number(row.period_year)));
     return Array.from(set).sort((a, b) => b - a);
-  }, [claims, currentYear]);
+  }, [periodRows, currentYear]);
 
   const companyInfo = useMemo(
     () => buildLetterheadConfig((k: string) => (settings || []).find((s: any) => s.key === k)?.value || ""),
@@ -99,88 +75,35 @@ export default function ScheduleGenerator() {
   const rows: Row[] = useMemo(() => {
     const from = Number(fromMonth), to = Number(toMonth);
     const out: Row[] = [];
-    for (let m = from; m <= to; m++) {
-      const monthClaims = claimRows.filter((claim) =>
-        Number(claim.claim_year) === Number(year)
-        && Number(claim.claim_month) === m
-        && (insurerId === "all" || claim.insurance_company_id === insurerId));
-      const monthlySettlements = settlementRows.filter((period) =>
-        period.period_type === "month"
-        && String(period.period_start || "").slice(0, 7) === `${year}-${String(m).padStart(2, "0")}`
-        && (insurerId === "all" || period.insurance_company_id === insurerId));
-      const monthlyTaxRows = taxRows.filter((tax) =>
-        Number(tax.year) === Number(year)
-        && Number(tax.month) === m
-        && (insurerId === "all" || tax.insurance_company_id === insurerId));
-      const settledInsurers = new Set(monthlySettlements.map((period) => period.insurance_company_id));
-      const periodFigures = monthlySettlements.map((period) => {
-        const companyClaims = monthClaims.filter((claim) => claim.insurance_company_id === period.insurance_company_id);
-        const claimFallback = calculateClaimGrossTotals(companyClaims);
-        const submittedGross = period.total_claims_submitted == null
-          ? claimFallback.submittedGross
-          : Number(period.total_claims_submitted || 0);
-        const rejectedGross = period.rejection_amount == null
-          ? claimFallback.rejectedGross
-          : Number(period.rejection_amount || 0);
-        const approvedGross = period.approved_gross_amount == null
-          ? Math.max(submittedGross - rejectedGross, 0)
-          : Number(period.approved_gross_amount || 0);
-        const companyPayments = paymentRows.filter((payment) =>
-          payment.insurance_company_id === period.insurance_company_id
-          && Number(payment.claim_year) === Number(year)
-          && Number(payment.claim_month) === m);
-        const cashReceived = period.approved_gross_amount != null && period.payment_received != null
-          ? Number(period.payment_received || 0)
-          : companyPayments.reduce((sum: number, payment) => sum + Number(payment.amount_paid || 0), 0);
-        const companyTaxRows = monthlyTaxRows.filter((tax) => tax.insurance_company_id === period.insurance_company_id);
-        const hasConfirmedAdvice = ["payment_advice_received", "reconciled"].includes(period.settlement_status)
-          && period.actual_withholding_tax != null;
-        const confirmedWht = hasConfirmedAdvice
-          ? Number(period.actual_withholding_tax || 0)
-          : companyTaxRows.filter((tax) => tax.is_actual === true)
-            .reduce((sum: number, tax) => sum + Number(tax.tax_amount || 0), 0);
-        return { submittedGross, rejectedGross, approvedGross, cashReceived, confirmedWht };
-      });
-      const fallbackClaims = monthClaims.filter((claim) => !settledInsurers.has(claim.insurance_company_id));
-      const fallbackTotals = calculateClaimGrossTotals(fallbackClaims);
-      const fallbackPayments = paymentRows.filter((payment) =>
-        Number(payment.claim_year) === Number(year)
-        && Number(payment.claim_month) === m
-        && (insurerId === "all" || payment.insurance_company_id === insurerId)
-        && !settledInsurers.has(payment.insurance_company_id));
-      const fallbackTax = monthlyTaxRows.filter((tax) =>
-        !settledInsurers.has(tax.insurance_company_id) && tax.is_actual === true)
-        .reduce((sum: number, tax) => sum + Number(tax.tax_amount || 0), 0);
-      const fallbackPaid = fallbackPayments.reduce((sum: number, payment) => sum + Number(payment.amount_paid || 0), 0);
-      const fallbackBalance = calculateClaimsScheduleBalance({
-        submittedGross: fallbackTotals.submittedGross,
-        rejectedGross: fallbackTotals.rejectedGross,
-        cashReceived: fallbackPaid,
-        confirmedWithholdingTax: fallbackTax,
-      });
-      const submitted = periodFigures.reduce((sum, figure) => sum + figure.submittedGross, 0) + fallbackTotals.submittedGross;
-      const rejected = periodFigures.reduce((sum, figure) => sum + figure.rejectedGross, 0) + fallbackTotals.rejectedGross;
-      const paid = periodFigures.reduce((sum, figure) => sum + figure.cashReceived, 0) + fallbackPaid;
-      const wht = periodFigures.reduce((sum, figure) => sum + figure.confirmedWht, 0) + fallbackTax;
-      const outstanding = periodFigures.reduce((sum, figure) => sum + calculateClaimsScheduleBalance({
-        submittedGross: figure.submittedGross,
-        rejectedGross: figure.rejectedGross,
-        approvedGross: figure.approvedGross,
-        cashReceived: figure.cashReceived,
-        confirmedWithholdingTax: figure.confirmedWht,
-      }).outstanding, 0) + fallbackBalance.outstanding;
+    for (let month = from; month <= to; month++) {
+      const monthlyRows = periodRows.filter((row) =>
+        Number(row.period_year) === Number(year)
+        && Number(row.period_month) === month
+        && (insurerId === "all" || row.insurance_company_id === insurerId));
+      const submitted = monthlyRows.reduce((sum, row) => sum + Number(row.submitted_amount || 0), 0);
+      const rejected = monthlyRows.reduce((sum, row) => sum + Number(row.rejected_amount || 0), 0);
+      const approvedGross = monthlyRows.reduce((sum, row) =>
+        sum + Number(row.approved_gross_amount ?? row.net_claim_amount ?? Math.max(Number(row.submitted_amount || 0) - Number(row.rejected_amount || 0), 0)), 0);
+      const paid = monthlyRows.reduce((sum, row) => sum + Number(row.paid_amount || 0), 0);
+      const hasCertificateData = monthlyRows.some((row) => "certified_withholding_tax_amount" in row);
+      const withholdingTax = hasCertificateData
+        ? monthlyRows.reduce((sum, row) => sum + Number(row.certified_withholding_tax_amount || 0), 0)
+        : 0;
+      const outstanding = hasCertificateData
+        ? monthlyRows.reduce((sum, row) => sum + Number(row.outstanding_amount || 0), 0)
+        : Math.max(approvedGross - paid, 0);
       out.push({
-        period: `${MONTHS[m - 1]} ${year}`,
+        period: `${MONTHS[month - 1]} ${year}`,
         submitted,
         rejected,
         paid,
-        withholdingTax: wht,
+        withholdingTax,
         outstanding,
         rejectionRate: submitted > 0 ? (rejected / submitted) * 100 : 0,
       });
     }
     return out;
-  }, [claimRows, paymentRows, taxRows, settlementRows, insurerId, year, fromMonth, toMonth]);
+  }, [periodRows, insurerId, year, fromMonth, toMonth]);
 
   const totals = rows.reduce((acc, r) => ({
     withholdingTax: acc.withholdingTax + r.withholdingTax,
@@ -192,7 +115,7 @@ export default function ScheduleGenerator() {
   const totalRate = totals.submitted + totals.rejected > 0 ? (totals.rejected / (totals.submitted + totals.rejected)) * 100 : 0;
 
   const title = `Claims Schedule - ${insurerName} (${MONTHS[Number(fromMonth) - 1]}-${MONTHS[Number(toMonth) - 1]} ${year})`;
-  const columns = ["Claims Period", "Submitted (GH¢)", "Rejected (GH¢)", "Payments (GH¢)", "Withholding Tax (GH¢)", "Outstanding (GH¢)", "Rejection Rate"];
+  const columns = ["Claims Period", "Submitted (GH¢)", "Rejected (GH¢)", "Payments (GH¢)", "WHT Credit Received (GH¢)", "Outstanding (GH¢)", "Rejection Rate"];
 
   const pdfBody = () => [
     ...rows.map((r) => [r.period, r.submitted.toLocaleString(), r.rejected.toLocaleString(), r.paid.toLocaleString(), r.withholdingTax.toLocaleString(), r.outstanding.toLocaleString(), `${r.rejectionRate.toFixed(1)}%`]),
