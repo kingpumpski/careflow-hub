@@ -1150,6 +1150,8 @@ export type Database = {
         Row: {
           actual_withholding_tax_amount: number | null
           approved_gross_amount: number | null
+          certificate_entry_count: number | null
+          certified_withholding_tax_amount: number | null
           approval_variance: number | null
           net_claim_amount: number | null
           outstanding_amount: number | null
