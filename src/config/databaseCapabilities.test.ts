@@ -12,6 +12,7 @@ describe("resolveDatabaseCapabilities", () => {
       claimDiagnosisDrafts: false,
       notificationEvents: false,
       documentLetterheadSettings: false,
+      withholdingTaxCertificateReceipts: false,
     });
   });
 
@@ -25,6 +26,7 @@ describe("resolveDatabaseCapabilities", () => {
       VITE_CAREFLOW_CLAIM_DIAGNOSIS_DRAFTS_ENABLED: "true",
       VITE_CAREFLOW_NOTIFICATION_EVENTS_ENABLED: "true",
       VITE_CAREFLOW_DOCUMENT_LETTERHEAD_ENABLED: "true",
+      VITE_CAREFLOW_WHT_CERTIFICATE_RECEIPTS_ENABLED: "true",
     })).toEqual({
       preAuthPreparedHandoff: true,
       individualClaimCases: false,
@@ -34,6 +36,7 @@ describe("resolveDatabaseCapabilities", () => {
       claimDiagnosisDrafts: true,
       notificationEvents: true,
       documentLetterheadSettings: true,
+      withholdingTaxCertificateReceipts: true,
     });
   });
 });
