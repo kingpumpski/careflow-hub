@@ -1,6 +1,6 @@
 # Facility, audit and notification production release preflight
 
-**Snapshot date:** 2026-11-28  
+**Snapshot date:** 2026-11-28 09:17 UTC  
 **Supabase project:** `jajfdgknctzqypdtvmxo` (`claims tracker`, `eu-west-1`)  
 **Release status:** BLOCKED — repository implementation is merged/deployed, but production schema is behind the source migration chain.
 
@@ -182,3 +182,15 @@ The remaining release blockers and their required dispositions are tracked in `d
 - PR #141 report and blocker-register changes passed CI, quality, dependency audit and disposable PostgreSQL migration replay before merge.
 - GitHub Pages build, hash-routing verification, deployment and published-site smoke test completed successfully for the merge commit.
 - These checks validate the source/frontend release only. The production database migration ledger remains at `20260921160938`; missing production relations and RPCs remain blocked pending backup/restore and migration-provenance gates.
+
+
+## Fresh read-only recheck — 2026-11-28 09:17 UTC
+
+The migration API still reports 74 rows and latest version `20260921160938`. A fresh catalog query confirmed:
+- Missing: `preauthorization_submissions`, `claim_cases`, `claim_case_events`, `settlement_exceptions`, `settlement_exception_audit_events`, `claims_settlement_remittances`, `claims_settlement_receipt_months`, and `claim_diagnosis_drafts`.
+- Present: `claims_settlement_periods` (RLS enabled) and `claims_outstanding_periods` view.
+- The existing `claims_settlement_periods` table does not yet contain `approved_gross_amount` or `actual_receipt_date`.
+- `claims.settlement.read` and `claims.settlement.write` remain absent from the live permission catalogue.
+- The live public `finalize_preauthorization_handoff` wrapper remains SECURITY DEFINER with an empty search path.
+
+The current source branch adds a claims-cycle Settlement Reconciliation report against the existing settlement-period table. It preserves null/unknown historical approved-gross values and is not a production schema release. All database feature flags remain disabled.
