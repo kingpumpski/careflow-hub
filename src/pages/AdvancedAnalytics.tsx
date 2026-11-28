@@ -217,6 +217,6 @@ export default function AdvancedAnalytics() {
       <ChartCard title="Settlement Distribution" subtitle="Period-level settlement duration quartiles"><SettlementBoxPlot data={box} /></ChartCard>
       <ChartCard title="Insurer Performance Radar" subtitle="Collection, denial avoidance and relative submitted exposure"><InsurerPerformanceRadar data={radar} /></ChartCard>
     </div>
-    <p className="text-xs text-muted-foreground">Financial formula: Outstanding = Submitted − Rejected − Payments Received − WHT Credit Received, floored at zero. A period is actual only when both payment and withholding-tax entries are recorded; otherwise it remains provisional. Percentages use the selected period and insurer filters; rates are N/A when their denominator is zero.</p>
+    <p className="text-xs text-muted-foreground">Financial formula: Outstanding = Approved Gross − Cash Received − WHT Certificate Credits Received, floored at zero. A period is certified when the insurer's actual WHT is fully supported by certificates, partially certified when only part has been received, and awaiting certificate otherwise. Percentages use the selected period and insurer filters; rates are N/A when their denominator is zero.</p>
   </div>;
 }
