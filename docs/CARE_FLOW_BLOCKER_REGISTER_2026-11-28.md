@@ -79,3 +79,17 @@ A fresh read-only catalog check reconfirmed that `preauthorization_submissions`,
 The latest security-advisor read at 09:17 UTC reports the same three categories: one RLS-enabled/no-policy informational finding (`role_permissions`, deny-by-default), five authenticated-callable SECURITY DEFINER functions, and leaked-password protection disabled. No policy, function grant, Auth setting or production object was changed by this inspection.
 
 The new Settlement Reconciliation report is source-only in the current PR. It reads the existing `claims_settlement_periods` table and keeps approved-gross calculations unknown where that historical column is absent. It does not depend on the missing remittance table or view.
+
+
+## Operational report source row counts — 2026-11-28 (read-only)
+
+A fresh count-only query against production returned:
+- `claims`: 1 row
+- `insurance_companies`: 14 rows
+- `payments`: 1 row
+- `claims_settlement_periods`: 0 rows
+- `claims_outstanding_periods`: 1 row
+- `audit_logs`: 26 rows (one recorded claim insert event at the time of inspection)
+- `profiles`: 1 row
+
+The new operational reports may therefore show sparse tables or empty settlement-cycle sections in the current production environment. That is a data-availability fact, not a calculation failure. No facility, claim, payment, audit or profile records were created or changed.
