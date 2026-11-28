@@ -94,7 +94,7 @@ describe("claims schedule outstanding balance", () => {
       submittedGross: 1000,
       rejectedGross: 100,
       cashReceived: 600,
-      confirmedWithholdingTax: 22.5,
+      certifiedWithholdingTax: 22.5,
     })).toEqual({ approvedGross: 900, outstanding: 277.5 });
   });
 
@@ -104,16 +104,25 @@ describe("claims schedule outstanding balance", () => {
       rejectedGross: 100,
       approvedGross: 850,
       cashReceived: 600,
-      confirmedWithholdingTax: 21.25,
+      certifiedWithholdingTax: 21.25,
     })).toEqual({ approvedGross: 850, outstanding: 228.75 });
   });
 
-  it("does not allow provisional WHT to reduce the outstanding balance", () => {
+  it("does not reduce outstanding until a WHT certificate credit is recorded", () => {
     expect(calculateClaimsScheduleBalance({
       submittedGross: 1000,
       rejectedGross: 100,
       cashReceived: 600,
-      confirmedWithholdingTax: 0,
+      certifiedWithholdingTax: 0,
     }).outstanding).toBe(300);
+  });
+
+  it("reduces outstanding only by the WHT amount supported by certificates received", () => {
+    expect(calculateClaimsScheduleBalance({
+      submittedGross: 1000,
+      rejectedGross: 100,
+      cashReceived: 600,
+      certifiedWithholdingTax: 30,
+    }).outstanding).toBe(270);
   });
 });
