@@ -100,3 +100,22 @@ The new operational reports may therefore show sparse tables or empty settlement
 PR #144 merged as `42b0f5c0f23bf47acc878042b20aa976122c9a2a`. The operational report includes rejection analysis, insurer performance, settlement delay, outstanding follow-up and audit-based staff claims activity. The report uses only existing read sources and existing `claims.read` / `audit.read` permission boundaries. It adds no production migration, grants, feature flags or data writes.
 
 The production source inventory at the time of implementation was sparse: 1 claim, 14 insurers, 1 payment, 0 claims-settlement-period rows, 1 outstanding-period view row, 26 audit-log rows and 1 profile. Empty report sections are expected until source records exist; they are not represented as invented zero-value settlement cycles.
+
+
+## Fresh read-only production recheck — 2026-11-28 14:06 UTC
+
+The connected project `jajfdgknctzqypdtvmxo` is `ACTIVE_HEALTHY` (PostgreSQL 17.11). The migration API still reports **74 applied migration records**, latest version `20260921160938`. The repository migration chain is not reconciled with that ledger; CF-DB-01 remains blocked.
+
+A read-only catalog check reconfirmed:
+- Present: `claims_settlement_periods` and `claims_outstanding_periods`.
+- Missing: `claims_settlement_receipt_months`, `claims_settlement_remittances`, `settlement_exceptions`, `settlement_exception_audit_events`, `claim_cases`, `claim_case_events`, `claim_diagnosis_drafts`, and `preauthorization_submissions`.
+- `claims_settlement_periods` still lacks `approved_gross_amount` and `actual_receipt_date`; the existing columns include submitted total, provisional/actual WHT, payment received, rejection, advice reference/date and settlement status.
+- Current row counts are sparse/empty: `claims` 0, `insurance_companies` 0, `payments` 0, `withholding_tax` 0, `ledger_entries` 0, `claims_settlement_periods` 0, `profiles` 0, `facilities` 0. The catalog also reports two audit-log rows and one row each in `procedures`, `diagnosis_codes` and `system_settings`.
+
+The current security-advisor snapshot reports one informational deny-by-default RLS finding on `role_permissions`, five authenticated-callable SECURITY DEFINER functions requiring function-by-function review, and disabled leaked-password protection. No policies, function grants, Auth settings, database objects or records were changed during this read-only check.
+
+## Statement of Account WHT presentation — 2026-11-28
+
+PR #146 merged as `1f5f89e2bd4641b18c9767cdf848284df59867d9`. The company statement now displays each claims month's effective WHT as a separate credit line against Accounts Receivable, includes historical WHT credits in the brought-forward balance, and uses actual WHT in place of provisional WHT once advice is confirmed. It avoids duplicating WHT already credited to Accounts Receivable. The PDF explanation and statement calculation tests were updated. This is a statement presentation/allocation only; it does not create a second general-ledger posting or change production schema. Live-data verification remains pending because the connected production claims, insurer, payment, WHT and settlement-period tables currently have zero rows.
+
+PR #128 remains open and unmerged because backup development is paused and the restoration safety gate is not complete. No production migration, DDL, grant, Auth change or data write was performed.
