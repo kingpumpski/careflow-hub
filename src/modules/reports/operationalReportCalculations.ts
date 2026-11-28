@@ -161,10 +161,12 @@ export function buildOperationalReportData(input: {
       ? cycleRows.reduce((sum, period) => sum + number(period.total_claims_submitted), 0)
       : claims.reduce((sum, claim) => sum + number(claim.claim_amount), 0);
     const rejected = hasAggregateSubmission
-      ? cycleRows.reduce((sum, period) => sum + number(period.rejection_amount), 0)
+      ? cycleRows.every((period) => period.rejection_amount != null)
+        ? cycleRows.reduce((sum, period) => sum + number(period.rejection_amount), 0)
+        : null
       : claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
         .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
-    const netClaim = submitted - rejected;
+    const netClaim = rejected === null ? null : submitted - rejected;
     const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
     const viewPaid = financialRows.some((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
@@ -185,8 +187,8 @@ export function buildOperationalReportData(input: {
     return {
       insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length, periodCount: cycleRows.length,
       submitted, rejected, netClaim, paid, outstanding,
-      denialRate: submitted > 0 ? rejected / submitted * 100 : null,
-      recoveryRate: netClaim > 0 && paid !== null ? paid / netClaim * 100 : null,
+      denialRate: submitted > 0 && rejected !== null ? rejected / submitted * 100 : null,
+      recoveryRate: netClaim !== null && netClaim > 0 && paid !== null ? paid / netClaim * 100 : null,
       averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
       paidClaimCount: durations.length, linkedPaymentCount: linkedPayments.length,
     };
