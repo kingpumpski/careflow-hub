@@ -218,7 +218,8 @@ BEGIN
   IF OLD.entry_type IN ('withholding_tax_receipt', 'withholding_tax_provisional_reversal') THEN
     RAISE EXCEPTION 'Certified WHT ledger postings are immutable; record a compensating journal instead.';
   END IF;
-  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
 END;
 $$;
 
