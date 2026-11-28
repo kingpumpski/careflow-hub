@@ -1,7 +1,7 @@
 import type jsPDF from "jspdf";
 import type { BankingPartner, LetterheadConfig } from "./exportUtils";
 
-export type { BankingPartner, LetterheadConfig };
+export type { BankingPartner, LetterheadConfig, ReportCounterparty };
 
 const load = () => import("./exportUtils");
 
@@ -38,6 +38,17 @@ export async function drawLetterhead(doc: jsPDF, cfg: LetterheadConfig, title: s
 export async function drawBankingFooter(doc: jsPDF, cfg: LetterheadConfig) {
   const { drawBankingFooter: draw } = await load();
   return draw(doc, cfg);
+}
+
+export async function buildReportPDFBlob(
+  title: string,
+  data: Array<Array<string | number>>,
+  columns: string[],
+  companyInfo: LetterheadConfig,
+  counterparty?: ReportCounterparty,
+) {
+  const { buildReportPDFBlob: buildPdf } = await load();
+  return buildPdf(title, data, columns, companyInfo, counterparty);
 }
 
 export async function exportReportPDF(title: string, data: any[], columns: string[], companyInfo: LetterheadConfig) {
