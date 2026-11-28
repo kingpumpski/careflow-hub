@@ -171,6 +171,14 @@ A read-only catalog check on 2026-11-28 confirmed the following required relatio
 | `facilities`, `facility_memberships` | tables | Present |
 | `notifications`, `audit_logs`, `security_audit_log` | tables | Present |
 
-The report screen has also been extended in source to expose a dedicated cash-receipts-by-payment-month report and to show approved gross/approval variance plus separate provisional and actual WHT in the relevant on-screen tables. Cash receipts use the existing `payments.payment_date` and `amount_paid` source; they do not depend on the missing remittance view and do not infer actual-WHT receipt dates. This frontend work is being validated in a separate pull request; it does not enable any database capability flag.
+The report screen has also been extended in source to expose a dedicated cash-receipts-by-payment-month report and to show approved gross/approval variance plus separate provisional and actual WHT in the relevant on-screen tables. Cash receipts use the existing `payments.payment_date` and `amount_paid` source; they do not depend on the missing remittance view and do not infer actual-WHT receipt dates. This frontend work was merged in PR #141 as commit `53dbcb4e53a88b0373b8b694b2ba46dd5bedda02`. CI, quality, dependency audit and disposable PostgreSQL migration replay passed on the exact PR head; the merge-commit GitHub Pages deployment and published-site smoke test passed. It does not enable any database capability flag.
 
 The remaining release blockers and their required dispositions are tracked in `docs/CARE_FLOW_BLOCKER_REGISTER_2026-11-28.md`. No production DDL, data writes, migration-ledger changes, grants, Auth changes, Edge Function deployments or secret changes were made during this refresh.
+
+
+## Post-merge frontend verification — 2026-11-28
+
+- Main commit: `53dbcb4e53a88b0373b8b694b2ba46dd5bedda02`.
+- PR #141 report and blocker-register changes passed CI, quality, dependency audit and disposable PostgreSQL migration replay before merge.
+- GitHub Pages build, hash-routing verification, deployment and published-site smoke test completed successfully for the merge commit.
+- These checks validate the source/frontend release only. The production database migration ledger remains at `20260921160938`; missing production relations and RPCs remain blocked pending backup/restore and migration-provenance gates.
