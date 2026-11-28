@@ -19,7 +19,7 @@ import { calculateSettlementRates } from "@/modules/analytics/settlementRates";
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const n = (v: unknown) => Number(v || 0);
 const money = (v: number) => `GH¢ ${Math.round(v).toLocaleString()}`;
-type PeriodRow = { period_year: number; period_month: number; insurance_company_id?: string; submitted_amount: number; rejected_amount: number; paid_amount: number; withholding_tax_amount: number; outstanding_amount: number; outstanding_status: "actual" | "provisional"; };
+type PeriodRow = { period_year: number; period_month: number; insurance_company_id?: string; submitted_amount: number; rejected_amount: number; paid_amount: number; withholding_tax_amount: number; outstanding_amount: number; outstanding_status: "actual" | "partial" | "provisional"; };
 function ageBand(year: number, month: number) {
   const end = new Date(year, month, 0);
   const days = Math.max(0, Math.floor((Date.now() - end.getTime()) / 86400000));
@@ -148,6 +148,7 @@ export default function AdvancedAnalytics() {
   const summary = useMemo(() => ({
     total: filteredFinancial.reduce((s, r) => s + n(r.outstanding_amount), 0),
     actual: filteredFinancial.filter(r => r.outstanding_status === "actual").length,
+    partial: filteredFinancial.filter(r => r.outstanding_status === "partial").length,
     provisional: filteredFinancial.filter(r => r.outstanding_status === "provisional").length,
   }), [filteredFinancial]);
   const activeCount = [insurerId !== "all", status !== "all", settlement !== "all", aging !== "all", Boolean(startPeriod), Boolean(endPeriod)].filter(Boolean).length;
@@ -176,12 +177,12 @@ export default function AdvancedAnalytics() {
         <label className="text-xs space-y-1"><span className="text-muted-foreground">To period</span><select value={endPeriod} onChange={e => setEndPeriod(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="">Latest</option>{allPeriods.map(k => <option key={k} value={k}>{k}</option>)}</select></label>
         <label className="text-xs space-y-1"><span className="text-muted-foreground">Insurer</span><select value={insurerId} onChange={e => setInsurerId(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="all">All insurers</option>{(insurers || []).map((i: any) => <option key={i.id} value={i.id}>{i.company_name}</option>)}</select></label>
         <label className="text-xs space-y-1"><span className="text-muted-foreground">Claim status</span><select value={status} onChange={e => setStatus(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="all">All statuses</option>{[...new Set((claims || []).map((c: any) => String(c.status || "").toLowerCase()).filter(Boolean))].sort().map((s: string) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}</select></label>
-        <label className="text-xs space-y-1"><span className="text-muted-foreground">Settlement state</span><select value={settlement} onChange={e => setSettlement(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="all">Actual + provisional</option><option value="actual">Actual</option><option value="provisional">Provisional</option></select></label>
+        <label className="text-xs space-y-1"><span className="text-muted-foreground">Settlement state</span><select value={settlement} onChange={e => setSettlement(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="all">All settlement states</option><option value="actual">Certified</option><option value="partial">Partially certified</option><option value="provisional">Awaiting certificate</option></select></label>
         <label className="text-xs space-y-1"><span className="text-muted-foreground">Aging band</span><select value={aging} onChange={e => setAging(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2"><option value="all">All aging</option>{["0–30", "31–60", "61–90", "91–120", "120+"].map(s => <option key={s} value={s}>{s} days</option>)}</select></label>
       </div>
     </section>
 
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="stat-card"><p className="text-xs text-muted-foreground">System-calculated outstanding</p><p className="text-2xl font-bold">{money(summary.total)}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Actual periods</p><p className="text-2xl font-bold">{summary.actual}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Provisional periods</p><p className="text-2xl font-bold">{summary.provisional}</p></div></div>
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className="stat-card"><p className="text-xs text-muted-foreground">System-calculated outstanding</p><p className="text-2xl font-bold">{money(summary.total)}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Certified periods</p><p className="text-2xl font-bold">{summary.actual}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Partially certified periods</p><p className="text-2xl font-bold">{summary.partial}</p></div><div className="stat-card"><p className="text-xs text-muted-foreground">Awaiting certificate</p><p className="text-2xl font-bold">{summary.provisional}</p></div></div>
 
     <section className="space-y-3" aria-label="Settlement performance percentages">
       <div><h2 className="text-sm font-semibold">Settlement performance</h2><p className="text-xs text-muted-foreground">Calculated from the selected, system-backed settlement periods. Rates are amount-weighted across the selected data.</p></div>
