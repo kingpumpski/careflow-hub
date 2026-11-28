@@ -7,10 +7,10 @@ export function calculateOutstanding(submitted: number, rejected: number, paid: 
 export function resolveOutstandingStatus(
   paymentEntryCount: number,
   certificateEntryCount: number,
-  actualWithholdingTax = 0,
+  actualWithholdingTax: number | null = null,
   certifiedWithholdingTax = 0,
 ): OutstandingStatus {
-  if (paymentEntryCount > 0 && (actualWithholdingTax <= 0 || certifiedWithholdingTax >= actualWithholdingTax)) return "actual";
+  if (paymentEntryCount > 0 && actualWithholdingTax != null && (actualWithholdingTax <= 0 || certifiedWithholdingTax >= actualWithholdingTax)) return "actual";
   if (certificateEntryCount > 0 && certifiedWithholdingTax > 0) return "partial";
   return "provisional";
 }
