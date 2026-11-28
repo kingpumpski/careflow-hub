@@ -45,9 +45,9 @@ export default function OperationalPerformanceReport(props: {
     <section className="stat-card space-y-3">
       <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Settlement delays</h3>{props.settlementSourceUnavailable && <Badge variant="destructive">Source unavailable</Badge>}</div>
       {props.settlementSourceUnavailable ? <p className="text-sm text-destructive">Settlement-cycle data could not be loaded. Delay totals are not shown as zero.</p> : <div className="overflow-x-auto"><table className="data-table min-w-[850px]">
-        <thead><tr><th>Insurer</th><th>Claims month</th><th>Status</th><th>Days awaiting payment</th><th>Days to advice</th><th>Advice date</th><th>Receipt date</th></tr></thead>
-        <tbody>{report.settlementDelays.map((row) => <tr key={row.id}><td>{row.insurer}</td><td>{row.claimsMonth}</td><td><Badge variant={row.status === "awaiting_payment" ? "secondary" : "outline"}>{row.status.replaceAll("_", " ")}</Badge></td><td>{row.daysPending ?? "—"}</td><td>{row.daysToAdvice ?? "—"}</td><td>{row.adviceDate || "—"}</td><td>{row.receiptDate || "—"}</td></tr>)}
-          {!report.settlementDelays.length && <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No settlement cycles in the selected period.</td></tr>}</tbody>
+        <thead><tr><th>Insurer</th><th>Claims month</th><th>Status</th><th>Days awaiting payment</th><th>Days to advice</th><th>Days to receipt</th><th>Advice date</th><th>Receipt date</th></tr></thead>
+        <tbody>{report.settlementDelays.map((row) => <tr key={row.id}><td>{row.insurer}</td><td>{row.claimsMonth}</td><td><Badge variant={row.status === "awaiting_payment" ? "secondary" : "outline"}>{row.status.replaceAll("_", " ")}</Badge></td><td>{row.daysPending ?? "—"}</td><td>{row.daysToAdvice ?? "—"}</td><td>{row.daysToReceipt ?? "—"}</td><td>{row.adviceDate || "—"}</td><td>{row.receiptDate || "—"}</td></tr>)}
+          {!report.settlementDelays.length && <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">No settlement cycles in the selected period.</td></tr>}</tbody>
       </table></div>}
     </section>
     <section className="stat-card space-y-3">
