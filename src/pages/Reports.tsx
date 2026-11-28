@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { buildLetterheadConfig } from "@/lib/letterhead";
 import { exportReportPDF, exportReportExcel } from "@/lib/exportUtils";
+import { HtmlPrintPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
@@ -26,6 +27,8 @@ export default function Reports() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [activeReport, setActiveReport] = useState("balance");
+  const [printPreviewHtml, setPrintPreviewHtml] = useState("");
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("all");
   const { can } = usePermissions();
 
@@ -278,19 +281,8 @@ export default function Reports() {
 
   const handlePrint = (title: string) => {
     if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
     const source = document.getElementById("report-content");
-    if (!source) {
-      printWindow.close();
-      return;
-    }
-    // Wait for the report document and its company logo to finish loading
-    // before opening the browser print dialog.
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
+    if (!source) return;
     const printable = source.cloneNode(true) as HTMLElement;
     printable.querySelectorAll('[role="tablist"], [role="tab"]').forEach((tab) => tab.remove());
     printable.querySelectorAll("button").forEach((button) => button.replaceWith(document.createTextNode(button.textContent?.trim() || "")));
@@ -316,7 +308,7 @@ export default function Reports() {
     const receiptTable = activeReport === "balance"
       ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
       : "";
-    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
+    setPrintPreviewHtml(`<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${escapeHtml(title)}</title><style>
       @page{size:A4 landscape;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .report-brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid ${accentColor};padding:0 0 14px;margin-bottom:18px}
       .brand-logo{max-width:92px;max-height:64px;object-fit:contain}.brand-copy{flex:1}.brand-name{font-size:20px;font-weight:700;color:${accentColor};margin:0}.brand-contact{color:#526078;margin-top:4px;font-size:9px}
@@ -324,7 +316,7 @@ export default function Reports() {
       h2,h3{color:#1e4078;margin:16px 0 8px}table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:9px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#1e4078!important;color:#fff!important;font-weight:700;text-align:left}th,td{border:1px solid #d7dee8;padding:7px 8px;vertical-align:top}tbody tr:nth-child(even){background:#f7f9fc}tfoot td{background:#eaf0f7;font-weight:700}.text-right{text-align:right}.font-bold,.font-semibold{font-weight:700}.text-destructive{color:#b42318}.text-success{color:#087443}.text-warning{color:#946200}.stat-card{border:1px solid #dce3ed;border-radius:6px;padding:12px;margin:8px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.report-footer{border-top:1px solid #d7dee8;padding-top:8px;margin-top:22px;color:#667085;font-size:8px}
       @media print{body{background:#fff}.no-print{display:none!important}}
     </style></head><body><header class="report-brand">${logo}<div class="brand-copy"><h1 class="brand-name">${escapeHtml(companyName)}</h1><div class="brand-contact">${contact}</div></div></header><div class="report-meta"><strong>${escapeHtml(title)}</strong><span>Company: ${escapeHtml(companyLabel)}</span><span>Period: ${escapeHtml(periodLabel)}</span><span>Generated: ${escapeHtml(generatedAt)}</span></div>${counterpartySection}${printable.outerHTML}${reconciliationTable}${receiptTable}<footer class="report-footer">${escapeHtml(companyInfo.footer_note || "Confidential financial report. For authorized business use only.")} &nbsp; | &nbsp; Generated by CareFlow Hub</footer></body></html>`);
-    printWindow.document.close();
+    setPrintPreviewOpen(true);
   };
 
   const handleExportPDF = () => {
@@ -706,6 +698,7 @@ export default function Reports() {
           </TabsContent>
         </div>
       </Tabs>
+      <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
     </div>
   );
 }
