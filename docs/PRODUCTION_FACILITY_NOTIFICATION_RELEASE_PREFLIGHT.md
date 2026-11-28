@@ -27,7 +27,7 @@ A fresh read-only Supabase inspection at 2026-11-27 15:41 UTC confirmed:
 | Letterhead settings RPC | Not present in the live migration state |
 | Claim diagnosis draft persistence | `claim_diagnosis_drafts` table absent |
 | Settlement/claim-case release | Exception, claim-case, remittance and receipt-month objects absent; approved gross and actual receipt-date columns absent |
-| Pre-authorization finalizer | Live private function still references absent `pre_auth_submissions`; canonical table is `preauth_submissions` |
+| Pre-authorization finalizer | Correct prepared-handoff table `preauthorization_submissions` is absent; live private function still references both the legacy `preauth_submissions` queue and absent misspelled `pre_auth_submissions` |
 | Claims-officer settlement access | `claims.settlement.read/write` permission keys/grants absent |
 
 The live database has the facility base tables but not the reviewed onboarding/membership/WHT RPCs. The facility table count and membership count are both zero; this is a point-in-time read, not an instruction to seed or alter production.
@@ -98,7 +98,7 @@ A fresh read-only function-definition and policy-reference inspection narrowed t
 
 - `current_user_has_any_role`, `current_user_has_permission` and `user_has_facility_access` all derive the subject from `auth.uid()`, use a fixed empty search path, and return only a boolean for the caller's own role/permission/facility access. Existing RLS policies still call these public wrappers on legacy tables; revoking them blindly can break reads/writes or silently deny legitimate operations. The private `security_internal` helpers are also used directly by newer policies.
 - `get_my_permissions()` returns only the caller's permission keys based on `auth.uid()`; the UI and the security-audit-log policy use it. It is an intended authenticated RPC, not a general permission-catalog dump.
-- `finalize_preauthorization_handoff` is a public wrapper around a private SECURITY DEFINER function. The private function checks authentication, `preauth.write`, facility access, idempotency, snapshot type and cost consistency. However, the live private function still references the absent `public.pre_auth_submissions` relation, while production has `public.preauth_submissions`. This is a real execution blocker, not a reason to revoke the whole wrapper. The source migration `20261126150000_restore_prepared_preauthorization_handoff_contract.sql` uses the canonical relation; it must be validated in the restored migration rehearsal.
+- `finalize_preauthorization_handoff` is a public wrapper around a private SECURITY DEFINER function. The intended prepared-document register is `public.preauthorization_submissions`. The similarly named `public.preauth_submissions` is a legacy insurer execution queue and must not be reused; `public.pre_auth_submissions` is an invalid/misspelled relation. A fresh read-only catalog and function-definition check on 2026-11-28 confirmed that the prepared-document register is absent and the live private finalizer references both the legacy queue and the misspelled relation, without referencing the intended prepared-document register. This is a real execution blocker, not a reason to revoke the whole wrapper. The source migration `20261126150000_restore_prepared_preauthorization_handoff_contract.sql` creates and writes the correct prepared-only relation; its companion wrapper-hardening migration must also be validated in the restored migration rehearsal.
 
 Do not blindly revoke a function required by RLS or the UI, and do not add a broad `role_permissions` policy. The leaked-password protection setting should be enabled only after confirming the intended password policy and testing the login/password-reset flow; this inspection did not change Auth settings.
 
@@ -129,3 +129,24 @@ Keep each optional capability false until its corresponding production objects a
 ## Change boundary
 
 The 2026-11-27 inspections and source updates were read-only against production. No production DDL, data, migration ledger, Auth configuration, Edge Function or secret was changed. Existing facility rows remain untouched.
+
+
+## Read-only refresh — 2026-11-28
+
+A fresh catalog check against the same production project confirmed the following prepared-handoff state:
+
+| Check | Result |
+|---|---|
+| `public.preauthorization_submissions` | Missing |
+| `public.preauth_submissions` (legacy insurer execution queue) | Present |
+| `public.pre_auth_submissions` (misspelled relation) | Missing |
+| Live private finalizer references `public.preauthorization_submissions` | No |
+| Live private finalizer references `public.preauth_submissions` | Yes |
+| Live private finalizer references `public.pre_auth_submissions` | Yes |
+| Public wrapper is SECURITY INVOKER | No — it is still SECURITY DEFINER |
+| Public wrapper has an empty `search_path` | Yes |
+| Authenticated can execute the public wrapper | Yes |
+| Anonymous can execute the public wrapper | No |
+| Notification recipient RLS/UPDATE isolation | Pass — existing policy is user-scoped |
+
+The read-only release diagnostic has been corrected to require the intended prepared-handoff relation, reject both noncanonical relation references, and verify that the public wrapper is SECURITY INVOKER with an empty search path, authenticated execution and no anonymous execution. The diagnostic remains SELECT-only. No production schema, records, migration ledger, grants, Auth settings or Edge Functions were changed.
