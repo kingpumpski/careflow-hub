@@ -64,15 +64,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const { can } = usePermissions();
   const { userRole } = useAuth();
   const groupContaining = (g: NavGroup) => g.children?.some((c) => c.path === location.pathname);
-  const [expanded, setExpanded] = useState<string[]>(() => { const open = NAV_GROUPS.filter(groupContaining).map((g) => g.label); return open.length ? open : ["Claims Intelligence"]; });
+  const [expanded, setExpanded] = useState<string | null>(() => NAV_GROUPS.find(groupContaining)?.label ?? null);
 
   useEffect(() => {
-    const activeGroups = NAV_GROUPS.filter(groupContaining).map((g) => g.label);
-    if (!activeGroups.length) return;
-    setExpanded((prev) => Array.from(new Set([...prev, ...activeGroups])));
+    // Keep only the section containing the active page open.
+    setExpanded(NAV_GROUPS.find(groupContaining)?.label ?? null);
   }, [location.pathname]);
 
-  const toggle = (label: string) => setExpanded((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
+  const toggle = (label: string) => setExpanded((current) => current === label ? null : label);
   const isActive = (path: string) => location.pathname === path;
   const visible = (child: NavChild) => (child.superuserOnly ? userRole === "superuser" : true) && (!child.permission || can(child.permission));
   return <aside className="h-full w-64 max-w-[88vw] max-h-screen bg-sidebar !text-sidebar-foreground flex flex-col border-r border-sidebar-border no-print overflow-hidden">
@@ -89,7 +88,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
         if (!group.children) return <Link key={group.path} to={group.path!} onClick={onNavigate} aria-current={isActive(group.path!) ? "page" : undefined} className={`sidebar-item min-h-10 !text-sidebar-foreground ${isActive(group.path!) ? "sidebar-item-active !text-sidebar-primary-foreground" : ""}`}><group.icon className="w-[18px] h-[18px] shrink-0" />{group.label}</Link>;
         const children = group.children.filter(visible);
         if (!children.length) return null;
-        const open = expanded.includes(group.label);
+        const open = expanded === group.label;
         return <div key={group.label} className="min-w-0">
           <button type="button" onClick={() => toggle(group.label)} aria-expanded={open} className="sidebar-item w-full min-h-10 !text-sidebar-foreground justify-between">
             <span className="flex items-center gap-3 min-w-0"><group.icon className="w-[18px] h-[18px] shrink-0" /><span className="truncate">{group.label}</span></span>
