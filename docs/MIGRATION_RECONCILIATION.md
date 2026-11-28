@@ -649,3 +649,25 @@ The live schema also still lacks settlement exception tables, remittance ledger,
 The source migration chain passes the disposable CI replay, but the disposable job temporarily normalizes the three documented duplicate prefixes. That validates the normalized test sequence; it does not reconcile the original production migration history or prove equivalence of historical SQL bodies. Continue to treat the complete semantic crosswalk and verified restore replay as mandatory.
 
 No production schema, data, grants, Auth settings, Edge Functions or migration ledger were changed during this check.
+
+
+## Current read-only refresh — 2026-11-28 09:17 UTC
+
+The current repository base commit for this refresh is `296af07ff08626f74d7975d112beaa9778a53608`. A fresh Supabase migration API read and GitHub migration-tree inventory confirm:
+
+- Production migration ledger: 74 rows; latest version `20260921160938`, name `fix_facility_policy_recursion_runtime`.
+- Repository migration files: 146 SQL files.
+- Direct normalized-name matches: 56.
+- Ledger rows without unique direct source match: 18.
+- Source files without direct ledger-name match: 90.
+- Later-version source candidates: 32.
+- Duplicate version groups: three, unchanged from the historical findings.
+
+The duplicate groups remain:
+- `20260907140000`: `20260907140000_preauth_atomic_hardening.sql` and `20260907140000_preauth_versions_workflow_hardening.sql`.
+- `20260907144000`: `20260907144000_preauth_document_integrity.sql` and `20260907144000_preauth_document_lifecycle.sql`.
+- `20260907145000`: `20260907145000_preauth_audit_events.sql` and `20260907145000_preauth_workflow_transitions.sql`.
+
+The automated disposable replay normalizes duplicate versions for test execution. That normalization is test-only and does not establish which historical SQL was applied to production. The existing historical pre-authorization request-number type conflict remains a source-replay/provenance issue; do not rewrite or skip the historical migration to force a green replay. Recover authoritative applied SQL or document an approved forward-only baseline strategy, then rehearse the complete sequence against a restored copy.
+
+The reconciliation audit runner now defaults to `docs/MIGRATION_LEDGER_SNAPSHOT_2026-11-28.md`. The dated snapshot preserves the full 74-row production ledger and direct-name crosswalk. No production migration, schema, data, grant, Auth or migration-ledger mutation was performed.
