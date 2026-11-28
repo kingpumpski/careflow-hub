@@ -115,9 +115,22 @@ export async function loadImageDataUrl(url?: string): Promise<{ data: string; fo
   }
 }
 
-export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+export async function buildPreAuthPDFBlob(preauth: any, items: any[], companyInfo: LetterheadConfig) {
   const doc = await buildPreAuthDoc(preauth, items, companyInfo);
-  doc.save(`preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`);
+  return {
+    blob: doc.output("blob"),
+    fileName: `preauth-${preauth.id?.slice(0, 8) || "request"}.pdf`,
+  };
+}
+
+export async function exportPreAuthPDF(preauth: any, items: any[], companyInfo: LetterheadConfig) {
+  const { blob, fileName } = await buildPreAuthPDFBlob(preauth, items, companyInfo);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function preAuthPdfBase64(preauth: any, items: any[], companyInfo: LetterheadConfig): Promise<{ base64: string; filename: string }> {
