@@ -211,7 +211,7 @@ export default function ScheduleGenerator() {
           </table>
         </div>
       )}
-      <PdfPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} blob={pdfBlob} fileName={`${title.toLowerCase().replace(/\\s+/g, "-")}.pdf`} title={title} />
+      <PdfPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} blob={pdfBlob} fileName={`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`} title={title} />
     </div>
   );
 }
