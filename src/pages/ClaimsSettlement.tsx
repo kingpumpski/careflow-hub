@@ -57,7 +57,8 @@ export default function ClaimsSettlement() {
     queryKey: ["configured-facility-wht-rate", facilityId],
     enabled: Boolean(facilityId),
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_configured_withholding_tax_rate", { p_facility_id: facilityId });
+      const rateRpc = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }> };
+      const { data, error } = await rateRpc.rpc("get_configured_withholding_tax_rate", { p_facility_id: facilityId });
       if (error) {
         if (error.code === "PGRST202" || error.code === "42883") return null;
         throw error;
