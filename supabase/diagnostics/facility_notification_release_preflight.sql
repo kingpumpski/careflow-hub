@@ -95,12 +95,14 @@ WITH checks AS (
     ) AND EXISTS (
       SELECT 1 FROM pg_policies
       WHERE schemaname = 'public' AND tablename = 'notifications'
-        AND policyname = 'notifications_update_own'
         AND cmd = 'UPDATE'
+        AND roles @> ARRAY['authenticated']::name[]
         AND qual LIKE '%auth.uid%'
+        AND qual LIKE '%user_id%'
         AND with_check LIKE '%auth.uid%'
+        AND with_check LIKE '%user_id%'
     ) THEN 'PASS' ELSE 'BLOCKED' END,
-    'RLS and recipient-only UPDATE policy must be enabled'
+    'RLS and an authenticated recipient-only UPDATE policy with matching USING and WITH CHECK predicates must be enabled'
 
   UNION ALL
   SELECT 'Audit log read protection',
