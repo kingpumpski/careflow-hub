@@ -357,7 +357,7 @@ export default function Reports() {
       data = [
         ...operationalReportData.rejectionReasons.map((row) => ["Rejection Analysis", row.category, row.count, row.amount, row.reason]),
         ...operationalReportData.insurerPerformance.map((row) => ["Insurer Performance", row.insurer, row.claimsCount, row.submitted, `Rejected ${row.rejected}; linked cash ${row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}`]),
-        ...operationalReportData.settlementDelays.map((row) => ["Settlement Delays", `${row.insurer} — ${row.claimsMonth}`, row.daysPending ?? row.daysToAdvice ?? "—", "—", `${row.status}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}`]),
+        ...operationalReportData.settlementDelays.map((row) => ["Settlement Delays", `${row.insurer} — ${row.claimsMonth}`, row.daysPending ?? row.daysToAdvice ?? "—", "—", `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}`]),
         ...operationalReportData.outstandingFollowUp.map((row) => ["Outstanding Follow-up", `${row.insurer} — ${row.claimsMonth}`, row.daysOutstanding, row.outstanding, `${row.ageBand}; ${row.taxBasis}`]),
         ...(canReadAudit ? operationalReportData.staffActivity.map((row) => ["Staff Claims Activity", row.staffName, row.distinctClaimsTouched, "—", `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}`]) : []),
       ];
