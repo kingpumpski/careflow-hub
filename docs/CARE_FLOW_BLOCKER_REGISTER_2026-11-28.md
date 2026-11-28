@@ -35,7 +35,7 @@ The source Reports page now has these report areas:
 5. Claim Aging — outstanding by age bucket.
 6. Cash Receipts by Month — cash grouped by insurer and recorded payment month.
 
-The report screen now includes approved gross and approval variance in the account-balance table when insurer advice is available. The cash-receipts report is derived from the existing `payments` table and remains available independently of the missing remittance ledger/view. It does not treat payment month as the claims cycle and does not infer actual-WHT receipt date. PDF, Excel and print paths are included in the source change and remain subject to CI validation.
+The report screen now includes approved gross and approval variance in the account-balance table when insurer advice is available. The cash-receipts report is derived from the existing `payments` table and remains available independently of the missing remittance ledger/view. It does not treat payment month as the claims cycle and does not infer actual-WHT receipt date. PDF, Excel and print paths were merged in PR #141 as commit `53dbcb4e53a88b0373b8b694b2ba46dd5bedda02`. CI, quality, dependency audit and disposable PostgreSQL migration replay passed on the exact PR head; the merge-commit GitHub Pages deployment and published-site smoke test also passed.
 
 **Frontend report work is not a substitute for the database release.** The new cash receipts view can operate against the existing payments table; settlement-dependent totals continue to fail closed rather than presenting missing data as zero.
 
