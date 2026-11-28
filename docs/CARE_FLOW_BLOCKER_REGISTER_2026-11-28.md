@@ -142,3 +142,25 @@ The eight principal Reports tabs already exist; this tranche fixes their source-
 These migrations are tested only in the disposable PostgreSQL workflow. The connected production database still has the previously recorded 74-migration ledger, missing settlement/remittance/exception/case/draft objects and unresolved history reconciliation. Do not apply the new WHT receipt/rate migrations or enable the WHT certificate UI until the full migration chain is reconciled and the approved restore safety prerequisite is satisfied. No production DDL, data, permissions or Auth settings were changed in this tranche.
 
 Backup feature development remains explicitly on hold; PR #128 is not part of this implementation tranche.
+
+
+## Read-only production refresh — 2026-11-28 16:05 UTC
+
+Connected project `jajfdgknctzqypdtvmxo` remains `ACTIVE_HEALTHY` on PostgreSQL 17.11. The migration ledger remains at **74 records**, latest `20260921160938`; migration provenance reconciliation is still a release blocker.
+
+The live data count is not empty (correcting earlier compact inventory notes): 14 insurance companies, 1 claim, 1 payment, 1 withholding-tax row, 3 ledger entries, 1 profile and 1 user-role row. There are **0 claims settlement periods, 0 facilities and 0 facility memberships**. This is insufficient for end-to-end facility-scoped verification and for enabling the new facility-scoped workflows. The global `system_settings.withholding_tax_rate` is configured at **7.5%**; the safe `get_configured_withholding_tax_rate` RPC is not yet deployed.
+
+The canonical prepared-document handoff relation `preauthorization_submissions` remains missing. The existing `preauth_submissions` relation is legacy-only and must not be reused. The canonical relation and corrected finalizer are in the source migration sequence, but the production finalizer still has the old relation contract; keep prepared-handoff registration disabled.
+
+Other missing production objects remain:
+- Settlement: `claims_settlement_remittances`, `claims_settlement_receipt_months`, `settlement_exceptions`, `settlement_exception_audit_events`.
+- Claims: `claim_cases`, `claim_case_events`, `claim_diagnosis_drafts`.
+- WHT receipts: `withholding_tax_receipts` and `record_withholding_tax_receipt`.
+- Facility letterhead: `get_facility_letterhead_settings`, `save_facility_letterhead_settings` and the `facility-logos` storage bucket.
+- `claims_settlement_periods` lacks `approved_gross_amount` and `actual_receipt_date`.
+
+The live `claims_outstanding_periods` view still uses provisional WHT in the outstanding formula. PR #148 adds `20261128153000_correct_claims_outstanding_actual_wht.sql`: provisional WHT remains visible as an estimate, but only confirmed actual WHT reduces the outstanding receivable. This source correction is not deployed to production.
+
+Security Advisor findings remain: `role_permissions` is deny-by-default with no direct client policy (intentional; do not expose the RBAC table), five authenticated-callable SECURITY DEFINER functions need their individual caller contracts preserved/reviewed, and Auth leaked-password protection remains disabled pending an owner-approved Auth setting change. No production DDL, grants, Auth settings or data writes were performed during this refresh.
+
+Backup development remains on hold. PR #128 is not part of this implementation and remains unmerged.
