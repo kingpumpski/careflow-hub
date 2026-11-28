@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Shield, FileCheck, TrendingUp, Settings2, ChevronDown, ChevronRight, Activity, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Shield, FileCheck, FileText, Database, TrendingUp, Settings2, ChevronDown, ChevronRight, Activity, type LucideIcon } from "lucide-react";
 import { usePermissions } from "@/modules/security";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Permission } from "@/modules/security";
@@ -15,20 +15,25 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "Claims Intelligence", icon: Shield, children: [
     { label: "Monthly Claims Entry", path: "/claims", permission: "claims.read" },
     { label: "Individual Claim Cases", path: "/claims/cases", permission: "claims.read" },
-  { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
-  { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
-  { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
+    { label: "Claim Diagnosis Assistant", path: "/claims/diagnosis-assistant", permission: "claims.read" },
     { label: "Settlement Capture", path: "/claims/settlements", permission: "payments.read" },
     { label: "Settlement Tracking", path: "/payments", permission: "payments.read" },
     { label: "Outstanding", path: "/outstanding", permission: "payments.read" },
     { label: "Rejections", path: "/rejections", permission: "claims.read" },
     { label: "Withholding Tax", path: "/withholding-tax", permission: "payments.read" },
-    { label: "Bulk Import", path: "/insurance-import", permission: "masterdata.write" },
-    { label: "Document Intake", path: "/document-intake", permission: "masterdata.write" },
-    { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
+  ] },
+  { label: "Financial Reports", icon: FileText, children: [
+    { label: "Claims Schedule", path: "/schedule", permission: "reports.read" },
     { label: "Reports", path: "/reports", permission: "reports.read" },
     { label: "General Ledger", path: "/ledger", permission: "ledger.read" },
     { label: "Statements of Account", path: "/statements-of-account", permission: "ledger.read" },
+  ] },
+  { label: "Data & Audit", icon: Database, children: [
+    { label: "Insurance Companies", path: "/insurance", permission: "claims.read" },
+    { label: "Bulk Import", path: "/insurance-import", permission: "masterdata.write" },
+    { label: "Document Intake", path: "/document-intake", permission: "masterdata.write" },
+    { label: "Duplicate Audit", path: "/duplicate-audit", permission: "audit.read" },
+    { label: "Audit Logs", path: "/audit-trail", permission: "audit.read" },
   ] },
   { label: "Pre-Authorization", icon: FileCheck, children: [
     { label: "Authorization Studio", path: "/pre-auth/studio", permission: "preauth.read" },
@@ -51,7 +56,6 @@ export const NAV_GROUPS: NavGroup[] = [
   ] },
   { label: "Administration", icon: Settings2, children: [
     { label: "Users & Roles", path: "/users", permission: "users.manage" },
-    { label: "Audit Logs", path: "/audit-trail", permission: "audit.read" },
     { label: "Messages", path: "/chat" },
     { label: "Notifications", path: "/notifications" },
     { label: "Settings", path: "/settings", permission: "settings.manage" },
