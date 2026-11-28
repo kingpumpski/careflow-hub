@@ -196,7 +196,7 @@ export default function Reports() {
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
-  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId]);
+  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
 
   // Aging uses the same authoritative outstanding-period view as the balance
   // report, so approved gross and actual-vs-provisional WHT stay consistent.
