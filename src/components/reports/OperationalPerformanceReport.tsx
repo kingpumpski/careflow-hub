@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import type { ReturnType } from "typescript";
 import { buildOperationalReportData, type OperationalAuditLog, type OperationalClaim, type OperationalInsurer, type OperationalOutstandingPeriod, type OperationalPayment, type OperationalProfile, type OperationalSettlementPeriod } from "@/modules/reports/operationalReportCalculations";
 
 const money = (value: number) => `GH¢ ${value.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
