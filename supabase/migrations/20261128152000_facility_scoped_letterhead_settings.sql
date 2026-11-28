@@ -164,7 +164,7 @@ COMMENT ON FUNCTION public.save_facility_letterhead_settings(UUID, JSONB) IS
   'Allows facility settings managers to update only the validated company letterhead allowlist inside facilities.settings.';
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('facility-logos', 'facility-logos', true, 2097152, ARRAY['image/png','image/jpeg','image/webp','image/svg+xml'])
+VALUES ('facility-logos', 'facility-logos', true, 2097152, ARRAY['image/png','image/jpeg','image/webp'])
 ON CONFLICT (id) DO UPDATE
 SET public = true,
     file_size_limit = 2097152,
