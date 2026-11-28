@@ -184,7 +184,6 @@ export default function StatementsOfAccount() {
           </section>
         </>
       )}
-    </div>
       <PdfPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} blob={pdfBlob} fileName={pdfFileName} title={`Statement of Account — ${selectedCompany?.company_name || "Company"}`} />
     </div>
   );
