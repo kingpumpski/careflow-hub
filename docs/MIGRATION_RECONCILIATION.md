@@ -671,3 +671,8 @@ The duplicate groups remain:
 The automated disposable replay normalizes duplicate versions for test execution. That normalization is test-only and does not establish which historical SQL was applied to production. The existing historical pre-authorization request-number type conflict remains a source-replay/provenance issue; do not rewrite or skip the historical migration to force a green replay. Recover authoritative applied SQL or document an approved forward-only baseline strategy, then rehearse the complete sequence against a restored copy.
 
 The reconciliation audit runner now defaults to `docs/MIGRATION_LEDGER_SNAPSHOT_2026-11-28.md`. The dated snapshot preserves the full 74-row production ledger and direct-name crosswalk. No production migration, schema, data, grant, Auth or migration-ledger mutation was performed.
+
+
+## Report source release update — 2026-11-28
+
+The claims-cycle Settlement Reconciliation report merged in PR #143 (`8c62f9710b7fa4c9bae47c1a4927496306ccf14e`). It uses the existing settlement-period source and does not add or apply a production migration. The current Operational Performance report branch is also source-only. No production schema, data, migration-ledger or permission changes were made.

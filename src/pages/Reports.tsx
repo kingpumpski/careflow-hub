@@ -14,9 +14,12 @@ import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLett
 import { usePermissions } from "@/modules/security/usePermissions";
 import SettlementReconciliationReport from "@/components/reports/SettlementReconciliationReport";
 import { buildSettlementReconciliationRows } from "@/modules/reports/settlementReconciliationReport";
+import OperationalPerformanceReport from "@/components/reports/OperationalPerformanceReport";
+import { buildOperationalReportData } from "@/modules/reports/operationalReportCalculations";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const periods = ["Monthly", "Quarterly", "Bi-Annual", "Annual", "Total"];
+const percentLabel = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}%`;
 
 export default function Reports() {
   const [activePeriod, setActivePeriod] = useState("Monthly");
@@ -27,11 +30,15 @@ export default function Reports() {
   const { can } = usePermissions();
 
   const { data: claims } = useSupabaseQuery("claims");
+  const canReadAudit = can("audit.read");
+  const canReadClaims = can("claims.read");
   const { data: insurers } = useSupabaseQuery("insurance_companies");
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
   const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
-  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: activeReport === "settlement", missingSchemaBehavior: "error" });
+  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: activeReport === "settlement" || activeReport === "operations", missingSchemaBehavior: "error" });
+  const { data: auditLogs, error: auditLogsError } = useSupabaseQuery("audit_logs", { enabled: activeReport === "operations" && canReadAudit, orderBy: "changed_at", limit: 1000, missingSchemaBehavior: "error" });
+  const { data: profiles } = useSupabaseQuery("profiles", { select: "id,full_name", enabled: activeReport === "operations" && canReadAudit });
   const { data: ledger } = useSupabaseQuery("ledger_entries");
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
@@ -42,7 +49,7 @@ export default function Reports() {
   const settlementReportUnavailable = (
     Boolean(outstandingPeriodsError)
     || (Boolean(withholdingTaxError) && !settlementViewHasSeparatedTaxFields)
-  ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement";
+  ) && activeReport !== "income" && activeReport !== "receipts" && activeReport !== "settlement" && activeReport !== "operations";
   const filterByPeriod = useCallback((items: any[], yearKey: string, monthKey: string, dateKey?: string) => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
@@ -70,6 +77,34 @@ export default function Reports() {
     [settlementCycleSourceRows],
   );
   const settlementCycleReportUnavailable = Boolean(settlementPeriodsError);
+
+  const operationalClaims = useMemo(() => filterByPeriod(claims || [], "claim_year", "claim_month")
+    .filter((claim: any) => selectedCompanyId === "all" || claim.insurance_company_id === selectedCompanyId),
+  [claims, selectedCompanyId, filterByPeriod]);
+  const operationalInsurers = useMemo(() => (insurers || [])
+    .filter((insurer: any) => selectedCompanyId === "all" || insurer.id === selectedCompanyId),
+  [insurers, selectedCompanyId]);
+  const operationalSettlementPeriods = useMemo(() => filterByPeriod(settlementPeriods || [], "", "", "period_start")
+    .filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId),
+  [settlementPeriods, selectedCompanyId, filterByPeriod]);
+  const operationalOutstandingPeriods = useMemo(() => filterByPeriod(outstandingPeriods || [], "period_year", "period_month")
+    .filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId),
+  [outstandingPeriods, selectedCompanyId, filterByPeriod]);
+  const operationalAuditLogs = useMemo(() => {
+    const periodLogs = filterByPeriod(auditLogs || [], "", "", "changed_at");
+    if (!canReadClaims) return periodLogs;
+    const selectedClaimIds = new Set(operationalClaims.map((claim: any) => String(claim.id)));
+    return periodLogs.filter((log: any) => selectedClaimIds.has(String(log.record_id)));
+  }, [auditLogs, filterByPeriod, operationalClaims, canReadClaims]);
+  const operationalReportData = useMemo(() => buildOperationalReportData({
+    claims: operationalClaims,
+    insurers: operationalInsurers,
+    payments: payments || [],
+    settlementPeriods: operationalSettlementPeriods,
+    outstandingPeriods: operationalOutstandingPeriods,
+    auditLogs: operationalAuditLogs,
+    profiles: profiles || [],
+  }), [operationalClaims, operationalInsurers, payments, operationalSettlementPeriods, operationalOutstandingPeriods, operationalAuditLogs, profiles]);
 
   const reportData = useMemo(() => {
     const periodRows = filterByPeriod(outstandingPeriods || [], "period_year", "period_month");
@@ -294,7 +329,7 @@ export default function Reports() {
 
   const handleExportPDF = () => {
     if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
-    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : "Claim Aging";
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     const title = `${periodLabel} — ${reportName}`;
     let data: (string | number)[][] = [];
     let columns: string[] = [];
@@ -321,6 +356,15 @@ export default function Reports() {
           row.actualTax,
           row.tax,
         ]),
+      ];
+    } else if (activeReport === "operations") {
+      columns = ["Report Area", "Item", "Count / Days", "Amount (GHS)", "Details"];
+      data = [
+        ...(canReadClaims ? operationalReportData.rejectionReasons.map((row) => ["Rejection Analysis", row.category, row.count, row.amount, row.reason]) : [["Rejection Analysis", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(canReadClaims ? operationalReportData.insurerPerformance.map((row) => ["Insurer Performance", row.insurer, row.claimsCount, row.submitted, `Claims cycles ${row.periodCount}; rejected ${row.rejected == null ? "—" : row.rejected}; cash ${row.paid == null ? "—" : row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}`]) : [["Insurer Performance", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(settlementPeriodsError ? [["Settlement Delays", "Source unavailable", "—", "—", "Settlement-period source could not be loaded"]] : operationalReportData.settlementDelays.map((row) => ["Settlement Delays", `${row.insurer} — ${row.claimsPeriod}`, row.daysPending ?? row.daysToAdvice ?? "—", "—", `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}`])),
+        ...(canReadClaims ? (outstandingPeriodsError ? [["Outstanding Follow-up", "Source unavailable", "—", "—", "Outstanding-period source could not be loaded"]] : operationalReportData.outstandingFollowUp.map((row) => ["Outstanding Follow-up", `${row.insurer} — ${row.claimsMonth}`, row.daysOutstanding, row.outstanding, `${row.ageBand}; ${row.taxBasis}`])) : [["Outstanding Follow-up", "Access restricted", "—", "—", "Requires claims.read"]]),
+        ...(!canReadAudit ? [["Staff Claims Activity", "Access restricted", "—", "—", "Requires audit.read"]] : auditLogsError ? [["Staff Claims Activity", "Source unavailable", "—", "—", "Audit source could not be loaded"]] : operationalReportData.staffActivity.map((row) => ["Staff Claims Activity", row.staffName, row.distinctClaimsTouched, "—", `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}`])),
       ];
     } else if (activeReport === "settlement") {
       columns = ["Claims Cycle", "Insurer", "Status", "Submitted (GHS)", "Approved Gross (GHS)", "Rejected (GHS)", "Approval Variance (GHS)", "Provisional WHT (GHS)", "Actual WHT (GHS)", "Cash Received (GHS)", "Approved Unpaid (GHS)", "Advice Reference", "Advice Date", "Receipt Date"];
@@ -361,7 +405,7 @@ export default function Reports() {
 
   const handleExportExcel = () => {
     if (settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)) return;
-    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : "Claim Aging";
+    const reportName = activeReport === "balance" ? "Account Balance" : activeReport === "income" ? "Income Statement" : activeReport === "receivables" ? "Outstanding Receivables" : activeReport === "tax" ? "Tax Liability" : activeReport === "receipts" ? "Cash Receipts by Month" : activeReport === "settlement" ? "Settlement Reconciliation" : activeReport === "operations" ? "Operational Performance" : "Claim Aging";
     let rows: Record<string, string | number | null>[] = [];
     if (activeReport === "income") {
       rows = [{ "Income Statement Line": "Claims Revenue", "Amount (GHS)": incomeData.revenue }, { "Income Statement Line": "Revenue Adjustments", "Amount (GHS)": incomeData.revAdj }, { "Income Statement Line": "Net Revenue", "Amount (GHS)": incomeData.netRevenue }, { "Income Statement Line": "Withholding Tax Expense", "Amount (GHS)": incomeData.whtExp }, { "Income Statement Line": "Net Income", "Amount (GHS)": incomeData.netIncome }];
@@ -382,6 +426,14 @@ export default function Reports() {
           "Actual WHT (GHS)": row.actualTax,
           "WHT Applied (GHS)": row.tax,
         })),
+      ];
+    } else if (activeReport === "operations") {
+      rows = [
+        ...(canReadClaims ? operationalReportData.rejectionReasons.map((row) => ({ "Report Area": "Rejection Analysis", "Item": row.category, "Count / Days": row.count, "Amount (GHS)": row.amount, "Details": row.reason })) : [{ "Report Area": "Rejection Analysis", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(canReadClaims ? operationalReportData.insurerPerformance.map((row) => ({ "Report Area": "Insurer Performance", "Item": row.insurer, "Count / Days": row.claimsCount, "Amount (GHS)": row.submitted, "Details": `Cycles ${row.periodCount}; rejected ${row.rejected == null ? "—" : row.rejected}; cash ${row.paid == null ? "—" : row.paid}; balance ${row.outstanding == null ? "—" : row.outstanding}; denial ${percentLabel(row.denialRate)}; recovery ${percentLabel(row.recoveryRate)}; average days to pay ${row.averageDaysToPay == null ? "—" : row.averageDaysToPay.toFixed(1)}` })) : [{ "Report Area": "Insurer Performance", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(settlementPeriodsError ? [{ "Report Area": "Settlement Delays", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Settlement-period source could not be loaded" }] : operationalReportData.settlementDelays.map((row) => ({ "Report Area": "Settlement Delays", "Item": `${row.insurer} — ${row.claimsPeriod}`, "Count / Days": row.daysPending ?? row.daysToAdvice, "Amount (GHS)": null, "Details": `${row.status}; pending days ${row.daysPending ?? "—"}; advice days ${row.daysToAdvice ?? "—"}; receipt days ${row.daysToReceipt ?? "—"}; advice ${row.adviceDate || "—"}; receipt ${row.receiptDate || "—"}` }))),
+        ...(canReadClaims ? (outstandingPeriodsError ? [{ "Report Area": "Outstanding Follow-up", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Outstanding-period source could not be loaded" }] : operationalReportData.outstandingFollowUp.map((row) => ({ "Report Area": "Outstanding Follow-up", "Item": `${row.insurer} — ${row.claimsMonth}`, "Count / Days": row.daysOutstanding, "Amount (GHS)": row.outstanding, "Details": `${row.ageBand}; ${row.taxBasis}` }))) : [{ "Report Area": "Outstanding Follow-up", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires claims.read" }]),
+        ...(!canReadAudit ? [{ "Report Area": "Staff Claims Activity", "Item": "Access restricted", "Count / Days": null, "Amount (GHS)": null, "Details": "Requires audit.read" }] : auditLogsError ? [{ "Report Area": "Staff Claims Activity", "Item": "Source unavailable", "Count / Days": null, "Amount (GHS)": null, "Details": "Audit source could not be loaded" }] : operationalReportData.staffActivity.map((row) => ({ "Report Area": "Staff Claims Activity", "Item": row.staffName, "Count / Days": row.distinctClaimsTouched, "Amount (GHS)": null, "Details": `Created ${row.inserts}; updated ${row.updates}; last activity ${row.lastActivity}` }))),
       ];
     } else if (activeReport === "settlement") {
       rows = settlementCycleRows.map((row) => ({
@@ -429,7 +481,7 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
-        <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial Reports</h1><p className="page-description">Generate comprehensive financial statements and reconciliation reports</p></div>
+        <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial &amp; Operational Reports</h1><p className="page-description">Generate financial statements, claims-cycle reconciliations and operational performance reports</p></div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
@@ -460,6 +512,7 @@ export default function Reports() {
           <TabsTrigger value="aging">Claim Aging</TabsTrigger>
           <TabsTrigger value="receipts">Cash Receipts by Month</TabsTrigger>
           <TabsTrigger value="settlement">Settlement Reconciliation</TabsTrigger>
+          <TabsTrigger value="operations">Operational Performance</TabsTrigger>
         </TabsList>
 
         <div id="report-content" className="mt-4">
@@ -580,6 +633,26 @@ export default function Reports() {
                   <tfoot><tr className="font-bold bg-muted/30"><td>Total</td><td>—</td><td>—</td><td>—</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ {sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td className="text-warning">GH¢ {grandTax.toLocaleString()}</td></tr></tfoot>
                 )}
               </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="operations">
+            <div className="stat-card space-y-4">
+              <h3 className="font-heading font-semibold">{periodLabel} — Operational Performance</h3>
+              <OperationalPerformanceReport
+                claims={operationalClaims}
+                insurers={operationalInsurers}
+                payments={payments || []}
+                settlementPeriods={operationalSettlementPeriods}
+                outstandingPeriods={operationalOutstandingPeriods}
+                auditLogs={operationalAuditLogs}
+                profiles={profiles || []}
+                canReadAudit={canReadAudit}
+                canReadClaims={canReadClaims}
+                settlementSourceUnavailable={Boolean(settlementPeriodsError)}
+                outstandingSourceUnavailable={Boolean(outstandingPeriodsError)}
+                auditSourceUnavailable={Boolean(auditLogsError)}
+              />
             </div>
           </TabsContent>
 

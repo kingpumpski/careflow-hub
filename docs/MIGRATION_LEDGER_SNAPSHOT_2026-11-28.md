@@ -3,7 +3,7 @@
 **Captured:** 2026-11-28 09:17 UTC (read-only; refreshed Supabase migration API inventory)  
 **Project:** `jajfdgknctzqypdtvmxo`  
 **Database:** PostgreSQL 17.11, `eu-west-1`  
-**Repository main commit:** `1d718f288006a5369fe3d9a853473680d33b2fb7`
+**Repository main commit:** `296af07ff08626f74d7975d112beaa9778a53608`
 
 ## Executive result
 

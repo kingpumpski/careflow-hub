@@ -194,3 +194,13 @@ The migration API still reports 74 rows and latest version `20260921160938`. A f
 - The live public `finalize_preauthorization_handoff` wrapper remains SECURITY DEFINER with an empty search path.
 
 The current source branch adds a claims-cycle Settlement Reconciliation report against the existing settlement-period table. It preserves null/unknown historical approved-gross values and is not a production schema release. All database feature flags remain disabled.
+
+
+## Post-merge report source update — 2026-11-28
+
+PR #143 was merged as `8c62f9710b7fa4c9bae47c1a4927496306ccf14e`. The claims-cycle Settlement Reconciliation report is now part of `main`; it does not change the production migration ledger or enable any database capability. The new Operational Performance report is being developed separately and remains subject to CI, permission checks and source-level validation. The production release boundary remains unchanged.
+
+
+## Operational report data availability — 2026-11-28 (read-only)
+
+Current production row counts: 1 claim, 14 insurers, 1 payment, 0 claims-settlement-period rows, 1 outstanding-period view row, 26 audit-log rows and 1 profile. The settlement-cycle report will correctly show no cycles until settlement-period records exist. Staff claims activity is based on the single claim audit event currently recorded, not the total 26 audit events across all tables. No data was inserted or modified.
