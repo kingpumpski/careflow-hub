@@ -124,7 +124,7 @@ export default function ScheduleGenerator() {
 
   const excelRows = () => rows.map((r) => ({
     "Claims Period": r.period, Submitted: r.submitted, Rejected: r.rejected,
-    Payments: r.paid, "Withholding Tax": r.withholdingTax, Outstanding: r.outstanding, "Rejection Rate (%)": Number(r.rejectionRate.toFixed(2)),
+    Payments: r.paid, "WHT Credit Received": r.withholdingTax, Outstanding: r.outstanding, "Rejection Rate (%)": Number(r.rejectionRate.toFixed(2)),
   }));
 
   const fmt = (n: number) => `GH¢ ${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
