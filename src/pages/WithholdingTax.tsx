@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +7,13 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 type TaxRecord = { id: string; insurance_company_id: string; month: number; year: number; claim_total: number; tax_rate: number; tax_amount: number; is_actual: boolean };
@@ -23,17 +31,36 @@ type SettlementAdviceRow = {
   actual_withholding_tax: number | null;
   payment_advice_reference: string | null;
   settlement_status: string;
+  period_type?: string;
+  actual_withholding_tax?: number | null;
 };
 
 export default function WithholdingTax() {
   const { can, loading: permissionsLoading } = usePermissions();
+  const queryClient = useQueryClient();
   const canReadWHT = can("payments.read") || can("claims.settlement.read") || can("ledger.read") || can("reports.read");
   const { data: taxRecords, isLoading } = useSupabaseQuery("withholding_tax", { enabled: canReadWHT && !permissionsLoading });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadWHT && !permissionsLoading });
   const { data: settings } = useSupabaseQuery("system_settings", { enabled: can("settings.manage") && !permissionsLoading });
   const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods", { enabled: canReadWHT && !permissionsLoading });
+  const { data: taxReceipts, error: taxReceiptsError } = useQuery({
+    queryKey: ["withholding-tax-receipts"],
+    enabled: receiptFeatureEnabled && canReadWHT && !permissionsLoading,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("withholding_tax_receipts").select("*").order("received_date", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
   const [filters, setFilters] = useState<TaxFilters>({});
   const [detailInsurer, setDetailInsurer] = useState<string | null>(null);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [savingReceipt, setSavingReceipt] = useState(false);
+  const [receiptForm, setReceiptForm] = useState({ settlementPeriodId: "", certificateReference: "", certificateDate: "", receivedDate: "", taxAmount: "", notes: "" });
+  const canWriteReceipts = can("payments.write") || can("ledger.write");
+  const receiptFeatureEnabled = databaseCapabilities.withholdingTaxCertificateReceipts;
   const configuredRateValue = ((settings || []) as unknown as Setting[]).find((s) => s.key === "withholding_tax_rate")?.value;
   const parsedCurrentRate = configuredRateValue == null || String(configuredRateValue).trim() === "" ? null : Number(configuredRateValue);
   const currentRate = parsedCurrentRate !== null && Number.isFinite(parsedCurrentRate) && parsedCurrentRate >= 0 && parsedCurrentRate <= 100 ? parsedCurrentRate : null;
@@ -76,6 +103,58 @@ export default function WithholdingTax() {
       && row.actual_withholding_tax != null
   );
   const confirmedAdviceWht = confirmedAdviceRows.reduce((sum, row) => sum + Number(row.actual_withholding_tax || 0), 0);
+  const receiptEligiblePeriods = ((settlementPeriods || []) as unknown as SettlementAdviceRow[]).filter((row) =>
+    row.period_type === "month"
+      && ["payment_advice_received", "reconciled"].includes(row.settlement_status)
+      && Number(row.actual_withholding_tax || 0) > 0
+  );
+  const selectedReceiptPeriod = receiptEligiblePeriods.find((row) => row.id === receiptForm.settlementPeriodId);
+  const recordedForSelectedPeriod = (taxReceipts || []).filter((receipt: any) => receipt.settlement_period_id === receiptForm.settlementPeriodId)
+    .reduce((sum: number, receipt: any) => sum + Number(receipt.tax_amount || 0), 0);
+  const remainingCertificateAmount = selectedReceiptPeriod
+    ? Math.max(0, Number(selectedReceiptPeriod.actual_withholding_tax || 0) - recordedForSelectedPeriod)
+    : 0;
+
+  const saveTaxReceipt = async () => {
+    if (!canWriteReceipts) {
+      toast({ title: "Permission required", description: "Payment write or ledger write permission is required to record a WHT certificate.", variant: "destructive" });
+      return;
+    }
+    if (!receiptForm.settlementPeriodId || !receiptForm.certificateReference.trim() || !receiptForm.certificateDate || !receiptForm.receivedDate || !receiptForm.taxAmount.trim()) {
+      toast({ title: "Complete certificate details", description: "Select a confirmed claims period and enter the certificate reference, certificate date, receipt date and amount.", variant: "destructive" });
+      return;
+    }
+    const amount = Number(receiptForm.taxAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100 || amount > remainingCertificateAmount + 0.0001) {
+      toast({ title: "Invalid certificate amount", description: `Enter a positive amount not exceeding the remaining confirmed WHT of GH¢ ${remainingCertificateAmount.toLocaleString()}.`, variant: "destructive" });
+      return;
+    }
+    setSavingReceipt(true);
+    try {
+      const { error } = await (supabase as any).rpc("record_withholding_tax_receipt", {
+        p_settlement_period_id: receiptForm.settlementPeriodId,
+        p_certificate_reference: receiptForm.certificateReference.trim(),
+        p_certificate_date: receiptForm.certificateDate,
+        p_received_date: receiptForm.receivedDate,
+        p_tax_amount: amount,
+        p_notes: receiptForm.notes.trim() || null,
+      });
+      if (error) throw error;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["withholding-tax-receipts"] }),
+        queryClient.invalidateQueries({ queryKey: ["ledger_entries"] }),
+        queryClient.invalidateQueries({ queryKey: ["company-statement-ledger"] }),
+        queryClient.invalidateQueries({ queryKey: ["claims_settlement_periods"] }),
+      ]);
+      setReceiptForm({ settlementPeriodId: "", certificateReference: "", certificateDate: "", receivedDate: "", taxAmount: "", notes: "" });
+      setReceiptDialogOpen(false);
+      toast({ title: "WHT certificate recorded", description: "The tax-credit asset and insurer receivable credit have been posted. No cash receipt was recorded." });
+    } catch (error: unknown) {
+      toast({ title: "Unable to record WHT certificate", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingReceipt(false);
+    }
+  };
 
   if (permissionsLoading) return <div className="stat-card py-12 text-center text-muted-foreground">Checking withholding tax access…</div>;
   if (!canReadWHT) return <div className="stat-card py-12 text-center"><h1 className="font-semibold">Withholding tax access restricted</h1><p className="mt-1 text-sm text-muted-foreground">You do not have permission to view withholding tax records.</p></div>;
@@ -101,6 +180,37 @@ export default function WithholdingTax() {
       <div className="page-header"><h1 className="page-title">Withholding Tax</h1><p className="page-description">Claim-side WHT estimates remain provisional. Actual WHT is recorded from insurer payment advice in Claims Settlement; this register displays those confirmed advice values separately.</p></div>
       <FilterBar filters={filters} onChange={setFilters} showCompany />
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Current Tax Rate</p><p className="text-2xl font-bold font-heading text-primary mt-1">{currentRateLabel}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Total WHT</p><p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalTax.toLocaleString()}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Claims Base</p><p className="text-2xl font-bold font-heading mt-1">GH¢ {grandTotalClaims.toLocaleString()}</p></div><div className="stat-card text-center"><p className="text-sm text-muted-foreground">Actual Records</p><p className="text-2xl font-bold font-heading text-success mt-1">{displayData.reduce((s, a) => s + a.actualCount, 0)}</p></div></div>
+      <section className="stat-card space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div><h2 className="font-semibold">Insurer-paid WHT tax certificates</h2><p className="text-xs text-muted-foreground">Record the GRA certificate shared by the insurer. The posting recognises a recoverable tax-credit asset and reduces the insurer receivable; it does not record cash.</p></div>
+          {receiptFeatureEnabled && canWriteReceipts && <Button onClick={() => setReceiptDialogOpen(true)} disabled={!receiptEligiblePeriods.length}>Record WHT certificate</Button>}
+        </div>
+        {!receiptFeatureEnabled ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Certificate capture is implemented but is not enabled in this environment until its database migration has passed release checks.</p>
+          : taxReceiptsError ? <p role="alert" className="text-sm text-destructive">WHT certificate history is unavailable: {taxReceiptsError.message}</p>
+          : <div className="table-scroll"><table className="data-table min-w-[850px]"><thead><tr><th>Claims period</th><th>Insurance company</th><th>Certificate reference</th><th>Certificate date</th><th>Date received</th><th className="text-right">Tax credit (GH¢)</th></tr></thead><tbody>
+            {(taxReceipts || []).map((receipt: any) => {
+              const period = receiptEligiblePeriods.find((row) => row.id === receipt.settlement_period_id);
+              return <tr key={receipt.id}><td>{period ? `${period.period_start} – ${period.period_end}` : receipt.settlement_period_id}</td><td>{insurerRows.find((ins) => ins.id === receipt.insurance_company_id)?.company_name || receipt.insurance_company_id}</td><td className="font-mono text-xs">{receipt.certificate_reference}</td><td>{receipt.certificate_date}</td><td>{receipt.received_date}</td><td className="text-right font-semibold">{Number(receipt.tax_amount).toLocaleString("en-GH", { minimumFractionDigits: 2 })}</td></tr>;
+            })}
+            {!(taxReceipts || []).length && <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No insurer-paid WHT certificates have been recorded.</td></tr>}
+          </tbody></table></div>}
+        <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader><DialogTitle>Record insurer-paid WHT certificate</DialogTitle><DialogDescription>Only confirmed actual WHT from a monthly settlement period can be receipted. Multiple certificates may be recorded until the confirmed amount is fully supported.</DialogDescription></DialogHeader>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2"><Label>Confirmed claims period</Label><select className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={receiptForm.settlementPeriodId} onChange={(e) => setReceiptForm((current) => ({ ...current, settlementPeriodId: e.target.value, taxAmount: "" }))}><option value="">Select period…</option>{receiptEligiblePeriods.map((row) => <option key={row.id} value={row.id}>{row.period_start} – {row.period_end} · {insurerRows.find((ins) => ins.id === row.insurance_company_id)?.company_name || row.insurance_company_id} · WHT GH¢ {Number(row.actual_withholding_tax || 0).toLocaleString()}</option>)}</select></div>
+              <div><Label>Certificate reference</Label><Input value={receiptForm.certificateReference} maxLength={160} onChange={(e) => setReceiptForm((current) => ({ ...current, certificateReference: e.target.value }))} /></div>
+              <div><Label>Certificate date</Label><Input type="date" value={receiptForm.certificateDate} onChange={(e) => setReceiptForm((current) => ({ ...current, certificateDate: e.target.value }))} /></div>
+              <div><Label>Date received from insurer</Label><Input type="date" value={receiptForm.receivedDate} onChange={(e) => setReceiptForm((current) => ({ ...current, receivedDate: e.target.value }))} /></div>
+              <div><Label>WHT amount on certificate (GH¢)</Label><Input type="number" min="0.01" step="0.01" max={remainingCertificateAmount} value={receiptForm.taxAmount} onChange={(e) => setReceiptForm((current) => ({ ...current, taxAmount: e.target.value }))} /></div>
+              <div className="md:col-span-2"><Label>Notes (optional)</Label><Input value={receiptForm.notes} maxLength={1000} onChange={(e) => setReceiptForm((current) => ({ ...current, notes: e.target.value }))} /></div>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm"><div className="flex justify-between gap-2"><span className="text-muted-foreground">Confirmed WHT</span><strong>GH¢ {Number(selectedReceiptPeriod?.actual_withholding_tax || 0).toLocaleString()}</strong></div><div className="mt-1 flex justify-between gap-2"><span className="text-muted-foreground">Previously receipted</span><strong>GH¢ {recordedForSelectedPeriod.toLocaleString()}</strong></div><div className="mt-1 flex justify-between gap-2"><span className="font-medium">Remaining certificate amount</span><strong>GH¢ {remainingCertificateAmount.toLocaleString()}</strong></div></div>
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setReceiptDialogOpen(false)}>Cancel</Button><Button type="button" disabled={savingReceipt || !receiptForm.settlementPeriodId} onClick={() => void saveTaxReceipt()}>Record certificate and post</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </section>
+
       <section className="stat-card space-y-3">
         <div><h2 className="font-semibold">Confirmed WHT from payment advice</h2><p className="text-xs text-muted-foreground">Actual values below come from insurer payment advice. Provisional estimates are not added to this total.</p></div>
         <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-sm text-muted-foreground">Confirmed actual WHT</span><span className="text-2xl font-bold text-success">GH¢ {confirmedAdviceWht.toLocaleString()}</span></div>
