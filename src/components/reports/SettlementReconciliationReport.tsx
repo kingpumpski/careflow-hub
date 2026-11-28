@@ -23,12 +23,13 @@ export default function SettlementReconciliationReport({ periods, insurers }: {
         ["Claims periods", summary.periodCount],
         ["Awaiting advice", summary.awaitingPaymentCount],
         ["Submitted", money(summary.submitted)],
-        ["Approved gross", money(summary.approvedGross)],
-        ["Cash received", money(summary.cashReceived)],
-        ["Actual WHT", money(summary.actualWht)],
+        ["Approved gross recorded", money(summary.approvedGrossCount > 0 ? summary.approvedGross : null)],
+        ["Rejected recorded", money(summary.rejectedCount > 0 ? summary.rejected : null)],
+        ["Cash received recorded", money(summary.cashReceivedCount > 0 ? summary.cashReceived : null)],
+        ["Actual WHT recorded", money(summary.actualWhtCount > 0 ? summary.actualWht : null)],
         ["Provisional WHT", money(summary.provisionalWht)],
-        ["Approval variance", money(summary.approvalVariance)],
-        ["Approved unpaid", money(summary.approvedUnpaid)],
+        ["Approval variance", money(summary.approvalVarianceCount > 0 ? summary.approvalVariance : null)],
+        ["Approved unpaid", money(summary.approvedUnpaidCount > 0 ? summary.approvedUnpaid : null)],
         ["Over-settled", money(summary.overSettled)],
         ["Balanced cycles", summary.balancedCount],
       ].map(([label, value]) => <div className="stat-card" key={String(label)}><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold">{value}</p></div>)}
@@ -36,7 +37,7 @@ export default function SettlementReconciliationReport({ periods, insurers }: {
     <div className="overflow-x-auto rounded-md border">
       <table className="data-table min-w-[1250px]">
         <thead><tr>
-          <th>Claims cycle</th><th>Insurer</th><th>Status</th><th>Submitted</th><th>Approved gross</th><th>Rejected</th><th>Approval variance</th><th>Provisional WHT</th><th>Actual WHT</th><th>Cash received</th><th>Approved unpaid</th><th>Advice reference</th><th>Receipt date</th>
+          <th>Claims cycle</th><th>Insurer</th><th>Status</th><th>Submitted</th><th>Approved gross</th><th>Rejected</th><th>Approval variance</th><th>Provisional WHT</th><th>Actual WHT</th><th>Cash received</th><th>Approved unpaid</th><th>Advice reference</th><th>Advice date</th><th>Receipt date</th>
         </tr></thead>
         <tbody>
           {rows.map((row) => <tr key={row.id}>
@@ -46,12 +47,12 @@ export default function SettlementReconciliationReport({ periods, insurers }: {
             <td>{money(row.submitted)}</td><td>{money(row.approvedGross)}</td><td>{money(row.rejected)}</td>
             <td>{money(row.approvalVariance)}</td><td>{money(row.provisionalWht)}</td><td>{money(row.actualWht)}</td>
             <td>{money(row.cashReceived)}</td><td>{money(row.approvedUnpaid)}</td>
-            <td>{row.adviceReference || "—"}</td><td>{row.receiptDate || "—"}</td>
+            <td>{row.adviceReference || "—"}</td><td>{row.adviceDate || "—"}</td><td>{row.receiptDate || "—"}</td>
           </tr>)}
-          {rows.length === 0 && <tr><td colSpan={13} className="py-8 text-center text-muted-foreground">No settlement cycles are available for the selected reporting period.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={14} className="py-8 text-center text-muted-foreground">No settlement cycles are available for the selected reporting period.</td></tr>}
         </tbody>
       </table>
     </div>
-    <p className="text-xs text-muted-foreground">A dash means the source has not recorded that figure. Approved unpaid is calculated only when approved gross, rejection, actual WHT and cash received are all confirmed. Historical rows without approved gross are not reconstructed.</p>
+    <p className="text-xs text-muted-foreground">A dash means the source has not recorded that figure. Summary values marked recorded include only cycles where that source value exists. Approved unpaid is calculated only when approved gross, rejection, actual WHT and cash received are all confirmed. Historical rows without approved gross are not reconstructed.</p>
   </section>;
 }
