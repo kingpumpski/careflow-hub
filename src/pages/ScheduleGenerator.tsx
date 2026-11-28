@@ -112,7 +112,7 @@ export default function ScheduleGenerator() {
     paid: acc.paid + r.paid,
     outstanding: acc.outstanding + r.outstanding,
   }), { submitted: 0, rejected: 0, paid: 0, withholdingTax: 0, outstanding: 0 });
-  const totalRate = totals.submitted + totals.rejected > 0 ? (totals.rejected / (totals.submitted + totals.rejected)) * 100 : 0;
+  const totalRate = totals.submitted > 0 ? (totals.rejected / totals.submitted) * 100 : 0;
 
   const title = `Claims Schedule - ${insurerName} (${MONTHS[Number(fromMonth) - 1]}-${MONTHS[Number(toMonth) - 1]} ${year})`;
   const columns = ["Claims Period", "Submitted (GH¢)", "Rejected (GH¢)", "Payments (GH¢)", "WHT Credit Received (GH¢)", "Outstanding (GH¢)", "Rejection Rate"];
@@ -138,8 +138,10 @@ export default function ScheduleGenerator() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title flex items-center gap-2"><ClipboardList className="w-6 h-6 text-primary" />Schedule Generator</h1>
-        <p className="page-description">Build insurer claim schedules with period-level submitted, rejected, cash-paid and confirmed withholding-tax figures. Provisional WHT is excluded from settlement credits. Outstanding = Approved Gross − Payments − Confirmed WHT; approved gross defaults to Submitted − Rejected when no advice figure exists.</p>
+        <p className="page-description">Build insurer claim schedules with submitted, rejected, cash-paid and WHT certificate credits. Advice-only and provisional WHT are shown in tax reconciliation but do not reduce receivables until the insurer's tax certificate is received. Outstanding = Approved Gross − Cash Received − WHT Certificate Credits.</p>
       </div>
+
+      {!canReadSchedule && <div role="alert" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">This schedule requires both claims.read and payments.read. Ask an administrator for the appropriate facility-scoped report access.</div>}
 
       <div className="stat-card grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
@@ -168,9 +170,9 @@ export default function ScheduleGenerator() {
           </select>
         </div>
         <div className="md:col-span-4 flex flex-wrap gap-2">
-          <Button onClick={() => setGenerated(true)} className="gap-2"><ClipboardList className="w-4 h-4" />Generate Schedule</Button>
-          <Button variant="outline" disabled={!generated} onClick={() => void previewPdf()} className="gap-2"><FileDown className="w-4 h-4" />Preview PDF</Button>
-          <Button variant="outline" disabled={!generated} onClick={() => exportReportExcel(title, excelRows(), "Schedule")} className="gap-2"><FileSpreadsheet className="w-4 h-4" />Export Excel</Button>
+          <Button onClick={() => setGenerated(true)} className="gap-2" disabled={!canReadSchedule}><ClipboardList className="w-4 h-4" />Generate Schedule</Button>
+          <Button variant="outline" disabled={!generated || !canReadSchedule} onClick={() => void previewPdf()} className="gap-2"><FileDown className="w-4 h-4" />Preview PDF</Button>
+          <Button variant="outline" disabled={!generated || !canReadSchedule} onClick={() => exportReportExcel(title, excelRows(), "Schedule")} className="gap-2"><FileSpreadsheet className="w-4 h-4" />Export Excel</Button>
            
         </div>
       </div>
@@ -178,7 +180,7 @@ export default function ScheduleGenerator() {
       {generated && (
         <div className="stat-card overflow-x-auto">
           <h3 className="font-heading font-semibold mb-1">{insurerName}</h3>
-          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Approved Gross − Payments − Confirmed WHT · Rejection Rate = Rejected / Submitted × 100</p>
+          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Approved Gross − Cash Received − WHT Certificate Credits · Rejection Rate = Rejected / Submitted × 100</p>
           <table className="data-table min-w-[900px]">
             <thead>
               <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
