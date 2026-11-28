@@ -405,7 +405,7 @@ export default function Reports() {
     try {
       const blob = await buildReportPDFBlob(title, data, columns, companyInfo, counterparty);
       setPdfPreviewBlob(blob);
-      setPdfPreviewName(`${title.toLowerCase().replace(/\\s+/g, "-")}.pdf`);
+      setPdfPreviewName(`${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
       setPdfPreviewOpen(true);
     } catch (error) {
       toast({ title: "Unable to prepare PDF preview", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
@@ -718,7 +718,6 @@ export default function Reports() {
         </div>
       </Tabs>
       <HtmlPrintPreviewDialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen} html={printPreviewHtml} title="Report print preview" />
-      <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
       <PdfPreviewDialog open={pdfPreviewOpen} onOpenChange={setPdfPreviewOpen} blob={pdfPreviewBlob} fileName={pdfPreviewName} title="Report PDF preview" />
     </div>
   );
