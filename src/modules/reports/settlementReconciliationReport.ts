@@ -69,7 +69,7 @@ export function buildSettlementReconciliationRows(
         : (Math.round((submitted - approvedGross - rejected) * 100) || 0) / 100,
       approvedUnpaid: !hasConfirmedAdvice
         ? null
-        : Math.round((approvedGross! - actualWht! - cashReceived!) * 100) / 100,
+        : (Math.round((approvedGross! - actualWht! - cashReceived!) * 100) || 0) / 100,
       adviceReference: period.payment_advice_reference ?? null,
       adviceDate: period.payment_advice_date ?? null,
       receiptDate: period.actual_receipt_date ?? null,
