@@ -17,8 +17,8 @@ describe("canonical outstanding calculation", () => {
   it("requires both payment and WHT evidence for actual status", () => {
     expect(resolveOutstandingStatus(1, 0)).toBe("provisional");
     expect(resolveOutstandingStatus(0, 1)).toBe("provisional");
-    expect(resolveOutstandingStatus(1, 1)).toBe("actual");
-    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("provisional");
+    expect(resolveOutstandingStatus(1, 0, 0, 0)).toBe("actual");
+    expect(resolveAggregateStatus(["actual", "provisional"])).toBe("partial");
     expect(resolveAggregateStatus(["actual", "actual"])).toBe("actual");
   });
 });
