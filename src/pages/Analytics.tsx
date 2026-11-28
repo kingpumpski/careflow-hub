@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { TrendingUp, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { toast } from "@/hooks/use-toast";
+import { PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -15,6 +16,9 @@ export default function Analytics() {
   const { can, loading: permissionsLoading } = usePermissions();
   const canReadAnalytics = can("analytics.read");
   const analyticsEnabled = !permissionsLoading && canReadAnalytics;
+  const [boardReportBlob, setBoardReportBlob] = useState<Blob | null>(null);
+  const [boardReportPreviewOpen, setBoardReportPreviewOpen] = useState(false);
+  const [boardReportFileName, setBoardReportFileName] = useState("board-report.pdf");
 
   const { data: claims } = useSupabaseQuery("claims", { enabled: analyticsEnabled });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: analyticsEnabled });
@@ -45,7 +49,10 @@ export default function Analytics() {
     y = (doc as any).lastAutoTable.finalY + 10; doc.setFontSize(14); doc.text("3. Revenue Leakage", 14, y); autoTable(doc, { startY: y + 4, head: [["Metric", "Amount (GH¢)"]], body: [["Rejected, not appealed", leakage.rejectedNotAppealed.toLocaleString()], ["Outstanding receivables", Math.max(leakage.outstanding, 0).toLocaleString()], ["Total recoverable", leakage.recoverable.toLocaleString()]], theme: "grid", headStyles: { fillColor: [30, 64, 120] } });
     y = (doc as any).lastAutoTable.finalY + 10; doc.setFontSize(14); doc.text("4. Top Disease Burden", 14, y); autoTable(doc, { startY: y + 4, head: [["Diagnosis", "Cases", "Total Cost (GH¢)"]], body: diseaseData.slice(0, 10).map((d) => [d.diagnosis, d.count, d.cost.toLocaleString()]), theme: "grid", headStyles: { fillColor: [30, 64, 120] } });
     y = (doc as any).lastAutoTable.finalY + 10; if (y > 250) { doc.addPage(); y = 20; } doc.setFontSize(14); doc.text("5. Revenue Forecast (next 3 months)", 14, y); autoTable(doc, { startY: y + 4, head: [["Period", "Projected Revenue (GH¢)"]], body: forecast.projection.map((p) => [p.label, p.y.toLocaleString(undefined, { maximumFractionDigits: 0 })]), theme: "grid", headStyles: { fillColor: [30, 64, 120] } });
-    doc.save(`board-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    const fileName = `board-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+    setBoardReportBlob(doc.output("blob"));
+    setBoardReportFileName(fileName);
+    setBoardReportPreviewOpen(true);
   };
 
   if (permissionsLoading) {
@@ -66,7 +73,7 @@ export default function Analytics() {
     <div className="space-y-6 min-w-0">
       <div className="page-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0"><h1 className="page-title flex items-center gap-2"><TrendingUp className="w-6 h-6 shrink-0" /> Strategic Analytics</h1><p className="page-description">Volume, turnaround, profitability, disease burden, forecasting, and executive reporting.</p></div>
-        <Button onClick={generateBoardReport} className="gap-2 min-h-10 w-full sm:w-auto"><FileText className="w-4 h-4" /> Generate Board Report</Button>
+        <Button onClick={generateBoardReport} className="gap-2 min-h-10 w-full sm:w-auto"><FileText className="w-4 h-4" /> Preview Board Report</Button>
       </div>
       <Tabs defaultValue="volume" className="space-y-4 min-w-0">
         <TabsList className="flex h-auto w-full flex-wrap gap-1 justify-start overflow-visible p-1">
@@ -81,6 +88,7 @@ export default function Analytics() {
         <TabsContent value="service" className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-4">Service Line Revenue</h3><div className="table-scroll"><table className="data-table min-w-[560px]"><thead><tr><th>Category</th><th>Units</th><th>Revenue (GH¢)</th></tr></thead><tbody>{serviceLine.map((r, i) => <tr key={i}><td className="font-medium">{r.category}</td><td>{r.count}</td><td className="font-semibold whitespace-nowrap">{r.revenue.toLocaleString()}</td></tr>)}{serviceLine.length === 0 && <tr><td colSpan={3} className="text-center py-6 text-muted-foreground">No pre-authorization items yet</td></tr>}</tbody></table></div></TabsContent>
         <TabsContent value="forecast" className="stat-card min-w-0"><h3 className="font-heading font-semibold mb-4">Revenue Forecast (linear projection)</h3><p className="text-sm text-muted-foreground mb-4 break-words">Avg monthly revenue: GH¢ {forecast.avg.toLocaleString(undefined, { maximumFractionDigits: 0 })} · Trend: {forecast.slope >= 0 ? "📈" : "📉"} {forecast.slope.toFixed(0)}/mo</p><div className="w-full min-w-0 overflow-hidden"><ResponsiveContainer width="100%" height={300}><LineChart data={[...forecast.history.map((h: any) => ({ label: h.label, actual: h.y })), ...forecast.projection.map((p) => ({ label: p.label, forecast: p.y }))]}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="label" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="actual" stroke="hsl(210, 78%, 42%)" strokeWidth={2} /><Line type="monotone" dataKey="forecast" stroke="hsl(152, 60%, 42%)" strokeWidth={2} strokeDasharray="5 5" /></LineChart></ResponsiveContainer></div>{forecast.projection.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">{forecast.projection.map((p, i) => <div key={i} className="p-3 bg-muted rounded-lg text-center min-w-0"><p className="text-xs text-muted-foreground">{p.label}</p><p className="text-base sm:text-lg font-bold text-primary break-words">GH¢ {p.y.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div>)}</div>}</TabsContent>
       </Tabs>
+      <PdfPreviewDialog open={boardReportPreviewOpen} onOpenChange={setBoardReportPreviewOpen} blob={boardReportBlob} fileName={boardReportFileName} title="Executive Board Report Preview" />
     </div>
   );
 }
