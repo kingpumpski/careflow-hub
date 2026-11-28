@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { BarChart3, RotateCcw } from "lucide-react";
 import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
+import { databaseCapabilities } from "@/config/databaseCapabilities";
 import { usePermissions } from "@/modules/security/usePermissions";
 import ChartCard from "@/components/dashboard/ChartCard";
 import {
@@ -166,6 +167,10 @@ export default function AdvancedAnalytics() {
         <p className="max-w-md text-sm text-muted-foreground">Your account does not have the analytics.read permission. No advanced analytics data is requested until access is granted.</p>
       </div>
     );
+  }
+
+  if (!databaseCapabilities.withholdingTaxCertificateReceipts) {
+    return <div className="space-y-6"><div className="page-header"><h1 className="page-title">Advanced Analytics</h1><p className="page-description">Facility claims and settlement performance.</p></div><div role="alert" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">Certificate-backed WHT settlement data is not yet deployed to production. Financial outstanding analytics are withheld until the database view distinguishes tax advice from tax certificates received.</div></div>;
   }
 
   return <div className="space-y-6">
