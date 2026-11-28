@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Building2, CalendarDays, Download, FileText, RefreshCw } from "lucide-react";
+import { Building2, CalendarDays, FileText, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,11 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLetterheadConfig } from "@/lib/letterhead";
-import { buildCompanyStatement, buildStatementReconciliation, buildStatementWhtCredits, formatStatementAmount, type StatementClaimRow, type StatementLedgerEntry, type StatementSettlementPeriod, type StatementTaxRow } from "@/modules/statements/statementOfAccount";
+import { buildCompanyStatement, formatStatementAmount, type StatementLedgerEntry } from "@/modules/statements/statementOfAccount";
 import { exportCompanyStatementPDF } from "@/modules/statements/exportStatementPdf";
 import { toast } from "@/hooks/use-toast";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
+import { PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 
 const today = new Date().toISOString().slice(0, 10);
 const yearStart = `${new Date().getFullYear()}-01-01`;
@@ -28,6 +29,9 @@ export default function StatementsOfAccount() {
   const [companyId, setCompanyId] = useState("");
   const [startDate, setStartDate] = useState(yearStart);
   const [endDate, setEndDate] = useState(today);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfFileName, setPdfFileName] = useState("statement-of-account.pdf");
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const { data: companies, isLoading: companiesLoading } = useSupabaseQuery("insurance_companies", {
     enabled: canRead && !permissionsLoading,
@@ -60,47 +64,6 @@ export default function StatementsOfAccount() {
     retry: 1,
   });
 
-  const { data: claimsReconciliationSources, isLoading: claimsPeriodsLoading, error: claimsPeriodsError } = useQuery({
-    queryKey: ["company-statement-claims-periods", companyId],
-    enabled: canRead && !permissionsLoading && Boolean(companyId),
-    queryFn: async () => {
-      const pageSize = 1000;
-      const fetchAll = async <T,>(loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) => {
-        const rows: T[] = [];
-        for (let offset = 0; ; offset += pageSize) {
-          const { data, error } = await loadPage(offset, offset + pageSize - 1);
-          if (error) throw error;
-          const batch = data || [];
-          rows.push(...batch);
-          if (batch.length < pageSize) break;
-        }
-        return rows;
-      };
-      const [claims, taxRows, settlementPeriods] = await Promise.all([
-        fetchAll<StatementClaimRow>((from, to) => supabase.from("claims")
-          .select("claim_year, claim_month, claim_amount, status")
-          .eq("insurance_company_id", companyId)
-          .order("claim_year", { ascending: true })
-          .order("claim_month", { ascending: true })
-          .range(from, to)),
-        fetchAll<StatementTaxRow>((from, to) => supabase.from("withholding_tax")
-          .select("year, month, tax_amount, is_actual")
-          .eq("insurance_company_id", companyId)
-          .order("year", { ascending: true })
-          .order("month", { ascending: true })
-          .range(from, to)),
-        fetchAll<StatementSettlementPeriod>((from, to) => supabase.from("claims_settlement_periods")
-          .select("period_start, period_end, period_type, rejection_amount, provisional_withholding_tax, actual_withholding_tax, settlement_status")
-          .eq("insurance_company_id", companyId)
-          .order("period_start", { ascending: true })
-          .range(from, to)),
-      ]);
-      return { claims, taxRows, settlementPeriods };
-    },
-    staleTime: 30_000,
-    retry: 1,
-  });
-
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: canRead, canManageSettings });
 
   const settingRows = (settings || []) as SettingRow[];
@@ -108,36 +71,29 @@ export default function StatementsOfAccount() {
   const letterhead = buildLetterheadConfig((key: string) => settingRows.find((row) => row.key === key)?.value || "");
   const selectedCompany = companyRows.find((company) => company.id === companyId);
   const statementResult = useMemo(() => {
-    if (!companyId || !ledger || !claimsReconciliationSources) return { statement: null, reconciliation: null, error: null as string | null };
+    if (!companyId || !ledger) return { statement: null, error: null as string | null };
     try {
-      const { claims, taxRows, settlementPeriods } = claimsReconciliationSources;
-      const reconciliation = buildStatementReconciliation(claims, taxRows, settlementPeriods, startDate, endDate);
-      const withholdingTaxCredits = buildStatementWhtCredits(claims, taxRows, settlementPeriods, endDate);
-      return {
-        statement: buildCompanyStatement(ledger, companyId, startDate, endDate, withholdingTaxCredits),
-        reconciliation,
-        error: null as string | null,
-      };
+      return { statement: buildCompanyStatement(ledger, companyId, startDate, endDate), error: null as string | null };
     } catch (error) {
       return {
         statement: null,
-        reconciliation: null,
         error: error instanceof Error ? error.message : "The statement could not be calculated.",
       };
     }
-  }, [ledger, claimsReconciliationSources, companyId, startDate, endDate]);
+  }, [ledger, companyId, startDate, endDate]);
   const statement = statementResult.statement;
-  const reconciliation = statementResult.reconciliation;
   const statementError = statementResult.error;
 
   const generatePdf = async () => {
-    if (!selectedCompany || !statement || !reconciliation || statementError) return;
+    if (!selectedCompany || !statement || statementError) return;
     try {
-      await exportCompanyStatementPDF(selectedCompany, statement, reconciliation, startDate, endDate, new Date(), letterhead);
-      toast({ title: "Statement generated", description: "The company statement PDF has been downloaded." });
+      const result = await exportCompanyStatementPDF(selectedCompany, statement, startDate, endDate, new Date(), letterhead);
+      setPdfBlob(result.blob);
+      setPdfFileName(result.fileName);
+      setPreviewOpen(true);
     } catch (error) {
       toast({
-        title: "Unable to generate statement",
+        title: "Unable to prepare statement preview",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -158,8 +114,8 @@ export default function StatementsOfAccount() {
           <h1 className="page-title flex items-center gap-2"><FileText className="h-6 w-6 text-primary" />Statement of Account</h1>
           <p className="page-description">Generate a detailed Accounts Receivable statement for an insurance company and reporting period.</p>
         </div>
-        <Button onClick={generatePdf} disabled={!statement || !reconciliation || !!statementError || ledgerLoading || claimsPeriodsLoading || !!claimsPeriodsError || !selectedCompany}>
-          <Download className="mr-2 h-4 w-4" />Generate Statement PDF
+        <Button onClick={generatePdf} disabled={!statement || !!statementError || ledgerLoading || !!ledgerError || !selectedCompany}>
+          <FileText className="mr-2 h-4 w-4" />Preview Statement
         </Button>
       </div>
 
@@ -176,22 +132,20 @@ export default function StatementsOfAccount() {
           <div className="space-y-1.5"><Label htmlFor="statement-start">From date</Label><Input id="statement-start" type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></div>
           <div className="space-y-1.5"><Label htmlFor="statement-end">To date</Label><Input id="statement-end" type="date" value={endDate} min={startDate || undefined} max={today} onChange={(event) => setEndDate(event.target.value)} /></div>
         </div>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />Opening balance includes prior claims, cash receipts and effective withholding-tax credits.</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />Opening balance includes all prior claims, cash receipts and certified withholding-tax credits recorded in the selected company's ledger.</p>
         {companiesLoading && <Skeleton className="h-8 w-full" />}
       </section>
 
       {ledgerError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Ledger records could not be loaded. Statement generation is disabled to prevent an incomplete financial document.</div>}
       {statementError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{statementError}</div>}
-      {(ledgerLoading || claimsPeriodsLoading) && companyId && <div className="text-sm text-muted-foreground">Loading the complete company ledger and claims/tax reconciliation…</div>}
-      {claimsPeriodsError && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Claims and withholding-tax totals could not be loaded. PDF generation is disabled so the statement cannot omit these figures.</div>}
-
+      {ledgerLoading && companyId && <div className="text-sm text-muted-foreground">Loading all ledger entries for the selected company and period…</div>}
       {!companyId ? (
         <div className="stat-card flex min-h-48 flex-col items-center justify-center text-center">
           <FileText className="mb-3 h-9 w-9 text-muted-foreground" />
           <h2 className="font-semibold">Choose a company to begin</h2>
           <p className="mt-1 text-sm text-muted-foreground">Select an insurance company and reporting period to preview its statement.</p>
         </div>
-      ) : ledgerError || claimsPeriodsError ? null : ledgerLoading || claimsPeriodsLoading || !statement || !reconciliation ? (
+      ) : ledgerError ? null : ledgerLoading || !statement ? (
         <div className="stat-card"><Skeleton className="h-40 w-full" /></div>
       ) : (
         <>
@@ -200,29 +154,6 @@ export default function StatementsOfAccount() {
             <div className="stat-card"><p className="text-xs uppercase tracking-wide text-muted-foreground">Total debits</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.totalDebit)}</p><p className="text-xs text-muted-foreground">Period transactions</p></div>
             <div className="stat-card"><p className="text-xs uppercase tracking-wide text-muted-foreground">Total credits</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.totalCredit)}</p><p className="text-xs text-muted-foreground">Period transactions</p></div>
             <div className="stat-card border-primary/30"><p className="text-xs uppercase tracking-wide text-muted-foreground">Closing balance</p><p className="mt-2 text-xl font-bold tabular-nums">{money(statement.closingBalance)}</p><p className="text-xs font-semibold">{statement.closingSide === "debit" ? "DEBIT — company owes facility" : statement.closingSide === "credit" ? "CREDIT — facility owes company" : "BALANCED — no amount outstanding"}</p></div>
-          </section>
-
-          <section className="stat-card space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Claims &amp; withholding-tax reconciliation</h2>
-              <p className="text-xs text-muted-foreground">Each claims month is reconciled separately. Effective WHT is shown as a distinct credit in the statement below; confirmed actual WHT replaces provisional WHT and is never added to it.</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Rejected claims</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.rejectedClaimsTotal)}</p></div>
-              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provisional WHT</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.provisionalWhtTotal)}</p></div>
-              <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Actual WHT confirmed</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.actualWhtTotal)}</p></div>
-              <div className="rounded-lg border border-primary/30 p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">WHT applied to reconciliation</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.effectiveWhtTotal)}</p><p className="text-xs text-muted-foreground">Actual where confirmed; otherwise provisional</p></div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table min-w-[650px]">
-                <thead><tr><th>Claims month</th><th className="text-right">Rejected claims (GH¢)</th><th className="text-right">Provisional WHT (GH¢)</th><th className="text-right">Actual WHT (GH¢)</th><th className="text-right">WHT applied (GH¢)</th></tr></thead>
-                <tbody>
-                  {reconciliation.monthlyBreakdown.map((row) => <tr key={`${row.year}-${row.month}`}><td>{new Date(row.year, row.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</td><td className="text-right tabular-nums">{money(row.rejected)}</td><td className="text-right tabular-nums">{money(row.provisionalWht)}</td><td className="text-right tabular-nums">{money(row.actualWht)}</td><td className="text-right tabular-nums font-medium">{money(row.effectiveWht)}</td></tr>)}
-                  {reconciliation.monthlyBreakdown.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-muted-foreground">No claims or tax period totals overlap the selected dates.</td></tr>}
-                </tbody>
-                <tfoot><tr className="font-semibold"><td>Period totals</td><td className="text-right">{money(reconciliation.rejectedClaimsTotal)}</td><td className="text-right">{money(reconciliation.provisionalWhtTotal)}</td><td className="text-right">{money(reconciliation.actualWhtTotal)}</td><td className="text-right">{money(reconciliation.effectiveWhtTotal)}</td></tr></tfoot>
-              </table>
-            </div>
           </section>
 
           <section className="stat-card space-y-4">
@@ -247,12 +178,14 @@ export default function StatementsOfAccount() {
               </table>
             </div>
             <div className="flex flex-col gap-2 border-t pt-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>Statement basis: claims and cash postings plus a distinct WHT credit for each claims month. Actual WHT replaces provisional WHT; no duplicate credit is posted when WHT is already in the AR ledger.</span>
+              <span>Statement basis: only posted claims, cash receipts and certified WHT tax-credit transactions for the selected company. Provisional WHT estimates are not presented as payments.</span>
               <span className="inline-flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" />Live ledger preview</span>
             </div>
           </section>
         </>
       )}
+    </div>
+      <PdfPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} blob={pdfBlob} fileName={pdfFileName} title={`Statement of Account — ${selectedCompany?.company_name || "Company"}`} />
     </div>
   );
 }
