@@ -49,17 +49,17 @@ export default function Reports() {
   const missingReportPermissions = (REPORT_SOURCE_PERMISSIONS[activeReport] || []).filter((permission) => !can(permission));
   const reportSourceAccessMissing = missingReportPermissions.length > 0;
 
-  const { data: claims } = useSupabaseQuery("claims");
+  const { data: claims } = useSupabaseQuery("claims", { enabled: can("claims.read") });
   const canReadAudit = can("audit.read");
   const canReadClaims = can("claims.read");
-  const { data: insurers } = useSupabaseQuery("insurance_companies");
-  const { data: payments } = useSupabaseQuery("payments");
-  const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { missingSchemaBehavior: "error" });
-  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { missingSchemaBehavior: "error" });
-  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: activeReport === "settlement" || activeReport === "operations", missingSchemaBehavior: "error" });
+  const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: can("claims.read") || can("payments.read") });
+  const { data: payments } = useSupabaseQuery("payments", { enabled: can("payments.read") });
+  const { data: withholdingTax, error: withholdingTaxError } = useSupabaseQuery("withholding_tax", { enabled: can("ledger.read") || can("reports.read"), missingSchemaBehavior: "error" });
+  const { data: outstandingPeriods, error: outstandingPeriodsError } = useSupabaseQuery("claims_outstanding_periods", { enabled: can("claims.read") && can("payments.read"), missingSchemaBehavior: "error" });
+  const { data: settlementPeriods, error: settlementPeriodsError } = useSupabaseQuery("claims_settlement_periods", { enabled: (activeReport === "settlement" || activeReport === "operations") && can("payments.read"), missingSchemaBehavior: "error" });
   const { data: auditLogs, error: auditLogsError } = useSupabaseQuery("audit_logs", { enabled: activeReport === "operations" && canReadAudit, orderBy: "changed_at", limit: 1000, missingSchemaBehavior: "error" });
   const { data: profiles } = useSupabaseQuery("profiles", { select: "id,full_name", enabled: activeReport === "operations" && canReadAudit });
-  const { data: ledger } = useSupabaseQuery("ledger_entries");
+  const { data: ledger } = useSupabaseQuery("ledger_entries", { enabled: can("ledger.read") });
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const companyInfo = buildLetterheadConfig((k: string) => settings?.find?.((s: any) => s.key === k)?.value || "");
