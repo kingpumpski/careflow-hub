@@ -181,7 +181,7 @@ export default function ScheduleGenerator() {
       {generated && (
         <div className="stat-card overflow-x-auto">
           <h3 className="font-heading font-semibold mb-1">{insurerName}</h3>
-          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Submitted − Payments · Rejection Rate = Rejected / Submitted × 100</p>
+          <p className="text-xs text-muted-foreground mb-4">{MONTHS[Number(fromMonth) - 1]} – {MONTHS[Number(toMonth) - 1]} {year} · Outstanding = Submitted − Payments − WHT · Rejection Rate = Rejected / Submitted × 100</p>
           <table className="data-table min-w-[900px]">
             <thead>
               <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
