@@ -71,7 +71,7 @@ export default function WithholdingTax() {
   const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods", { enabled: canReadWHT && !permissionsLoading });
   const { data: taxReceipts, error: taxReceiptsError } = useQuery({
     queryKey: ["withholding-tax-receipts"],
-    enabled: receiptFeatureEnabled && canReadWHT && !permissionsLoading,
+    enabled: receiptFeatureEnabled && canReadTaxReceipts && !permissionsLoading,
     queryFn: async () => {
       const receiptReader = supabase as unknown as {
         from: (table: string) => {
@@ -93,6 +93,7 @@ export default function WithholdingTax() {
   const [savingReceipt, setSavingReceipt] = useState(false);
   const [receiptForm, setReceiptForm] = useState({ settlementPeriodId: "", certificateReference: "", certificateDate: "", receivedDate: "", taxAmount: "", notes: "" });
   const canWriteReceipts = can("payments.write") || can("ledger.write");
+  const canReadTaxReceipts = can("payments.read") || can("ledger.read");
   const receiptFeatureEnabled = databaseCapabilities.withholdingTaxCertificateReceipts;
   const configuredRateValue = ((settings || []) as unknown as Setting[]).find((s) => s.key === "withholding_tax_rate")?.value;
   const parsedCurrentRate = configuredRateValue == null || String(configuredRateValue).trim() === "" ? null : Number(configuredRateValue);
@@ -218,9 +219,10 @@ export default function WithholdingTax() {
       <section className="stat-card space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div><h2 className="font-semibold">Insurer-paid WHT tax certificates</h2><p className="text-xs text-muted-foreground">Record the GRA certificate shared by the insurer. The posting recognises a recoverable tax-credit asset and reduces the insurer receivable; it does not record cash.</p></div>
-          {receiptFeatureEnabled && canWriteReceipts && <Button onClick={() => setReceiptDialogOpen(true)} disabled={!receiptEligiblePeriods.length}>Record WHT certificate</Button>}
+          {receiptFeatureEnabled && canReadTaxReceipts && canWriteReceipts && <Button onClick={() => setReceiptDialogOpen(true)} disabled={!receiptEligiblePeriods.length}>Record WHT certificate</Button>}
         </div>
         {!receiptFeatureEnabled ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Certificate capture is implemented but is not enabled in this environment until its database migration has passed release checks.</p>
+          : !canReadTaxReceipts ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Payment read or ledger read permission is required to view WHT certificate history.</p>
           : taxReceiptsError ? <p role="alert" className="text-sm text-destructive">WHT certificate history is unavailable: {taxReceiptsError instanceof Error ? taxReceiptsError.message : "The certificate table could not be read."}</p>
           : <div className="table-scroll"><table className="data-table min-w-[850px]"><thead><tr><th>Claims period</th><th>Insurance company</th><th>Certificate reference</th><th>Certificate date</th><th>Date received</th><th className="text-right">Tax credit (GH¢)</th></tr></thead><tbody>
             {(taxReceipts || []).map((receipt) => {
