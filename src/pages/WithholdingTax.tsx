@@ -7,6 +7,7 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import FilterBar from "@/components/shared/FilterBar";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { usePermissions } from "@/modules/security/usePermissions";
+import { getStoredFacilityId } from "@/features/preauth/services/preauthFacility.service";
 import { databaseCapabilities } from "@/config/databaseCapabilities";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -48,6 +49,22 @@ export default function WithholdingTax() {
   const { can, loading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
   const canReadWHT = can("payments.read") || can("claims.settlement.read") || can("ledger.read") || can("reports.read");
+  const facilityId = getStoredFacilityId();
+  const { data: configuredRate } = useQuery({
+    queryKey: ["configured-facility-wht-rate", facilityId],
+    enabled: Boolean(facilityId) && canReadWHT && !permissionsLoading,
+    queryFn: async () => {
+      const rateRpc = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }> };
+      const { data, error } = await rateRpc.rpc("get_configured_withholding_tax_rate", { p_facility_id: facilityId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883") return null;
+        throw error;
+      }
+      return data == null ? null : Number(data);
+    },
+    staleTime: 60_000,
+    retry: 1,
+  });
   const { data: taxRecords, isLoading } = useSupabaseQuery("withholding_tax", { enabled: canReadWHT && !permissionsLoading });
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadWHT && !permissionsLoading });
   const { data: settings } = useSupabaseQuery("system_settings", { enabled: can("settings.manage") && !permissionsLoading });
@@ -79,7 +96,8 @@ export default function WithholdingTax() {
   const receiptFeatureEnabled = databaseCapabilities.withholdingTaxCertificateReceipts;
   const configuredRateValue = ((settings || []) as unknown as Setting[]).find((s) => s.key === "withholding_tax_rate")?.value;
   const parsedCurrentRate = configuredRateValue == null || String(configuredRateValue).trim() === "" ? null : Number(configuredRateValue);
-  const currentRate = parsedCurrentRate !== null && Number.isFinite(parsedCurrentRate) && parsedCurrentRate >= 0 && parsedCurrentRate <= 100 ? parsedCurrentRate : null;
+  const fallbackCurrentRate = parsedCurrentRate !== null && Number.isFinite(parsedCurrentRate) && parsedCurrentRate >= 0 && parsedCurrentRate <= 100 ? parsedCurrentRate : null;
+  const currentRate = configuredRate ?? fallbackCurrentRate;
   const currentRateLabel = currentRate === null ? (can("settings.manage") ? "Not configured" : "Not available to your role") : `${currentRate}%`;
 
   const taxRows = (taxRecords || []) as unknown as TaxRecord[];
