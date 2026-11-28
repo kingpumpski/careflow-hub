@@ -1,5 +1,5 @@
 import type jsPDF from "jspdf";
-import type { BankingPartner, LetterheadConfig } from "./exportUtils";
+import type { BankingPartner, LetterheadConfig, ReportCounterparty } from "./exportUtils";
 
 export type { BankingPartner, LetterheadConfig, ReportCounterparty };
 
