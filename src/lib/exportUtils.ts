@@ -10,7 +10,7 @@ interface GrandTotals {
   grandRejected: number;
 }
 
-export function exportClaimsPDF(data: Array<Array<string | number | null>>, totals: GrandTotals) {
+export function exportClaimsPDF(data: Array<Array<string | number>>, totals: GrandTotals) {
   const doc = new jsPDF();
   doc.setFontSize(18);
   doc.text("Claims Management Report", 14, 22);
@@ -40,7 +40,7 @@ export function exportClaimsPDF(data: Array<Array<string | number | null>>, tota
   doc.save("claims-report.pdf");
 }
 
-export function exportClaimsExcel(data: Array<Array<string | number | null>>, totals: GrandTotals) {
+export function exportClaimsExcel(data: Array<Array<string | number>>, totals: GrandTotals) {
   const rows = data.map((a: any) => ({
     "Insurance Company": a.company_name,
     "Claims": a.claimCount,
@@ -289,7 +289,7 @@ export type ReportCounterparty = {
 
 export async function buildReportPDFBlob(
   title: string,
-  data: Array<Array<string | number | null>>,
+  data: Array<Array<string | number>>,
   columns: string[],
   companyInfo: LetterheadConfig,
   counterparty?: ReportCounterparty,
@@ -345,7 +345,7 @@ export async function buildReportPDFBlob(
 
 export async function exportReportPDF(
   title: string,
-  data: Array<Array<string | number | null>>,
+  data: Array<Array<string | number>>,
   columns: string[],
   companyInfo: LetterheadConfig,
   counterparty?: ReportCounterparty,
