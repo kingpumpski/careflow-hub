@@ -66,7 +66,7 @@ export default function OperationalPerformanceReport(props: {
           <thead><tr><th>Staff account</th><th>Claims created</th><th>Claims updated</th><th>Distinct claims touched</th><th>Last activity</th></tr></thead>
           <tbody>{report.staffActivity.map((row) => <tr key={row.actorId}><td>{row.staffName}</td><td>{row.inserts}</td><td>{row.updates}</td><td>{row.distinctClaimsTouched}</td><td>{new Date(row.lastActivity).toLocaleString()}</td></tr>)}
             {!report.staffActivity.length && <tr><td colSpan={5} className="py-6 text-center text-muted-foreground">No claim audit activity in the selected period.</td></tr>}</tbody>
-        </table></div><p className="text-xs text-muted-foreground">This is an audit-event count for the selected report scope only. It does not represent individual staff assignments, hours worked or productivity ranking.</p></>}
+        </table></div><p className="text-xs text-muted-foreground">This is an audit-event count for the selected report scope, based on at most the latest 1,000 audit rows returned. Older events may be omitted in high-volume periods. It does not represent individual staff assignments, hours worked or productivity ranking.</p></>}
     </section>
   </section>;
 }
