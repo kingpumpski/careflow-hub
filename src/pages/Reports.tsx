@@ -181,7 +181,10 @@ export default function Reports() {
         : fallbackTaxPeriods.reduce((sum, periodTax) => sum + periodTax.actual, 0);
       // Only certificate/advice-confirmed actual WHT is applied to receivables.
       // The provisional amount is visible for tax estimation, not collection. 
-      const tax = actualTax;
+      const hasCertifiedTaxField = authoritative.some((period) => "certified_withholding_tax_amount" in period);
+      const tax = hasCertifiedTaxField
+        ? authoritative.reduce((sum, period) => sum + Number(period.certified_withholding_tax_amount || 0), 0)
+        : 0;
       const approvedGrossRows = authoritative.filter((period) => period.approved_gross_amount != null);
       const approvedGross = authoritative.length > 0 && approvedGrossRows.length === authoritative.length
         ? approvedGrossRows.reduce((sum, period) => sum + Number(period.approved_gross_amount || 0), 0)
@@ -193,20 +196,20 @@ export default function Reports() {
       const netClaim = authoritative.length
         ? authoritative.reduce((sum, period) => sum + Number(period.net_claim_amount || 0), 0)
         : fallbackClaimTotals.netClaim;
-      const outstanding = authoritative.length && hasSeparatedTaxFields
+      const outstanding = authoritative.length && hasCertifiedTaxField
         ? authoritative.reduce((sum, period) => sum + Number(period.outstanding_amount || 0), 0)
-        : Math.max(netClaim - paid - actualTax, 0);
+        : Math.max(netClaim - paid - tax, 0);
       const fallbackTaxPeriodEntries = Array.from(taxByPeriod.entries());
       const hasActualAdvice = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.some((period) => period.outstanding_status === "actual")
+        ? authoritative.some((period) => period.actual_withholding_tax_amount != null)
         : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount > 0);
       const hasProvisionalApplied = authoritative.length && hasSeparatedTaxFields
-        ? authoritative.some((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+        ? authoritative.some((period) => period.actual_withholding_tax_amount == null && Number(period.provisional_withholding_tax_amount || 0) > 0)
         : fallbackTaxPeriodEntries.some(([, periodTax]) => periodTax.actualCount === 0 && periodTax.provisionalCount > 0);
       const hasTaxData = authoritative.length && hasSeparatedTaxFields
         ? authoritative.some((period) => Number(period.withholding_tax_entry_count || 0) > 0)
         : fallbackTaxPeriodEntries.length > 0;
-      const actualBasisRows = authoritative.filter((period) => period.outstanding_status === "actual");
+      const actualBasisRows = authoritative.filter((period) => period.actual_withholding_tax_amount != null);
       const actualBasisAvailable = hasSeparatedTaxFields && actualBasisRows.length > 0
         && actualBasisRows.every((period) => period.approved_gross_amount != null);
       const actualBasisAmount = actualBasisAvailable
@@ -214,7 +217,7 @@ export default function Reports() {
         : null;
       const provisionalBasisAmount = authoritative.length && hasSeparatedTaxFields
         ? authoritative
-          .filter((period) => period.outstanding_status === "provisional" && Number(period.withholding_tax_entry_count || 0) > 0)
+          .filter((period) => period.actual_withholding_tax_amount == null && Number(period.withholding_tax_entry_count || 0) > 0)
           .reduce((sum, period) => sum + Number(period.submitted_amount || 0), 0)
         : fallbackTaxPeriodEntries.reduce((sum, [key, periodTax]) => (
           periodTax.actualCount === 0 && periodTax.provisionalCount > 0
@@ -321,7 +324,7 @@ export default function Reports() {
     const accentColor = /^#[0-9a-f]{6}$/i.test(companyInfo.accent_color || "")
       ? companyInfo.accent_color!
       : "#1E4078";
-    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT is shown as an estimate only. It does not reduce outstanding receivables; only confirmed actual WHT from insurer payment advice is applied.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
+    const reconciliationTable = activeReport === "balance" && sortedReport.length ? `<section class="reconciliation-summary"><h2>Claims and WHT Reconciliation</h2><p class="section-note">Provisional WHT and actual WHT per insurer advice are shown separately. Only the amount supported by a tax certificate received by the facility is credited to Accounts Receivable and reduces the outstanding balance.</p><table><thead><tr><th>Company</th><th>Submitted</th><th>Rejected</th><th>Approved Gross</th><th>Approval Variance</th><th>Paid</th><th>Provisional WHT</th><th>Actual WHT</th><th>WHT Applied</th><th>Outstanding</th></tr></thead><tbody>${sortedReport.map((row) => `<tr><td>${escapeHtml(row.company)}</td><td>GH¢ ${row.submitted.toLocaleString()}</td><td>GH¢ ${row.rejected.toLocaleString()}</td><td>${row.approvedGross == null ? "—" : `GH¢ ${row.approvedGross.toLocaleString()}`}</td><td>${row.approvalVariance == null ? "—" : `GH¢ ${row.approvalVariance.toLocaleString()}`}</td><td>GH¢ ${row.paid.toLocaleString()}</td><td>GH¢ ${row.provisionalTax.toLocaleString()}</td><td>GH¢ ${row.actualTax.toLocaleString()}</td><td>GH¢ ${row.tax.toLocaleString()}</td><td>GH¢ ${row.outstanding.toLocaleString()}</td></tr>`).join("")}</tbody><tfoot><tr><td>Grand Total</td><td>GH¢ ${grandSubmitted.toLocaleString()}</td><td>GH¢ ${grandRejected.toLocaleString()}</td><td>—</td><td>—</td><td>GH¢ ${grandPaid.toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.provisionalTax, 0).toLocaleString()}</td><td>GH¢ ${sortedReport.reduce((sum, row) => sum + row.actualTax, 0).toLocaleString()}</td><td>GH¢ ${grandTax.toLocaleString()}</td><td>GH¢ ${grandOutstanding.toLocaleString()}</td></tr></tfoot></table></section>` : "";
     const receiptTable = activeReport === "balance"
       ? `<section class="receipt-summary"><h2>Cash Received by Payment Month</h2><p class="section-note">Cash is grouped by the recorded payments.payment_date. Actual WHT remains grouped by the original claims month in the reconciliation above; the production schema does not store a separate actual-WHT receipt date.</p>${receiptMonthData.length ? `<table><thead><tr><th>Insurance Company</th><th>Payment Month</th><th>Cash Received</th><th>Payment Entries</th></tr></thead><tbody>${receiptMonthData.map((entry) => `<tr><td>${escapeHtml((insurers || []).find((ins) => ins.id === entry.insurance_company_id)?.company_name || "Unknown insurer")}</td><td>${escapeHtml(monthNames[Number(entry.receipt_month_number)] || entry.receipt_month)}</td><td>GH¢ ${Number(entry.net_cash_received || 0).toLocaleString()}</td><td>${Number(entry.payment_count || 0)}</td></tr>`).join("")}</tbody></table>` : `<p class="section-note">No payment records are available for the selected reporting period.</p>`}</section>`
       : "";
