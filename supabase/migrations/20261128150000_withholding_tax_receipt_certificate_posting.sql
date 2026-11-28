@@ -22,6 +22,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS withholding_tax_receipts_certificate_once
     facility_id, settlement_period_id, lower(btrim(certificate_reference))
   );
 
+CREATE UNIQUE INDEX IF NOT EXISTS withholding_tax_receipts_journal_once
+  ON public.withholding_tax_receipts (journal_entry_id);
+
 CREATE INDEX IF NOT EXISTS withholding_tax_receipts_facility_period_idx
   ON public.withholding_tax_receipts (facility_id, insurance_company_id, received_date DESC);
 
@@ -101,6 +104,8 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
   IF v_period.period_type <> 'month'
+     OR v_period.period_start <> date_trunc('month', v_period.period_start)::DATE
+     OR v_period.period_end <> (date_trunc('month', v_period.period_start) + INTERVAL '1 month - 1 day')::DATE
      OR v_period.settlement_status NOT IN ('payment_advice_received', 'reconciled')
      OR v_period.actual_withholding_tax IS NULL THEN
     RAISE EXCEPTION 'A certificate can only be recorded against a monthly period with confirmed insurer payment advice and actual WHT.'
@@ -208,6 +213,7 @@ DROP TRIGGER IF EXISTS withholding_tax_receipts_immutable ON public.withholding_
 CREATE TRIGGER withholding_tax_receipts_immutable
   BEFORE UPDATE OR DELETE ON public.withholding_tax_receipts
   FOR EACH ROW EXECUTE FUNCTION public.prevent_withholding_tax_receipt_mutation();
+REVOKE ALL ON FUNCTION public.prevent_withholding_tax_receipt_mutation() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.prevent_certified_wht_ledger_mutation()
 RETURNS TRIGGER
@@ -227,3 +233,4 @@ DROP TRIGGER IF EXISTS certified_wht_ledger_immutable ON public.ledger_entries;
 CREATE TRIGGER certified_wht_ledger_immutable
   BEFORE UPDATE OR DELETE ON public.ledger_entries
   FOR EACH ROW EXECUTE FUNCTION public.prevent_certified_wht_ledger_mutation();
+REVOKE ALL ON FUNCTION public.prevent_certified_wht_ledger_mutation() FROM PUBLIC, anon, authenticated;
