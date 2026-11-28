@@ -26,7 +26,7 @@ const moneyText = (value: string | number | null | undefined) =>
 const safeSubtractMoney = (left: string | number, right: string | number) => {
   try { return subtractMoney(left, right, currencyCode); } catch { return "—"; }
 };
-const emptyForm = { insurerId: "", periodStart: "", periodEnd: "", periodType: "month" as "month" | "quarter" | "custom", totalClaimsSubmitted: "", withholdingTaxRate: "", paymentReceived: "", approvedGrossAmount: "", rejectionAmount: "", actualWithholdingTax: "", paymentAdviceReference: "", paymentAdviceDate: "", receiptDate: "" };
+const emptyForm = { insurerId: "", periodStart: "", periodEnd: "", periodType: "month" as "month" | "quarter" | "custom", totalClaimsSubmitted: "", withholdingTaxRate: "", paymentReceived: "", approvedGrossAmount: "", rejectionAmount: "", paymentAdviceReference: "", paymentAdviceDate: "", receiptDate: "" };
 type SettlementRow = Record<string, any>;
 
 export default function ClaimsSettlement() {
