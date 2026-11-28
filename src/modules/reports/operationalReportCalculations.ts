@@ -169,10 +169,14 @@ export function buildOperationalReportData(input: {
     const viewPaid = financialRows.some((period) => period.paid_amount != null)
       ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
       : null;
-    const cyclePaid = cycleRows.some((period) => period.payment_received != null)
+    const cyclePaymentKnown = cycleRows.some((period) => period.payment_received != null)
+      || (cycleRows.length > 0 && cycleRows.every((period) => period.settlement_status === "awaiting_payment"));
+    const cyclePaid = cyclePaymentKnown
       ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
       : null;
-    const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
+    const paid = cycleRows.length > 0
+      ? cyclePaid
+      : viewPaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
     const outstanding = knownOutstandingInsurers.has(insurer.id)
       ? allOutstandingFollowUp.filter((row) => row.insurerId === insurer.id).reduce((sum, row) => sum + row.outstanding, 0)
       : null;
@@ -182,7 +186,7 @@ export function buildOperationalReportData(input: {
       insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length, periodCount: cycleRows.length,
       submitted, rejected, netClaim, paid, outstanding,
       denialRate: submitted > 0 ? rejected / submitted * 100 : null,
-      recoveryRate: netClaim > 0 ? paid / netClaim * 100 : null,
+      recoveryRate: netClaim > 0 && paid !== null ? paid / netClaim * 100 : null,
       averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
       paidClaimCount: durations.length, linkedPaymentCount: linkedPayments.length,
     };
