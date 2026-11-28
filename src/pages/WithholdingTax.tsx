@@ -76,7 +76,7 @@ export default function WithholdingTax() {
       const receiptReader = supabase as unknown as {
         from: (table: string) => {
           select: (columns: string) => {
-            order: (column: string, options: { ascending: boolean }) => PromiseLike<{ data: WhtCertificateReceiptRow[] | null; error: Error | null }>;
+            order: (column: string, options: { ascending: boolean }) => PromiseLike<{ data: WhtCertificateReceiptRow[] | null; error: { message: string; code?: string; details?: string; hint?: string } | null }>;
           };
         };
       };
@@ -166,7 +166,7 @@ export default function WithholdingTax() {
     }
     setSavingReceipt(true);
     try {
-      const receiptWriter = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ error: Error | null }> };
+      const receiptWriter = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ error: { message: string; code?: string; details?: string; hint?: string } | null }> };
       const { error } = await receiptWriter.rpc("record_withholding_tax_receipt", {
         p_settlement_period_id: receiptForm.settlementPeriodId,
         p_certificate_reference: receiptForm.certificateReference.trim(),
@@ -186,7 +186,10 @@ export default function WithholdingTax() {
       setReceiptDialogOpen(false);
       toast({ title: "WHT certificate recorded", description: "The tax-credit asset and insurer receivable credit have been posted. No cash receipt was recorded." });
     } catch (error: unknown) {
-      toast({ title: "Unable to record WHT certificate", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+      const message = error instanceof Error ? error.message
+        : error && typeof error === "object" && "message" in error ? String(error.message)
+        : "Please try again.";
+      toast({ title: "Unable to record WHT certificate", description: message, variant: "destructive" });
     } finally {
       setSavingReceipt(false);
     }
