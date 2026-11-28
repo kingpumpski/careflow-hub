@@ -77,43 +77,6 @@ export function buildOperationalReportData(input: {
   }
   const rejectionReasons = [...rejectionGroups.values()].sort((a, b) => b.amount - a.amount);
 
-  const insurerPerformance = input.insurers.map((insurer) => {
-    const claims = input.claims.filter((claim) => claim.insurance_company_id === insurer.id);
-    const claimIds = new Set(claims.map((claim) => claim.id));
-    const linkedPayments = input.payments.filter((payment) => payment.claim_id && claimIds.has(payment.claim_id));
-    const cycleRows = input.settlementPeriods.filter((period) => period.insurance_company_id === insurer.id);
-    const hasAggregateSubmission = cycleRows.some((period) => period.total_claims_submitted != null);
-    const submitted = hasAggregateSubmission
-      ? cycleRows.reduce((sum, period) => sum + number(period.total_claims_submitted), 0)
-      : claims.reduce((sum, claim) => sum + number(claim.claim_amount), 0);
-    const rejected = hasAggregateSubmission
-      ? cycleRows.reduce((sum, period) => sum + number(period.rejection_amount), 0)
-      : claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
-        .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
-    const netClaim = submitted - rejected;
-    const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
-    const viewPaid = financialRows.some((period) => period.paid_amount != null)
-      ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
-      : null;
-    const cyclePaid = cycleRows.some((period) => period.payment_received != null)
-      ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
-      : null;
-    const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
-    const outstanding = knownOutstandingInsurers.has(insurer.id)
-      ? allOutstandingFollowUp.filter((row) => row.insurer === insurer.company_name).reduce((sum, row) => sum + row.outstanding, 0)
-      : null;
-    const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
-      .filter((days): days is number => days !== null);
-    return {
-      insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length, periodCount: cycleRows.length,
-      submitted, rejected, netClaim, paid, outstanding,
-      denialRate: submitted > 0 ? rejected / submitted * 100 : null,
-      recoveryRate: netClaim > 0 ? paid / netClaim * 100 : null,
-      averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
-      paidClaimCount: durations.length, linkedPaymentCount: linkedPayments.length,
-    };
-  }).filter((row) => row.claimsCount > 0 || row.periodCount > 0).sort((a, b) => b.submitted - a.submitted);
-
   const settlementDelays = input.settlementPeriods.map((period) => {
     const daysPending = period.settlement_status === "awaiting_payment"
       ? daysBetween(period.period_end, today)
@@ -185,6 +148,43 @@ export function buildOperationalReportData(input: {
   });
   const allOutstandingFollowUp = [...outstandingFollowUp, ...legacyOutstandingFollowUp]
     .sort((a, b) => b.outstanding - a.outstanding);
+
+  const insurerPerformance = input.insurers.map((insurer) => {
+    const claims = input.claims.filter((claim) => claim.insurance_company_id === insurer.id);
+    const claimIds = new Set(claims.map((claim) => claim.id));
+    const linkedPayments = input.payments.filter((payment) => payment.claim_id && claimIds.has(payment.claim_id));
+    const cycleRows = input.settlementPeriods.filter((period) => period.insurance_company_id === insurer.id);
+    const hasAggregateSubmission = cycleRows.some((period) => period.total_claims_submitted != null);
+    const submitted = hasAggregateSubmission
+      ? cycleRows.reduce((sum, period) => sum + number(period.total_claims_submitted), 0)
+      : claims.reduce((sum, claim) => sum + number(claim.claim_amount), 0);
+    const rejected = hasAggregateSubmission
+      ? cycleRows.reduce((sum, period) => sum + number(period.rejection_amount), 0)
+      : claims.filter((claim) => String(claim.status ?? "").toLowerCase() === "rejected")
+        .reduce((sum, claim) => sum + number(claim.claim_amount), 0);
+    const netClaim = submitted - rejected;
+    const financialRows = input.outstandingPeriods.filter((period) => period.insurance_company_id === insurer.id);
+    const viewPaid = financialRows.some((period) => period.paid_amount != null)
+      ? financialRows.reduce((sum, period) => sum + number(period.paid_amount), 0)
+      : null;
+    const cyclePaid = cycleRows.some((period) => period.payment_received != null)
+      ? cycleRows.reduce((sum, period) => sum + number(period.payment_received), 0)
+      : null;
+    const paid = viewPaid ?? cyclePaid ?? linkedPayments.reduce((sum, payment) => sum + number(payment.amount_paid), 0);
+    const outstanding = knownOutstandingInsurers.has(insurer.id)
+      ? allOutstandingFollowUp.filter((row) => row.insurer === insurer.company_name).reduce((sum, row) => sum + row.outstanding, 0)
+      : null;
+    const durations = claims.map((claim) => daysBetween(claim.submitted_at || claim.submission_date, claim.paid_at))
+      .filter((days): days is number => days !== null);
+    return {
+      insurerId: insurer.id, insurer: insurer.company_name, claimsCount: claims.length, periodCount: cycleRows.length,
+      submitted, rejected, netClaim, paid, outstanding,
+      denialRate: submitted > 0 ? rejected / submitted * 100 : null,
+      recoveryRate: netClaim > 0 ? paid / netClaim * 100 : null,
+      averageDaysToPay: durations.length ? durations.reduce((sum, days) => sum + days, 0) / durations.length : null,
+      paidClaimCount: durations.length, linkedPaymentCount: linkedPayments.length,
+    };
+  }).filter((row) => row.claimsCount > 0 || row.periodCount > 0).sort((a, b) => b.submitted - a.submitted);
 
   const profileNames = new Map(input.profiles.map((profile) => [profile.id, profile.full_name?.trim() || "Staff account"]));
   const staffActivityGroups = new Map<string, { actorId: string; staffName: string; inserts: number; updates: number; records: Set<string>; lastActivity: string }>();
