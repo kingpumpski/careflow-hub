@@ -90,8 +90,12 @@ export default function Reports() {
   const operationalOutstandingPeriods = useMemo(() => filterByPeriod(outstandingPeriods || [], "period_year", "period_month")
     .filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId),
   [outstandingPeriods, selectedCompanyId, filterByPeriod]);
-  const operationalAuditLogs = useMemo(() => filterByPeriod(auditLogs || [], "", "", "changed_at"),
-  [auditLogs, filterByPeriod]);
+  const operationalAuditLogs = useMemo(() => {
+    const periodLogs = filterByPeriod(auditLogs || [], "", "", "changed_at");
+    if (!canReadClaims) return periodLogs;
+    const selectedClaimIds = new Set(operationalClaims.map((claim: any) => String(claim.id)));
+    return periodLogs.filter((log: any) => selectedClaimIds.has(String(log.record_id)));
+  }, [auditLogs, filterByPeriod, operationalClaims, canReadClaims]);
   const operationalReportData = useMemo(() => buildOperationalReportData({
     claims: operationalClaims,
     insurers: operationalInsurers,
@@ -477,7 +481,7 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="page-header flex items-start justify-between">
-        <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial Reports</h1><p className="page-description">Generate comprehensive financial statements and reconciliation reports</p></div>
+        <div><h1 className="page-title flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" />Financial &amp; Operational Reports</h1><p className="page-description">Generate financial statements, claims-cycle reconciliations and operational performance reports</p></div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={() => handlePrint(periodLabel)} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; printing is disabled to prevent incomplete financial figures." : undefined}><Printer className="w-4 h-4" />Print</Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPDF} disabled={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable)} title={settlementReportUnavailable || (activeReport === "settlement" && settlementCycleReportUnavailable) ? "The selected report source is unavailable; PDF export is disabled." : undefined}><Download className="w-4 h-4" />PDF</Button>
