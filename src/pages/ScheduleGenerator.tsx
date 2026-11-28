@@ -60,10 +60,10 @@ export default function ScheduleGenerator() {
   const { data: payments } = useSupabaseQuery("payments");
   const { data: withholdingTax } = useSupabaseQuery("withholding_tax");
   const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods");
-  const claimRows = (claims || []) as unknown as ScheduleClaimRow[];
-  const paymentRows = (payments || []) as unknown as SchedulePaymentRow[];
-  const taxRows = (withholdingTax || []) as unknown as ScheduleTaxRow[];
-  const settlementRows = (settlementPeriods || []) as unknown as ScheduleSettlementRow[];
+  const claimRows = useMemo(() => (claims || []) as unknown as ScheduleClaimRow[], [claims]);
+  const paymentRows = useMemo(() => (payments || []) as unknown as SchedulePaymentRow[], [payments]);
+  const taxRows = useMemo(() => (withholdingTax || []) as unknown as ScheduleTaxRow[], [withholdingTax]);
+  const settlementRows = useMemo(() => (settlementPeriods || []) as unknown as ScheduleSettlementRow[], [settlementPeriods]);
   const { data: settings } = useDocumentLetterheadSettings({ canReadDocument: can("reports.read"), canManageSettings: can("settings.manage") });
 
   const currentYear = new Date().getFullYear();
@@ -180,7 +180,7 @@ export default function ScheduleGenerator() {
       });
     }
     return out;
-  }, [claims, payments, withholdingTax, settlementPeriods, insurerId, year, fromMonth, toMonth]);
+  }, [claimRows, paymentRows, taxRows, settlementRows, insurerId, year, fromMonth, toMonth]);
 
   const totals = rows.reduce((acc, r) => ({
     withholdingTax: acc.withholdingTax + r.withholdingTax,
