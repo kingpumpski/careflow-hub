@@ -44,7 +44,8 @@ BEGIN
      OR position('WHT Payable' IN v_definition) = 0
      OR position('WHT Expense' IN v_definition) = 0
      OR position('actual_withholding_tax' IN v_definition) = 0
-     OR position('user_has_facility_access' IN v_definition) = 0 THEN
+     OR position('user_has_facility_access' IN v_definition) = 0
+     OR position('date_trunc' IN v_definition) = 0 THEN
     RAISE EXCEPTION 'Certificate receipt RPC is missing the required tax-credit, provisional reversal, confirmed amount or facility-scope controls';
   END IF;
 END;
