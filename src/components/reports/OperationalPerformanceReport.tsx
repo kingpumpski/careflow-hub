@@ -34,7 +34,7 @@ export default function OperationalPerformanceReport(props: {
         <thead><tr><th>Insurer</th><th>Claims</th><th>Submitted</th><th>Rejected</th><th>Net claim</th><th>Linked cash</th><th>Balance</th><th>Denial rate</th><th>Recovery rate</th><th>Avg. days to pay</th></tr></thead>
         <tbody>{report.insurerPerformance.map((row) => <tr key={row.insurerId}>
           <td className="font-medium">{row.insurer}</td><td>{row.claimsCount}</td><td>{money(row.submitted)}</td><td>{money(row.rejected)}</td><td>{money(row.netClaim)}</td><td>{money(row.paid)}</td>
-          <td className={row.outstanding > 0 ? "text-warning" : "text-success"}>{money(row.outstanding)}</td><td>{percent(row.denialRate)}</td><td>{percent(row.recoveryRate)}</td><td>{row.averageDaysToPay == null ? "—" : `${row.averageDaysToPay.toFixed(1)} days`}</td>
+          <td className={row.outstanding != null && row.outstanding > 0 ? "text-warning" : "text-success"}>{money(row.outstanding)}</td><td>{percent(row.denialRate)}</td><td>{percent(row.recoveryRate)}</td><td>{row.averageDaysToPay == null ? "—" : `${row.averageDaysToPay.toFixed(1)} days`}</td>
         </tr>)}{!report.insurerPerformance.length && <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">No insurer activity in the selected period.</td></tr>}</tbody>
       </table></div>
       <p className="text-xs text-muted-foreground">Cash collected here is limited to payment entries linked to the selected claim records. Unlinked insurer-level receipts are not allocated to a claim and are excluded from this recovery measure.</p>
