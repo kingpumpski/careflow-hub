@@ -9,7 +9,7 @@ import { buildLetterheadConfig } from "@/lib/letterhead";
 import { buildReportPDFBlob, exportReportExcel } from "@/lib/exportUtils";
 import { HtmlPrintPreviewDialog, PdfPreviewDialog } from "@/components/shared/DocumentPreviewDialogs";
 import { toast } from "@/hooks/use-toast";
-import { calculateAppliedWithholdingTax, calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
+import { calculateClaimGrossTotals, calculateWithholdingRateBasis } from "@/modules/reports/claimsReportCalculations";
 import SortableHeader, { useSort } from "@/components/shared/SortableHeader";
 import { summarizePaymentsByReceiptMonth } from "@/modules/settlements/receiptMonthSummary";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
