@@ -16,6 +16,15 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+type WhtCertificateReceiptRow = {
+  id: string;
+  settlement_period_id: string;
+  insurance_company_id: string;
+  certificate_reference: string;
+  certificate_date: string;
+  received_date: string;
+  tax_amount: number | string;
+};
 type TaxRecord = { id: string; insurance_company_id: string; month: number; year: number; claim_total: number; tax_rate: number; tax_amount: number; is_actual: boolean };
 type Insurer = { id: string; company_name: string; color?: string; email?: string; phone?: string; address?: string; contact_person?: string };
 type TaxFilters = { company?: string; month?: string; year?: string };
@@ -47,7 +56,14 @@ export default function WithholdingTax() {
     queryKey: ["withholding-tax-receipts"],
     enabled: receiptFeatureEnabled && canReadWHT && !permissionsLoading,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from("withholding_tax_receipts").select("*").order("received_date", { ascending: false });
+      const receiptReader = supabase as unknown as {
+        from: (table: string) => {
+          select: (columns: string) => {
+            order: (column: string, options: { ascending: boolean }) => PromiseLike<{ data: WhtCertificateReceiptRow[] | null; error: Error | null }>;
+          };
+        };
+      };
+      const { data, error } = await receiptReader.from("withholding_tax_receipts").select("*").order("received_date", { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -109,8 +125,8 @@ export default function WithholdingTax() {
       && Number(row.actual_withholding_tax || 0) > 0
   );
   const selectedReceiptPeriod = receiptEligiblePeriods.find((row) => row.id === receiptForm.settlementPeriodId);
-  const recordedForSelectedPeriod = (taxReceipts || []).filter((receipt: any) => receipt.settlement_period_id === receiptForm.settlementPeriodId)
-    .reduce((sum: number, receipt: any) => sum + Number(receipt.tax_amount || 0), 0);
+  const recordedForSelectedPeriod = (taxReceipts || []).filter((receipt) => receipt.settlement_period_id === receiptForm.settlementPeriodId)
+    .reduce((sum: number, receipt) => sum + Number(receipt.tax_amount || 0), 0);
   const remainingCertificateAmount = selectedReceiptPeriod
     ? Math.max(0, Number(selectedReceiptPeriod.actual_withholding_tax || 0) - recordedForSelectedPeriod)
     : 0;
@@ -131,7 +147,8 @@ export default function WithholdingTax() {
     }
     setSavingReceipt(true);
     try {
-      const { error } = await (supabase as any).rpc("record_withholding_tax_receipt", {
+      const receiptWriter = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ error: Error | null }> };
+      const { error } = await receiptWriter.rpc("record_withholding_tax_receipt", {
         p_settlement_period_id: receiptForm.settlementPeriodId,
         p_certificate_reference: receiptForm.certificateReference.trim(),
         p_certificate_date: receiptForm.certificateDate,
@@ -188,7 +205,7 @@ export default function WithholdingTax() {
         {!receiptFeatureEnabled ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Certificate capture is implemented but is not enabled in this environment until its database migration has passed release checks.</p>
           : taxReceiptsError ? <p role="alert" className="text-sm text-destructive">WHT certificate history is unavailable: {taxReceiptsError instanceof Error ? taxReceiptsError.message : "The certificate table could not be read."}</p>
           : <div className="table-scroll"><table className="data-table min-w-[850px]"><thead><tr><th>Claims period</th><th>Insurance company</th><th>Certificate reference</th><th>Certificate date</th><th>Date received</th><th className="text-right">Tax credit (GH¢)</th></tr></thead><tbody>
-            {(taxReceipts || []).map((receipt: any) => {
+            {(taxReceipts || []).map((receipt) => {
               const period = receiptEligiblePeriods.find((row) => row.id === receipt.settlement_period_id);
               return <tr key={receipt.id}><td>{period ? `${period.period_start} – ${period.period_end}` : receipt.settlement_period_id}</td><td>{insurerRows.find((ins) => ins.id === receipt.insurance_company_id)?.company_name || receipt.insurance_company_id}</td><td className="font-mono text-xs">{receipt.certificate_reference}</td><td>{receipt.certificate_date}</td><td>{receipt.received_date}</td><td className="text-right font-semibold">{Number(receipt.tax_amount).toLocaleString("en-GH", { minimumFractionDigits: 2 })}</td></tr>;
             })}
