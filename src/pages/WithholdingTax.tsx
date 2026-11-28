@@ -69,6 +69,8 @@ export default function WithholdingTax() {
   const { data: insurers } = useSupabaseQuery("insurance_companies", { enabled: canReadWHT && !permissionsLoading });
   const { data: settings } = useSupabaseQuery("system_settings", { enabled: can("settings.manage") && !permissionsLoading });
   const { data: settlementPeriods } = useSupabaseQuery("claims_settlement_periods", { enabled: canReadWHT && !permissionsLoading });
+  const canReadTaxReceipts = can("payments.read") || can("ledger.read");
+  const receiptFeatureEnabled = databaseCapabilities.withholdingTaxCertificateReceipts;
   const { data: taxReceipts, error: taxReceiptsError } = useQuery({
     queryKey: ["withholding-tax-receipts"],
     enabled: receiptFeatureEnabled && canReadTaxReceipts && !permissionsLoading,
@@ -93,8 +95,6 @@ export default function WithholdingTax() {
   const [savingReceipt, setSavingReceipt] = useState(false);
   const [receiptForm, setReceiptForm] = useState({ settlementPeriodId: "", certificateReference: "", certificateDate: "", receivedDate: "", taxAmount: "", notes: "" });
   const canWriteReceipts = can("payments.write") || can("ledger.write");
-  const canReadTaxReceipts = can("payments.read") || can("ledger.read");
-  const receiptFeatureEnabled = databaseCapabilities.withholdingTaxCertificateReceipts;
   const configuredRateValue = ((settings || []) as unknown as Setting[]).find((s) => s.key === "withholding_tax_rate")?.value;
   const parsedCurrentRate = configuredRateValue == null || String(configuredRateValue).trim() === "" ? null : Number(configuredRateValue);
   const fallbackCurrentRate = parsedCurrentRate !== null && Number.isFinite(parsedCurrentRate) && parsedCurrentRate >= 0 && parsedCurrentRate <= 100 ? parsedCurrentRate : null;
