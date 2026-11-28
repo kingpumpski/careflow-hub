@@ -34,6 +34,18 @@ describe("operational report calculations", () => {
     });
   });
 
+  it("keeps insurer outstanding unknown when the legacy view has a null balance", () => {
+    const report = buildOperationalReportData({
+      ...base,
+      outstandingPeriods: [{
+        insurance_company_id: "ins-a", period_year: 2026, period_month: 9,
+        outstanding_amount: null, outstanding_status: null,
+      }],
+    });
+    expect(report.insurerPerformance[0].outstanding).toBeNull();
+    expect(report.outstandingFollowUp).toEqual([]);
+  });
+
   it("calculates pending settlement delay and outstanding follow-up age without inventing actual receipt dates", () => {
     const report = buildOperationalReportData({
       ...base,
