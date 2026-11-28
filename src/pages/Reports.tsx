@@ -64,7 +64,7 @@ export default function Reports() {
   const settlementCycleSourceRows = useMemo(() => {
     const periodRows = filterByPeriod(settlementPeriods || [], "", "", "period_start");
     return periodRows.filter((period: any) => selectedCompanyId === "all" || period.insurance_company_id === selectedCompanyId);
-  }, [settlementPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
+  }, [settlementPeriods, selectedCompanyId, filterByPeriod]);
   const settlementCycleRows = useMemo(
     () => buildSettlementReconciliationRows(settlementCycleSourceRows),
     [settlementCycleSourceRows],
@@ -180,7 +180,7 @@ export default function Reports() {
       return { id: ins.id, company: ins.company_name, submitted, rejected, netClaim, paid, tax, provisionalTax, actualTax, approvedGross, approvalVariance, outstanding, ...taxBasis, color: ins.color };
     }).filter((row) => row.submitted > 0 || row.paid > 0 || row.rejected > 0 || row.netClaim > 0 || row.outstanding > 0)
       .filter((row) => selectedCompanyId === "all" || row.id === selectedCompanyId);
-  }, [claims, insurers, payments, withholdingTax, outstandingPeriods, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
+  }, [claims, insurers, payments, withholdingTax, outstandingPeriods, selectedCompanyId, filterByPeriod]);
 
   // Ledger-based reports
   const incomeData = useMemo(() => {
@@ -189,14 +189,14 @@ export default function Reports() {
     const revAdj = filteredLedger.filter((e: any) => e.account_debit === "Revenue Adjustment").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtExp = filteredLedger.filter((e: any) => e.account_debit === "WHT Expense").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { revenue, revAdj, whtExp, netRevenue: revenue - revAdj, netIncome: revenue - revAdj - whtExp };
-  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
+  }, [ledger, selectedCompanyId, filterByPeriod]);
 
   const taxLiabilityData = useMemo(() => {
     const filteredLedger = filterByPeriod((ledger || []).filter((entry) => selectedCompanyId === "all" || entry.insurance_company_id === selectedCompanyId), "claim_year", "claim_month");
     const whtPayable = filteredLedger.filter((e: any) => e.account_credit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     const whtReversals = filteredLedger.filter((e: any) => e.account_debit === "WHT Payable").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
     return { whtPayable, whtReversals, netLiability: whtPayable - whtReversals };
-  }, [ledger, activePeriod, selectedYear, selectedMonth, selectedCompanyId, filterByPeriod]);
+  }, [ledger, selectedCompanyId, filterByPeriod]);
 
   // Aging uses the same authoritative outstanding-period view as the balance
   // report, so approved gross and actual-vs-provisional WHT stay consistent.
