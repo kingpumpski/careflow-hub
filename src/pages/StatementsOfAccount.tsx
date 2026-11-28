@@ -9,7 +9,7 @@ import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import { usePermissions } from "@/modules/security/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { buildLetterheadConfig } from "@/lib/letterhead";
-import { buildCompanyStatement, buildStatementReconciliation, formatStatementAmount, type StatementClaimRow, type StatementLedgerEntry, type StatementSettlementPeriod, type StatementTaxRow } from "@/modules/statements/statementOfAccount";
+import { buildCompanyStatement, buildStatementReconciliation, buildStatementWhtCredits, formatStatementAmount, type StatementClaimRow, type StatementLedgerEntry, type StatementSettlementPeriod, type StatementTaxRow } from "@/modules/statements/statementOfAccount";
 import { exportCompanyStatementPDF } from "@/modules/statements/exportStatementPdf";
 import { toast } from "@/hooks/use-toast";
 import { useDocumentLetterheadSettings } from "@/modules/reports/useDocumentLetterheadSettings";
@@ -110,9 +110,12 @@ export default function StatementsOfAccount() {
   const statementResult = useMemo(() => {
     if (!companyId || !ledger || !claimsReconciliationSources) return { statement: null, reconciliation: null, error: null as string | null };
     try {
+      const { claims, taxRows, settlementPeriods } = claimsReconciliationSources;
+      const reconciliation = buildStatementReconciliation(claims, taxRows, settlementPeriods, startDate, endDate);
+      const withholdingTaxCredits = buildStatementWhtCredits(claims, taxRows, settlementPeriods, endDate);
       return {
-        statement: buildCompanyStatement(ledger, companyId, startDate, endDate),
-        reconciliation: buildStatementReconciliation(claimsReconciliationSources.claims, claimsReconciliationSources.taxRows, claimsReconciliationSources.settlementPeriods, startDate, endDate),
+        statement: buildCompanyStatement(ledger, companyId, startDate, endDate, withholdingTaxCredits),
+        reconciliation,
         error: null as string | null,
       };
     } catch (error) {
@@ -173,7 +176,7 @@ export default function StatementsOfAccount() {
           <div className="space-y-1.5"><Label htmlFor="statement-start">From date</Label><Input id="statement-start" type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></div>
           <div className="space-y-1.5"><Label htmlFor="statement-end">To date</Label><Input id="statement-end" type="date" value={endDate} min={startDate || undefined} max={today} onChange={(event) => setEndDate(event.target.value)} /></div>
         </div>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />Opening balance includes all Accounts Receivable postings before the selected start date.</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />Opening balance includes prior claims, cash receipts and effective withholding-tax credits.</p>
         {companiesLoading && <Skeleton className="h-8 w-full" />}
       </section>
 
@@ -202,7 +205,7 @@ export default function StatementsOfAccount() {
           <section className="stat-card space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Claims &amp; withholding-tax reconciliation</h2>
-              <p className="text-xs text-muted-foreground">Monthly claims-period totals overlapping the selected dates. Actual WHT replaces provisional WHT when confirmed; these two figures are not added together.</p>
+              <p className="text-xs text-muted-foreground">Each claims month is reconciled separately. Effective WHT is shown as a distinct credit in the statement below; confirmed actual WHT replaces provisional WHT and is never added to it.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Rejected claims</p><p className="mt-1 text-lg font-bold tabular-nums">{money(reconciliation.rejectedClaimsTotal)}</p></div>
@@ -244,7 +247,7 @@ export default function StatementsOfAccount() {
               </table>
             </div>
             <div className="flex flex-col gap-2 border-t pt-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>Statement basis: Accounts Receivable control-account postings only. Withholding tax is reconciled separately.</span>
+              <span>Statement basis: claims and cash postings plus a distinct WHT credit for each claims month. Actual WHT replaces provisional WHT; no duplicate credit is posted when WHT is already in the AR ledger.</span>
               <span className="inline-flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" />Live ledger preview</span>
             </div>
           </section>
