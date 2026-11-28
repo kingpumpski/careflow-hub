@@ -80,31 +80,38 @@ export function buildCompanyStatement(
       || String(a.entry.created_at || "").localeCompare(String(b.entry.created_at || ""))
       || a.entry.id.localeCompare(b.entry.id));
 
-  const existingWhtCredits = new Set(relevant
-    .filter(({ entry, credit }) => credit > 0 && /withholding|wht/i.test(entry.entry_type))
-    .map(({ entry }) => entry.entry_date.slice(0, 7)));
+  const existingWhtCredits = new Map<string, number>();
+  relevant.forEach(({ entry, credit }) => {
+    if (credit <= 0 || !/withholding|wht/i.test(entry.entry_type)) return;
+    const key = entry.entry_date.slice(0, 7);
+    existingWhtCredits.set(key, (existingWhtCredits.get(key) || 0) + credit);
+  });
   const statementWhtRows = withholdingTaxCredits
-    .filter((tax) => tax.amount > 0 && !existingWhtCredits.has(monthKey(tax.year, tax.month)))
     .map((tax) => {
+      const key = monthKey(tax.year, tax.month);
+      const amount = Number(tax.amount);
+      const alreadyCredited = existingWhtCredits.get(key) || 0;
+      const remainingCredit = Math.max(0, amount - alreadyCredited);
       const monthEnd = monthEndDate(tax.year, tax.month);
       const date = monthEnd > endDate ? endDate : monthEnd;
-      const amount = Number(tax.amount);
       if (!Number.isFinite(amount) || amount < 0) {
         throw new Error("The withholding-tax credit contains an invalid amount; statement generation was stopped.");
       }
+      if (remainingCredit < 0.005) return null;
       const entry: StatementLedgerEntry = {
         id: `statement-wht-${tax.year}-${String(tax.month).padStart(2, "0")}`,
         entry_date: date,
         entry_type: "withholding_tax_credit",
         account_debit: "—",
         account_credit: "Accounts Receivable",
-        amount,
+        amount: remainingCredit,
         insurance_company_id: companyId,
         reference: `WHT-${tax.year}-${String(tax.month).padStart(2, "0")}`,
         description: `Withholding tax credit — ${tax.basis} — ${new Date(tax.year, tax.month - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`,
       };
-      return { entry, amount, debit: 0, credit: amount };
-    });
+      return { entry, amount: remainingCredit, debit: 0, credit: remainingCredit };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
   const allRows = [...relevant, ...statementWhtRows].sort((a, b) =>
     a.entry.entry_date.localeCompare(b.entry.entry_date)
       || String(a.entry.created_at || "").localeCompare(String(b.entry.created_at || ""))
