@@ -143,5 +143,10 @@ A fresh catalog check against the same production project confirmed the followin
 | Live private finalizer references `public.preauthorization_submissions` | No |
 | Live private finalizer references `public.preauth_submissions` | Yes |
 | Live private finalizer references `public.pre_auth_submissions` | Yes |
+| Public wrapper is SECURITY INVOKER | No — it is still SECURITY DEFINER |
+| Public wrapper has an empty `search_path` | Yes |
+| Authenticated can execute the public wrapper | Yes |
+| Anonymous can execute the public wrapper | No |
+| Notification recipient RLS/UPDATE isolation | Pass — existing policy is user-scoped |
 
 The read-only release diagnostic has been corrected to require the intended prepared-handoff relation, reject both noncanonical relation references, and verify that the public wrapper is SECURITY INVOKER with an empty search path, authenticated execution and no anonymous execution. The diagnostic remains SELECT-only. No production schema, records, migration ledger, grants, Auth settings or Edge Functions were changed.
